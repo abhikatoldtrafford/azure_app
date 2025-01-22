@@ -160,8 +160,8 @@ async def initiate_chat(request: Request, product_id: Optional[str] = None):
     # Create the assistant
     try:
         assistant = client.beta.assistants.create(
-            name="code_interpreter",
-            model="gpt-4o",
+            name="demo_new_abhik",
+            model="gpt-4o-mini",
             instructions=system_prompt,
             tools=assistant_tools,
             tool_resources=assistant_tool_resources,
