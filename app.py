@@ -406,48 +406,6 @@ async def conversation(
         logging.error(f"Error in conversation: {e}")
         raise HTTPException(status_code=500, detail="Failed to process conversation")
 
-# @app.api_route("/chat", methods=["GET", "POST"])
-# async def chat(query: str, product_id: Optional[str] = None):
-#     """
-#     Handles chat requests. 
-#     Maintains the same input and output format as original. 
-#     """
-#     await ensure_context(product_id)
-#     context = global_context if product_id is None else product_context[product_id]
-
-#     client = create_client()
-
-#     try:
-#         session_id = context.get("session_id")
-#         assistant_id = context.get("assistant_id")
-
-#         # Add user message
-#         client.beta.threads.messages.create(
-#             thread_id=session_id,
-#             role="user",
-#             content=query
-#         )
-
-#         def stream_response():
-#             buffer = []
-#             try:
-#                 with client.beta.threads.runs.stream(thread_id=session_id, assistant_id=assistant_id) as stream:
-#                     for text in stream.text_deltas:
-#                         buffer.append(text)
-#                         if len(buffer) >= 10:  # Adjust chunk size as needed
-#                             yield ''.join(buffer)
-#                             buffer = []
-#                 if buffer:
-#                     yield ''.join(buffer)
-#             except Exception as e:
-#                 logging.error(f"Streaming error: {e}")
-#                 yield "[ERROR] The response was interrupted. Please try again."
-#         return StreamingResponse(stream_response(), media_type="text/event-stream")
-
-#     except Exception as e:
-#         logging.error(f"Error in chat: {e}")
-#         raise HTTPException(status_code=500, detail="Failed to process chat")
-
 @app.get("/chat")
 async def chat(
     session: Optional[str] = None,
@@ -504,4 +462,3 @@ async def chat(
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
