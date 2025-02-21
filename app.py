@@ -7,14 +7,6 @@ import os
 
 app = FastAPI()
 
-# Global and product-specific contexts
-global_context = {
-    "assistant_id": None,
-    "session_id": None,
-    "vector_store_id": None
-}
-product_context = {}
-
 # Azure OpenAI client configuration
 AZURE_ENDPOINT = "https://kb-stellar.openai.azure.com/"
 AZURE_API_KEY = "bc0ba854d3644d7998a5034af62d03ce"
@@ -27,55 +19,24 @@ def create_client():
         api_version=AZURE_API_VERSION,
     )
 
-async def ensure_context(product_id: Optional[str] = None):
-    """
-    Ensures that either the global context or a product-specific context is initialized.
-    If not, it calls initiate_chat to set it up.
-    """
-    context = global_context if product_id is None else product_context.get(product_id)
-
-    if not context or not context.get("assistant_id") or not context.get("session_id") or not context.get("vector_store_id"):
-        logging.info(f"Context missing for {'global' if product_id is None else f'product_id: {product_id}'}. Initializing.")
-        response = await initiate_chat(product_id=product_id)
-        # simulate FastAPI response reading
-        if response.status_code == 200:
-            data = response.body
-            # response.body is bytes, decode and parse as needed
-            # In FastAPI, we can directly access response in memory if needed.
-            # Here, since we call internally, let's assume JSONResponse returns a dict.
-            # Adjust as needed if calling differently.
-
-            # Since we are calling initiate_chat() directly, let's just trust it returns JSONResponse and extract the dictionary from it.
-            # In actual scenario, we could refactor initiate_chat to return a dict and convert to JSONResponse at the end.
-            # For simplicity, let's decode here:
-            data = response.media  # JSONResponse provides .media as the parsed content
-
-            new_context = {
-                "assistant_id": data["assistant"],
-                "session_id": data["session"],
-                "vector_store_id": data["vector_store"]
-            }
-            if product_id:
-                product_context[product_id] = new_context
-            else:
-                global_context.update(new_context)
-        else:
-            raise HTTPException(status_code=500, detail="Failed to initialize context.")
-
 @app.post("/initiate-chat")
 async def initiate_chat(request: Request, product_id: Optional[str] = None):
-    """Initiates the assistant and session and optionally uploads a file to its vector store, 
-    all in one go. No separate /upload-file call is needed."""
+    """
+    Initiates the assistant and session and optionally uploads a file to its vector store, 
+    all in one go.
+
+    (product_id is accepted but ignored.)
+    """
     client = create_client()
 
     # Parse the form data
     form = await request.form()
     file = form.get("file", None)
 
-    # Create a vector store up front.
+    # Create a vector store up front
     vector_store = client.beta.vector_stores.create(name="demo")
 
-    # Always include file_search tool and associate with the vector store, even if no file is provided yet.
+    # Always include file_search tool and associate with the vector store
     assistant_tools = [{"type": "code_interpreter"}, {"type": "file_search"}]
     assistant_tool_resources = {"file_search": {"vector_store_ids": [vector_store.id]}}
     system_prompt = '''
@@ -165,7 +126,6 @@ async def initiate_chat(request: Request, product_id: Optional[str] = None):
             instructions=system_prompt,
             tools=assistant_tools,
             tool_resources=assistant_tool_resources,
-
         )
     except BaseException as e:
         logging.info(f"An error occurred while creating the assistant: {e}")
@@ -182,28 +142,12 @@ async def initiate_chat(request: Request, product_id: Optional[str] = None):
 
     logging.info(f"Thread created: {thread.id}")
 
-    # Update the global or product-specific context
-    context = {
-        "assistant_id": assistant.id,
-        "session_id": thread.id,
-        "vector_store_id": vector_store.id
-    }
-
-    if product_id:
-        product_context[product_id] = context
-    else:
-        global_context.update(context)
-
-    # If a file is provided, upload it now that assistant and vector store are ready
+    # If a file is provided, upload it now
     if file:
         filename = file.filename
         file_path = os.path.join('/tmp/', filename)
-
-        # Save the file locally
         with open(file_path, 'wb') as f:
             f.write(await file.read())
-
-        # Upload the file to the existing vector store
         with open(file_path, "rb") as file_stream:
             file_batch = client.beta.vector_stores.file_batches.upload_and_poll(
                 vector_store_id=vector_store.id, 
@@ -218,91 +162,111 @@ async def initiate_chat(request: Request, product_id: Optional[str] = None):
     }
 
     return JSONResponse(res, media_type="application/json", status_code=200)
+
+
 @app.post("/co-pilot")
 async def co_pilot(request: Request, product_id: Optional[str] = None):
-    """Handles co-pilot creation or updates with optional file upload and system prompt."""
-    await ensure_context(product_id)
-    context = global_context if product_id is None else product_context[product_id]
-
+    """
+    Handles co-pilot creation or updates with optional file upload and system prompt.
+    (product_id is accepted but ignored.)
+    """
     form = await request.form()
     file = form.get("file", None)
     system_prompt = form.get("system_prompt", None)
 
+    # Attempt to get the assistant & vector store from the form
+    assistant_id = form.get("assistant", None)
+    vector_store_id = form.get("vector_store", None)
+
     client = create_client()
 
-    try:
-        assistant_id = context.get("assistant_id")
-        vector_store_id = context.get("vector_store_id")
-
-        # Handle file upload
-        if file:
-            # If no vector store, create it
-            if not vector_store_id:
+    # If no assistant, create one
+    if not assistant_id:
+        if not vector_store_id:
+            vector_store = client.beta.vector_stores.create(name="demo")
+            vector_store_id = vector_store.id
+        base_prompt = "You are a product management AI assistant, a product co-pilot."
+        instructions = base_prompt if not system_prompt else f"{base_prompt} {system_prompt}"
+        assistant = client.beta.assistants.create(
+            name="demo_co_pilot",
+            model="gpt-4o-mini",
+            instructions=instructions,
+            tools=[{"type": "file_search"}],
+            tool_resources={"file_search": {"vector_store_ids": [vector_store_id]}},
+        )
+        assistant_id = assistant.id
+    else:
+        # If user gave an assistant, update instructions if needed
+        if system_prompt:
+            client.beta.assistants.update(
+                assistant_id=assistant_id,
+                instructions=(
+                    f"You are a product management AI assistant, a product co-pilot. {system_prompt}"
+                    if system_prompt
+                    else "You are a product management AI assistant, a product co-pilot."
+                ),
+            )
+        # If no vector_store, check existing or create new
+        if not vector_store_id:
+            assistant_obj = client.beta.assistants.retrieve(assistant_id=assistant_id)
+            file_search_resource = getattr(assistant_obj.tool_resources, "file_search", None)
+            existing_stores = (
+                file_search_resource.vector_store_ids
+                if (file_search_resource and hasattr(file_search_resource, "vector_store_ids"))
+                else []
+            )
+            if existing_stores:
+                vector_store_id = existing_stores[0]
+            else:
                 vector_store = client.beta.vector_stores.create(name="demo")
                 vector_store_id = vector_store.id
-                context["vector_store_id"] = vector_store_id
-
-                # Update assistant
-                assistant_obj = client.beta.assistants.retrieve(assistant_id=assistant_id)
+                existing_tools = assistant_obj.tools if assistant_obj.tools else []
+                if not any(t["type"] == "file_search" for t in existing_tools):
+                    existing_tools.append({"type": "file_search"})
                 client.beta.assistants.update(
                     assistant_id=assistant_id,
-                    tools=assistant_obj.tools + [{"type": "file_search"}],
+                    tools=existing_tools,
                     tool_resources={"file_search": {"vector_store_ids": [vector_store_id]}},
                 )
 
-            # Save and upload file
-            file_path = f"/tmp/{file.filename}"
-            with open(file_path, "wb") as f:
-                f.write(await file.read())
+    # Handle file upload if present
+    if file:
+        file_path = f"/tmp/{file.filename}"
+        with open(file_path, "wb") as ftemp:
+            ftemp.write(await file.read())
+        with open(file_path, "rb") as file_stream:
+            client.beta.vector_stores.file_batches.upload_and_poll(
+                vector_store_id=vector_store_id,
+                files=[file_stream]
+            )
 
-            with open(file_path, "rb") as file_stream:
-                client.beta.vector_stores.file_batches.upload_and_poll(
-                    vector_store_id=vector_store_id,
-                    files=[file_stream]
-                )
+    return JSONResponse(
+        {
+            "message": "Assistant updated successfully.",
+            "assistant": assistant_id,
+            "vector_store": vector_store_id,
+        }
+    )
 
-        # Update assistant instructions
-        client.beta.assistants.update(
-            assistant_id=assistant_id,
-            instructions=(
-                f"You are a product management AI assistant, a product co-pilot. {system_prompt}"
-                if system_prompt
-                else "You are a product management AI assistant, a product co-pilot."
-            ),
-        )
-
-        return JSONResponse(
-            {
-                "message": "Assistant updated successfully.",
-                "assistant": assistant_id,
-                "vector_store": vector_store_id,
-            }
-        )
-
-    except Exception as e:
-        logging.error(f"Error in co-pilot: {e}")
-        return JSONResponse({"error": str(e)}, status_code=500)
 
 @app.post("/upload-file")
 async def upload_file(file: UploadFile = Form(...), assistant: str = Form(...)):
     """
     Uploads a file and associates it with the given assistant.
-    Maintains the same input-output as the current version, and ensures a single vector store per assistant.
+    Maintains the same input-output as before, ensures a single vector store per assistant.
     """
     client = create_client()
 
     try:
         # Retrieve the assistant
         assistant_obj = client.beta.assistants.retrieve(assistant_id=assistant)
-
-        # 'tool_resources' is an object, not a dict.
-        # Access the 'file_search' attribute if it exists.
-        file_search_resource = None
-        if assistant_obj.tool_resources and hasattr(assistant_obj.tool_resources, "file_search"):
-            file_search_resource = assistant_obj.tool_resources.file_search
-
-        # If file_search_resource exists and has vector_store_ids, retrieve them; otherwise use an empty list.
-        vector_store_ids = file_search_resource.vector_store_ids if (file_search_resource and hasattr(file_search_resource, "vector_store_ids")) else []
+        # Check if there's a file_search resource
+        file_search_resource = getattr(assistant_obj.tool_resources, "file_search", None)
+        vector_store_ids = (
+            file_search_resource.vector_store_ids
+            if (file_search_resource and hasattr(file_search_resource, "vector_store_ids"))
+            else []
+        )
 
         if vector_store_ids:
             # If a vector store already exists, reuse it
@@ -352,34 +316,39 @@ async def upload_file(file: UploadFile = Form(...), assistant: str = Form(...)):
         logging.error(f"Error uploading file: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
 
+
 @app.get("/conversation")
 async def conversation(
     session: Optional[str] = None,
     prompt: Optional[str] = None,
     assistant: Optional[str] = None,
-    product_id: Optional[str] = None,
+    product_id: Optional[str] = None,  # Ignored
 ):
     """
     Handles conversation queries. 
     Preserves the original query parameters and output format.
+    (product_id is accepted but ignored.)
     """
-    await ensure_context(product_id)
-    context = global_context if product_id is None else product_context[product_id]
-
     client = create_client()
 
     try:
-        # Use session and assistant from context if not explicitly provided
-        session_id = session or context.get("session_id")
-        assistant_id = assistant or context.get("assistant_id")
+        # If no assistant or session provided, create them (same fallback approach)
+        if not assistant:
+            assistant_obj = client.beta.assistants.create(
+                name="conversation_assistant",
+                model="gpt-4o-mini",
+                instructions="You are a conversation assistant."
+            )
+            assistant = assistant_obj.id
 
-        if not session_id or not assistant_id:
-            raise HTTPException(status_code=400, detail="Session or assistant not initialized.")
+        if not session:
+            thread = client.beta.threads.create()
+            session = thread.id
 
         # Add message if prompt given
         if prompt:
             client.beta.threads.messages.create(
-                thread_id=session_id,
+                thread_id=session,
                 role="user",
                 content=prompt
             )
@@ -387,10 +356,10 @@ async def conversation(
         def stream_response():
             buffer = []
             try:
-                with client.beta.threads.runs.stream(thread_id=session_id, assistant_id=assistant_id) as stream:
+                with client.beta.threads.runs.stream(thread_id=session, assistant_id=assistant) as stream:
                     for text in stream.text_deltas:
                         buffer.append(text)
-                        if len(buffer) >= 10:  # Adjust chunk size as needed
+                        if len(buffer) >= 10:
                             yield ''.join(buffer)
                             buffer = []
                 if buffer:
@@ -399,65 +368,65 @@ async def conversation(
                 logging.error(f"Streaming error: {e}")
                 yield "[ERROR] The response was interrupted. Please try again."
 
-
         return StreamingResponse(stream_response(), media_type="text/event-stream")
 
     except Exception as e:
         logging.error(f"Error in conversation: {e}")
         raise HTTPException(status_code=500, detail="Failed to process conversation")
 
+
 @app.get("/chat")
 async def chat(
     session: Optional[str] = None,
     prompt: Optional[str] = None,
     assistant: Optional[str] = None,
-    product_id: Optional[str] = None,
+    product_id: Optional[str] = None,  # Ignored
 ):
     """
-    Handles conversation queries. 
+    Handles conversation queries.
     Preserves the original query parameters and output format.
+    (product_id is accepted but ignored.)
     """
-    await ensure_context(product_id)
-    context = global_context if product_id is None else product_context[product_id]
-
     client = create_client()
 
     try:
-        # Use session and assistant from context if not explicitly provided
-        session_id = session or context.get("session_id")
-        assistant_id = assistant or context.get("assistant_id")
+        # If no assistant or session provided, create them
+        if not assistant:
+            assistant_obj = client.beta.assistants.create(
+                name="chat_assistant",
+                model="gpt-4o-mini",
+                instructions="You are a conversation assistant."
+            )
+            assistant = assistant_obj.id
 
-        if not session_id or not assistant_id:
-            raise HTTPException(status_code=400, detail="Session or assistant not initialized.")
+        if not session:
+            thread = client.beta.threads.create()
+            session = thread.id
 
         # Add message if prompt given
         if prompt:
             client.beta.threads.messages.create(
-                thread_id=session_id,
+                thread_id=session,
                 role="user",
                 content=prompt
             )
 
         response_text = []
-
         try:
-            # Use the stream to collect all text deltas
-            with client.beta.threads.runs.stream(thread_id=session_id, assistant_id=assistant_id) as stream:
+            with client.beta.threads.runs.stream(thread_id=session, assistant_id=assistant) as stream:
                 for text in stream.text_deltas:
                     response_text.append(text)
         except Exception as e:
             logging.error(f"Streaming error: {e}")
             raise HTTPException(status_code=500, detail="The response was interrupted. Please try again.")
 
-        # Join all collected text into a single string
         full_response = ''.join(response_text)
-
-        # Return the full response as JSON
         return JSONResponse(content={"response": full_response})
 
     except Exception as e:
         logging.error(f"Error in conversation: {e}")
         raise HTTPException(status_code=500, detail="Failed to process conversation")
+
 
 if __name__ == "__main__":
     import uvicorn
