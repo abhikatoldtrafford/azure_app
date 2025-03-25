@@ -85,17 +85,28 @@ async def process_tabular_data(file_path, filename, max_rows=1000):
         logging.error(f"Error processing tabular file: {e}")
         return {"error": f"Error processing {filename}: {str(e)}"}
 
-async def image_analysis(client, image_data: bytes, filename: str, prompt: Optional[str] = None) -> dict:
-    """
-    Analyzes an image using Azure OpenAI vision capabilities and returns both visual analysis and OCR text.
-    Returns a dictionary with both 'analysis' and 'ocr_text' fields.
-    """
+# Accept and ignore additional parameters
+async def ignore_additional_params(request: Request):
+    form_data = await request.form()
+    return {k: v for k, v in form_data.items()}
+
+async def image_analysis(client, image_data: bytes, filename: str, prompt: Optional[str] = None) -> str:
+    """Analyzes an image using Azure OpenAI vision capabilities and returns the analysis text."""
     try:
         ext = os.path.splitext(filename)[1].lower()
         b64_img = base64.b64encode(image_data).decode("utf-8")
         # Default to jpeg if extension can't be determined
         mime = f"image/{ext[1:]}" if ext and ext[1:] in ['jpg', 'jpeg', 'png', 'gif', 'webp'] else "image/jpeg"
         data_url = f"data:{mime};base64,{b64_img}"
+        
+        # Modify prompt to include OCR request explicitly
+        default_prompt = (
+            "Analyze this image in detail and provide a thorough summary including all elements. "
+            "If there's any text visible, perform OCR and extract ALL the text content exactly as it appears. "
+            "For invoices or documents, extract all fields, values, dates, amounts, and line items. "
+            "Format your response so it's easy to reference specific parts of the content. Describe:"
+        )
+        combined_prompt = f"{default_prompt} {prompt}" if prompt else default_prompt
         
         # Create a client for vision API
         vision_client = AzureOpenAI(
@@ -104,21 +115,7 @@ async def image_analysis(client, image_data: bytes, filename: str, prompt: Optio
             api_version=AZURE_API_VERSION,
         )
         
-        # 1. General image analysis prompt
-        default_prompt = (
-            "Analyze this image and provide a thorough summary including all elements. "
-            "If there's any text visible, mention that there is text but don't try to read it in detail. Describe:"
-        )
-        combined_prompt = f"{default_prompt} {prompt}" if prompt else default_prompt
-        
-        # 2. OCR-specific prompt to extract text
-        ocr_prompt = (
-            "This image may contain text. Please extract and transcribe ALL text visible in the image, "
-            "preserving the format and layout as much as possible. If this is a document, invoice, receipt, "
-            "or any form with text, please transcribe all written content exactly as shown."
-        )
-        
-        # Run general analysis
+        # Use the chat completions API to analyze the image
         response = vision_client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{
@@ -128,35 +125,15 @@ async def image_analysis(client, image_data: bytes, filename: str, prompt: Optio
                     {"type": "image_url", "image_url": {"url": data_url, "detail": "high"}}
                 ]
             }],
-            max_tokens=500
+            max_tokens=1000  # Increased token limit for more comprehensive analysis
         )
+        
         analysis_text = response.choices[0].message.content
-        
-        # Run OCR analysis
-        ocr_response = vision_client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{
-                "role": "user", 
-                "content": [
-                    {"type": "text", "text": ocr_prompt},
-                    {"type": "image_url", "image_url": {"url": data_url, "detail": "high"}}
-                ]
-            }],
-            max_tokens=1000
-        )
-        ocr_text = ocr_response.choices[0].message.content
-        
-        return {
-            "analysis": analysis_text,
-            "ocr_text": ocr_text
-        }
+        return analysis_text
         
     except Exception as e:
         logging.error(f"Image analysis error: {e}")
-        return {
-            "analysis": f"Error analyzing image: {str(e)}",
-            "ocr_text": "Failed to extract text from the image."
-        }
+        return f"Error analyzing image: {str(e)}"
         
 # Helper function to update user persona context
 async def update_context(client, thread_id, context):
@@ -201,59 +178,28 @@ async def update_context(client, thread_id, context):
         logging.error(f"Error updating context: {e}")
         # Continue the flow even if context update fails
 
-async def get_file_summary(file_path, filename):
-    """
-    Generate a summary of the file contents based on file type.
-    """
+# Helper function to add file reference to thread
+async def add_file_reference(client, thread_id, file_info):
+    """Adds a reference to an uploaded file in the thread."""
     try:
-        file_ext = os.path.splitext(filename.lower())[1]
+        if not thread_id:
+            return
+            
+        message = f"FILE REFERENCE: I've processed the file '{file_info['filename']}'. Type: {file_info['type']}. You now have access to this file."
         
-        # CSV file summary
-        if file_ext == '.csv':
-            df = pd.read_csv(file_path)
-            row_count = len(df)
-            col_count = len(df.columns)
-            columns = ", ".join(df.columns[:10]) + ("..." if len(df.columns) > 10 else "")
-            sample = df.head(3).to_string()
+        if file_info.get('metadata'):
+            message += f"\nAdditional info: {file_info['metadata']}"
             
-            return (
-                f"CSV file with {row_count} rows and {col_count} columns.\n"
-                f"Columns: {columns}\n"
-                f"Sample data:\n{sample}"
-            )
-            
-        # Excel file summary
-        elif file_ext in ['.xlsx', '.xls']:
-            xls = pd.ExcelFile(file_path)
-            sheet_names = xls.sheet_names
-            sheets_info = []
-            
-            for sheet in sheet_names:
-                df = pd.read_excel(file_path, sheet_name=sheet)
-                sheets_info.append(f"Sheet '{sheet}': {len(df)} rows, {len(df.columns)} columns")
-            
-            return (
-                f"Excel file with {len(sheet_names)} sheets: {', '.join(sheet_names)}.\n"
-                f"Details:\n" + "\n".join(sheets_info)
-            )
-            
-        # Text-based files
-        elif file_ext in ['.txt', '.md', '.csv', '.json']:
-            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                content = f.read(1000)  # Read first 1000 chars for preview
-            return f"Text file. Preview:\n{content}{'...' if len(content) >= 1000 else ''}"
-            
-        # PDF files would need a PDF parser
-        elif file_ext in ['.pdf']:
-            return "PDF document (content not previewed)"
-            
-        # Default for other files
-        else:
-            return f"File with extension {file_ext}"
-            
+        client.beta.threads.messages.create(
+            thread_id=thread_id,
+            role="user",
+            content=message,
+            metadata={"type": "file_reference", "filename": file_info['filename']}
+        )
+        
+        logging.info(f"Added file reference to thread {thread_id} for file {file_info['filename']}")
     except Exception as e:
-        logging.error(f"Error generating file summary: {e}")
-        return f"Unable to summarize file: {str(e)}"
+        logging.error(f"Error adding file reference: {e}")
 
 @app.post("/initiate-chat")
 async def initiate_chat(request: Request):
@@ -314,26 +260,23 @@ async def initiate_chat(request: Request):
             - Maintain a balance between technical detail and accessibility, ensuring responses are understandable yet informative.
 
         3. **Data Analysis with Code Interpreter:**
-        - When prompted with "dataframe to be processed by code interpreter: df", use the code_interpreter tool to analyze the provided data.
-        - When a user uploads CSV or Excel files, they are automatically made available to you through the code interpreter.
-        - For CSV files, you can directly read and analyze them using pandas.
-        - For Excel files with multiple sheets, you can access each sheet individually.
-        - Perform appropriate data analysis, including statistical summaries, visualizations, and relevant insights.
-        - Present your analysis results in a clear, organized manner.
+        - When referring to CSV or Excel files, always use code interpreter to analyze the data.
+        - For any file mentioned with .csv, .xlsx or .xls extension, you should automatically load and analyze it.
+        - When a user asks about a specific file by name, use code interpreter to access and analyze its contents.
+        - Present your analysis results in a clear, organized manner with visualizations when helpful.
 
         4. **Image Analysis:**
-        - When a user uploads an image, you'll receive the description and any text content from the image.
-        - Reference the image naturally in your responses as if you can see it directly.
-        - If the image contains text (OCR content), you can refer to specific text elements from the image.
-        - Be confident and direct when discussing the content of images.
+        - When a user mentions an image file by name or asks about image content, reference your analysis of the image.
+        - For images, especially documents or invoices, refer to the OCR text you've extracted.
+        - When a user asks what's in an image, describe the content based on your previous analysis.
 
         ### **Behavioral Guidelines:**
 
         - **File Awareness:**
-        - Always maintain awareness of all files that have been uploaded by the user.
-        - Reference uploaded files by name when responding to related queries.
-        - For images, refer to their visual content and text content naturally.
-        - For data files, refer to their structure and content with confidence.
+        - Always maintain awareness of what files have been uploaded and their types.
+        - When a user mentions a file by name, acknowledge that you have access to it and provide relevant information.
+        - For CSV or Excel files, offer to analyze them using code interpreter.
+        - For images, reference your analysis and extracted text.
 
         - **Contextual Awareness:**
         - Always consider the context provided by the uploaded files and previous interactions.
@@ -348,7 +291,7 @@ async def initiate_chat(request: Request):
         - Ensure all interactions are respectful, objective, and goal-oriented.
 
         - **Seamless Mode Switching:**
-        - Efficiently transition between PRD generation, data analysis, and generic question answering based on user prompts.
+        - Efficiently transition between PRD generation and generic question answering based on user prompts.
         - Recognize when a query is outside the scope of the uploaded files and adjust your response accordingly without prompting the user.
 
         - **Continuous Improvement:**
@@ -357,12 +300,10 @@ async def initiate_chat(request: Request):
 
         ### **Important Notes:**
 
-        - **File Handling:**
-        - When asked about files, respond as if you have direct access to them.
-        - For images, refer to both visual elements and text from the OCR analysis.
-        - For data files, refer to their structure and content confidently.
-        - If a user asks about a specific file, check if you have information about it before responding.
-
+        - **Tool Utilization:**
+        - Always evaluate whether the file_search tool can enhance the quality of your response before using it.
+        - Use the code_interpreter tool for any data analysis tasks.
+        
         - **Data Privacy:**
         - Handle all uploaded files and user data with the utmost confidentiality and in compliance with relevant data protection standards.
 
@@ -419,10 +360,6 @@ async def initiate_chat(request: Request):
         if is_tabular_file(filename):
             # Process the file with the code interpreter directly
             try:
-                # Get file summary for the message
-                tabular_data = await process_tabular_data(file_path, filename)
-                file_summary = await get_file_summary(file_path, filename)
-                
                 # Upload file for code interpreter
                 with open(file_path, "rb") as file_stream:
                     file_obj = client.files.create(
@@ -436,27 +373,34 @@ async def initiate_chat(request: Request):
                     file_id=file_obj.id
                 )
                 
-                # Create detailed message for the assistant
-                file_type = "CSV" if tabular_data["type"] == "csv" else "Excel"
+                # Get file metadata for better message context
+                file_info = await process_tabular_data(file_path, filename)
+                file_type = "CSV" if file_info["type"] == "csv" else "Excel"
                 
-                if file_type == "CSV":
-                    shape = tabular_data["shape"]
-                    columns = tabular_data["columns"]
-                    message = (
-                        f"I've uploaded a {file_type} file named '{filename}' with {shape[0]} rows and {shape[1]} columns.\n\n"
-                        f"Columns: {', '.join(columns)}\n\n"
-                        f"This data file has been loaded and is available for analysis. You can reference it by name: '{filename}'.\n\n"
-                        f"dataframe to be processed by code interpreter: df"
-                    )
-                else:
-                    sheets = tabular_data["sheets"]
-                    message = (
-                        f"I've uploaded an {file_type} file named '{filename}' with {len(sheets)} sheets: {', '.join(sheets)}.\n\n"
-                        f"This data file has been loaded and is available for analysis. You can reference it by name: '{filename}'.\n\n"
-                        f"dataframe to be processed by code interpreter: df"
-                    )
+                # Create explicit file reference
+                await add_file_reference(client, thread.id, {
+                    "filename": filename,
+                    "type": file_type,
+                    "metadata": f"File ID: {file_obj.id}"
+                })
                 
                 # Create message to instruct code interpreter to process the file
+                if file_type == "CSV":
+                    shape = file_info["shape"]
+                    columns = file_info["columns"]
+                    message = (
+                        f"I've uploaded a {file_type} file named '{filename}' with shape {shape} and columns {columns}. "
+                        f"This file is now available to you via the code interpreter. "
+                        f"When I ask about {filename}, please analyze its contents."
+                    )
+                else:
+                    sheets = file_info["sheets"]
+                    message = (
+                        f"I've uploaded an {file_type} file named '{filename}' with sheets {sheets}. "
+                        f"This file is now available to you via the code interpreter. "
+                        f"When I ask about {filename}, please analyze its contents including all sheets."
+                    )
+                
                 client.beta.threads.messages.create(
                     thread_id=thread.id,
                     role="user",
@@ -467,42 +411,43 @@ async def initiate_chat(request: Request):
             except Exception as e:
                 logging.error(f"Error processing tabular file: {e}")
         
-        # Check if it's an image
-        elif is_image_file(filename):
+        # Check if it's an image file
+        elif is_image_file(filename, file.content_type):
             try:
-                # Analyze the image
-                with open(file_path, "rb") as file_stream:
-                    file_content = file_stream.read()
+                # Analyze image content
+                image_content = await file.read()
+                analysis_text = await image_analysis(client, image_content, filename)
                 
-                # Run image analysis to get both visual description and OCR
-                analysis_result = await image_analysis(client, file_content, filename)
-                analysis_text = analysis_result["analysis"]
-                ocr_text = analysis_result["ocr_text"]
+                # Create explicit file reference
+                await add_file_reference(client, thread.id, {
+                    "filename": filename,
+                    "type": "Image",
+                    "metadata": None
+                })
                 
-                # Prepare a comprehensive message
-                image_message = (
-                    f"I've uploaded an image named '{filename}'.\n\n"
-                    f"Description: {analysis_text}\n\n"
-                )
-                
-                # If there's OCR text, add it
-                if ocr_text and ocr_text.strip() and "no text" not in ocr_text.lower():
-                    image_message += f"The image contains the following text:\n\n{ocr_text}\n\n"
-                else:
-                    image_message += "The image doesn't contain any significant text.\n\n"
-                
-                image_message += "You can reference this image by name in our conversation."
-                
-                # Add the comprehensive message to the thread
+                # Add the analysis to the thread with clear file reference
                 client.beta.threads.messages.create(
                     thread_id=thread.id,
                     role="user",
-                    content=image_message
+                    content=(
+                        f"I've uploaded an image file named '{filename}'. "
+                        f"Here is the analysis of the image content:\n\n"
+                        f"ANALYSIS OF {filename}:\n{analysis_text}\n\n"
+                        f"When I ask about {filename} in the future, please refer to this analysis."
+                    )
                 )
                 
-                logging.info(f"Image {filename} analyzed and added to thread")
+                # Store the OCR/analysis result in a separate message with metadata
+                client.beta.threads.messages.create(
+                    thread_id=thread.id,
+                    role="user",
+                    content=f"FILE CONTENT FOR {filename}:\n\n{analysis_text}",
+                    metadata={"type": "file_content", "filename": filename, "content_type": "image"}
+                )
+                
+                logging.info(f"Image file {filename} analyzed and added to thread")
             except Exception as e:
-                logging.error(f"Error processing image: {e}")
+                logging.error(f"Error processing image file: {e}")
         else:
             # Normal file upload to vector store for file_search
             with open(file_path, "rb") as file_stream:
@@ -511,14 +456,17 @@ async def initiate_chat(request: Request):
                     files=[file_stream]
                 )
                 
-            # Get a summary of the file for the message
-            file_summary = await get_file_summary(file_path, filename)
-            
-            # Add message about the uploaded document
+            # Create explicit file reference
+            await add_file_reference(client, thread.id, {
+                "filename": filename,
+                "type": "Document",
+                "metadata": f"Added to vector store: {vector_store.id}"
+            })
+                
             client.beta.threads.messages.create(
                 thread_id=thread.id,
                 role="user",
-                content=f"I've uploaded a document named '{filename}'.\n\n{file_summary}\n\nYou can reference this document by name in our conversation."
+                content=f"I've uploaded a document file named '{filename}'. The file is available for search via the file_search tool."
             )
                 
             logging.info(f"File uploaded to vector store: status={file_batch.status}, count={file_batch.file_counts}")
@@ -558,6 +506,18 @@ async def co_pilot(request: Request):
         base_prompt = "You are a product management AI assistant, a product co-pilot."
         instructions = base_prompt if not system_prompt else f"{base_prompt} {system_prompt}"
         
+        # Additional instructions for file awareness
+        file_awareness_instructions = """
+        Important:
+        - Always maintain awareness of what files have been uploaded and their types.
+        - When a user mentions a file by name, acknowledge that you have access to it and provide relevant information.
+        - For CSV or Excel files, automatically use code interpreter to analyze them.
+        - For images, reference your previous analysis and extracted text.
+        - Never claim you can't access a file that has been uploaded and analyzed.
+        """
+        
+        instructions = f"{instructions}\n\n{file_awareness_instructions}"
+        
         # Update to include code interpreter capability
         assistant = client.beta.assistants.create(
             name="demo_co_pilot",
@@ -570,13 +530,25 @@ async def co_pilot(request: Request):
     else:
         # If user gave an assistant, update instructions if needed
         if system_prompt:
+            # Additional instructions for file awareness
+            file_awareness_instructions = """
+            Important:
+            - Always maintain awareness of what files have been uploaded and their types.
+            - When a user mentions a file by name, acknowledge that you have access to it and provide relevant information.
+            - For CSV or Excel files, automatically use code interpreter to analyze them.
+            - For images, reference your previous analysis and extracted text.
+            - Never claim you can't access a file that has been uploaded and analyzed.
+            """
+            
+            updated_instructions = (
+                f"You are a product management AI assistant, a product co-pilot. {system_prompt}\n\n{file_awareness_instructions}"
+                if system_prompt
+                else f"You are a product management AI assistant, a product co-pilot.\n\n{file_awareness_instructions}"
+            )
+            
             client.beta.assistants.update(
                 assistant_id=assistant_id,
-                instructions=(
-                    f"You are a product management AI assistant, a product co-pilot. {system_prompt}"
-                    if system_prompt
-                    else "You are a product management AI assistant, a product co-pilot."
-                ),
+                instructions=updated_instructions
             )
         # If no vector_store, check existing or create new
         if not vector_store_id:
@@ -608,19 +580,20 @@ async def co_pilot(request: Request):
 
     # Handle file upload if present
     if file:
-        file_path = f"/tmp/{file.filename}"
+        filename = file.filename
+        file_path = f"/tmp/{filename}"
         with open(file_path, "wb") as ftemp:
             file_content = await file.read()
             ftemp.write(file_content)
             
         # Check if it's a tabular file (CSV/Excel)
-        if is_tabular_file(file.filename):
+        if is_tabular_file(filename):
             try:
-                # Get file summary for the message
-                tabular_data = await process_tabular_data(file_path, file.filename)
-                file_summary = await get_file_summary(file_path, file.filename)
+                # Get file metadata for better message context
+                file_info = await process_tabular_data(file_path, filename)
+                file_type = "CSV" if file_info["type"] == "csv" else "Excel"
                 
-                # Upload file to OpenAI for code interpreter
+                # Upload file for code interpreter
                 with open(file_path, "rb") as file_stream:
                     file_obj = client.files.create(
                         file=file_stream,
@@ -633,72 +606,79 @@ async def co_pilot(request: Request):
                     file_id=file_obj.id
                 )
                 
-                # If thread exists, create detailed message for the assistant
+                # Create explicit file reference
                 if thread_id:
-                    file_type = "CSV" if tabular_data["type"] == "csv" else "Excel"
-                    
+                    await add_file_reference(client, thread_id, {
+                        "filename": filename,
+                        "type": file_type,
+                        "metadata": f"File ID: {file_obj.id}"
+                    })
+                
+                # If thread exists, create message to process the file
+                if thread_id:
                     if file_type == "CSV":
-                        shape = tabular_data.get("shape", (0, 0))
-                        columns = tabular_data.get("columns", [])
+                        shape = file_info["shape"]
+                        columns = file_info["columns"]
                         message = (
-                            f"I've uploaded a {file_type} file named '{file.filename}' with {shape[0]} rows and {shape[1]} columns.\n\n"
-                            f"Columns: {', '.join(columns)}\n\n"
-                            f"This data file has been loaded and is available for analysis. You can reference it by name: '{file.filename}'.\n\n"
-                            f"dataframe to be processed by code interpreter: df"
+                            f"I've uploaded a {file_type} file named '{filename}' with shape {shape} and columns {columns}. "
+                            f"This file is now available to you via the code interpreter. "
+                            f"When I ask about {filename}, please analyze its contents."
                         )
                     else:
-                        sheets = tabular_data.get("sheets", [])
+                        sheets = file_info["sheets"]
                         message = (
-                            f"I've uploaded an {file_type} file named '{file.filename}' with {len(sheets)} sheets: {', '.join(sheets)}.\n\n"
-                            f"This data file has been loaded and is available for analysis. You can reference it by name: '{file.filename}'.\n\n"
-                            f"dataframe to be processed by code interpreter: df"
+                            f"I've uploaded an {file_type} file named '{filename}' with sheets {sheets}. "
+                            f"This file is now available to you via the code interpreter. "
+                            f"When I ask about {filename}, please analyze its contents including all sheets."
                         )
                     
-                    # Create message to instruct code interpreter to process the file
                     client.beta.threads.messages.create(
                         thread_id=thread_id,
                         role="user",
                         content=message
                     )
                 
-                logging.info(f"Tabular file {file.filename} associated with code interpreter")
+                logging.info(f"Tabular file {filename} associated with code interpreter")
             except Exception as e:
                 logging.error(f"Error processing tabular file: {e}")
-        
-        # Check if it's an image
-        elif is_image_file(file.filename):
-            try:
-                # Run image analysis to get both visual description and OCR
-                analysis_result = await image_analysis(client, file_content, file.filename)
-                analysis_text = analysis_result["analysis"]
-                ocr_text = analysis_result["ocr_text"]
                 
-                # If thread exists, add comprehensive message
+        # Check if it's an image file
+        elif is_image_file(filename, file.content_type):
+            try:
+                # Analyze image content
+                analysis_text = await image_analysis(client, file_content, filename)
+                
+                # Create explicit file reference if thread exists
                 if thread_id:
-                    # Prepare a comprehensive message
-                    image_message = (
-                        f"I've uploaded an image named '{file.filename}'.\n\n"
-                        f"Description: {analysis_text}\n\n"
-                    )
+                    await add_file_reference(client, thread_id, {
+                        "filename": filename,
+                        "type": "Image",
+                        "metadata": None
+                    })
                     
-                    # If there's OCR text, add it
-                    if ocr_text and ocr_text.strip() and "no text" not in ocr_text.lower():
-                        image_message += f"The image contains the following text:\n\n{ocr_text}\n\n"
-                    else:
-                        image_message += "The image doesn't contain any significant text.\n\n"
-                    
-                    image_message += "You can reference this image by name in our conversation."
-                    
-                    # Add the comprehensive message to the thread
+                    # Add the analysis to the thread with clear file reference
                     client.beta.threads.messages.create(
                         thread_id=thread_id,
                         role="user",
-                        content=image_message
+                        content=(
+                            f"I've uploaded an image file named '{filename}'. "
+                            f"Here is the analysis of the image content:\n\n"
+                            f"ANALYSIS OF {filename}:\n{analysis_text}\n\n"
+                            f"When I ask about {filename} in the future, please refer to this analysis."
+                        )
+                    )
+                    
+                    # Store the OCR/analysis result in a separate message with metadata
+                    client.beta.threads.messages.create(
+                        thread_id=thread_id,
+                        role="user",
+                        content=f"FILE CONTENT FOR {filename}:\n\n{analysis_text}",
+                        metadata={"type": "file_content", "filename": filename, "content_type": "image"}
                     )
                 
-                logging.info(f"Image {file.filename} analyzed and added to thread")
+                logging.info(f"Image file {filename} analyzed and added to thread")
             except Exception as e:
-                logging.error(f"Error processing image: {e}")
+                logging.error(f"Error processing image file: {e}")
         else:
             # Normal file upload to vector store for file_search
             with open(file_path, "rb") as file_stream:
@@ -706,19 +686,20 @@ async def co_pilot(request: Request):
                     vector_store_id=vector_store_id,
                     files=[file_stream]
                 )
-            
-            # If thread exists, add message about the uploaded document
-            if thread_id:
-                # Get a summary of the file for the message
-                file_summary = await get_file_summary(file_path, file.filename)
                 
+            if thread_id:
+                # Create explicit file reference
+                await add_file_reference(client, thread_id, {
+                    "filename": filename,
+                    "type": "Document",
+                    "metadata": f"Added to vector store: {vector_store_id}"
+                })
+                    
                 client.beta.threads.messages.create(
                     thread_id=thread_id,
                     role="user",
-                    content=f"I've uploaded a document named '{file.filename}'.\n\n{file_summary}\n\nYou can reference this document by name in our conversation."
+                    content=f"I've uploaded a document file named '{filename}'. The file is available for search via the file_search tool."
                 )
-            
-            logging.info(f"File uploaded to vector store: {file.filename}")
 
     # If context provided and thread exists, update context
     if context and thread_id:
@@ -747,7 +728,7 @@ async def upload_file(
 ):
     """
     Uploads a file and associates it with the given assistant.
-    Handles different file types appropriately and makes the assistant aware of the file.
+    Handles different file types appropriately (tabular files use code_interpreter, others use vector_store).
     """
     client = create_client()
     thread_id = session  # Rename for clarity
@@ -755,13 +736,14 @@ async def upload_file(
     try:
         # Save the uploaded file locally and get the data
         file_content = await file.read()
-        file_path = f"/tmp/{file.filename}"
+        filename = file.filename
+        file_path = f"/tmp/{filename}"
         with open(file_path, "wb") as temp_file:
             temp_file.write(file_content)
             
         # Determine file type
-        is_image = is_image_file(file.filename, file.content_type)
-        is_tabular = is_tabular_file(file.filename)
+        is_image = is_image_file(filename, file.content_type)
+        is_tabular = is_tabular_file(filename)
         
         # Retrieve the assistant
         assistant_obj = client.beta.assistants.retrieve(assistant_id=assistant)
@@ -770,9 +752,9 @@ async def upload_file(
         if is_tabular:
             # This is a CSV or Excel file - use code interpreter
             try:
-                # Get file summary for the message
-                tabular_data = await process_tabular_data(file_path, file.filename)
-                file_summary = await get_file_summary(file_path, file.filename)
+                # Process file data
+                file_info = await process_tabular_data(file_path, filename)
+                file_type = "CSV" if file_info["type"] == "csv" else "Excel"
                 
                 # Upload file to OpenAI for code interpreter
                 with open(file_path, "rb") as file_stream:
@@ -787,36 +769,40 @@ async def upload_file(
                     file_id=file_obj.id
                 )
                 
+                # Create explicit file reference if thread exists
+                if thread_id:
+                    await add_file_reference(client, thread_id, {
+                        "filename": filename,
+                        "type": file_type,
+                        "metadata": f"File ID: {file_obj.id}"
+                    })
+                
                 # If we have a thread, add a message to process the file
                 if thread_id:
                     # Create a message with instructions to process the dataframe
-                    file_type = "CSV" if tabular_data["type"] == "csv" else "Excel"
-                    
                     if file_type == "CSV":
-                        shape = tabular_data["shape"]
-                        columns = tabular_data["columns"]
+                        shape = file_info["shape"]
+                        columns = file_info["columns"]
                         message = (
-                            f"I've uploaded a {file_type} file named '{file.filename}' with {shape[0]} rows and {shape[1]} columns.\n\n"
-                            f"Columns: {', '.join(columns)}\n\n"
-                            f"This data file has been loaded and is available for analysis. You can reference it by name: '{file.filename}'.\n\n"
-                            f"dataframe to be processed by code interpreter: df"
+                            f"I've uploaded a {file_type} file named '{filename}' with shape {shape} and columns {columns}. "
+                            f"This file is now available to you via the code interpreter. "
+                            f"When I ask about {filename}, please analyze its contents."
                         )
                     else:
-                        sheets = tabular_data["sheets"]
+                        sheets = file_info["sheets"]
                         message = (
-                            f"I've uploaded an {file_type} file named '{file.filename}' with {len(sheets)} sheets: {', '.join(sheets)}.\n\n"
-                            f"This data file has been loaded and is available for analysis. You can reference it by name: '{file.filename}'.\n\n"
-                            f"dataframe to be processed by code interpreter: df"
+                            f"I've uploaded an {file_type} file named '{filename}' with sheets {sheets}. "
+                            f"This file is now available to you via the code interpreter. "
+                            f"When I ask about {filename}, please analyze its contents including all sheets."
                         )
                     
-                    # Add message to thread for immediate awareness
                     client.beta.threads.messages.create(
                         thread_id=thread_id,
                         role="user",
                         content=message
                     )
                 
-                logging.info(f"Tabular file {file.filename} processed with code interpreter")
+                logging.info(f"Tabular file {filename} processed with code interpreter")
                 
                 return JSONResponse(
                     {
@@ -833,45 +819,48 @@ async def upload_file(
                 
         # For images with thread_id, analyze and add to thread
         if is_image and thread_id:
-            logging.info(f"Analyzing image file: {file.filename}")
-            analysis_result = await image_analysis(client, file_content, file.filename, prompt)
+            logging.info(f"Analyzing image file: {filename}")
+            analysis_text = await image_analysis(client, file_content, filename, prompt)
             
-            # Extract analysis and OCR text
-            analysis_text = analysis_result["analysis"]
-            ocr_text = analysis_result["ocr_text"]
+            # Create explicit file reference
+            await add_file_reference(client, thread_id, {
+                "filename": filename,
+                "type": "Image",
+                "metadata": None
+            })
             
-            # Prepare a comprehensive message
-            image_message = (
-                f"I've uploaded an image named '{file.filename}'.\n\n"
-                f"Description: {analysis_text}\n\n"
-            )
-            
-            # If there's OCR text, add it
-            if ocr_text and ocr_text.strip() and "no text" not in ocr_text.lower():
-                image_message += f"The image contains the following text:\n\n{ocr_text}\n\n"
-            else:
-                image_message += "The image doesn't contain any significant text.\n\n"
-            
-            image_message += "You can reference this image by name in our conversation."
-            
-            # Add the comprehensive message to the thread
+            # Add the analysis to the thread with clear file reference
             client.beta.threads.messages.create(
                 thread_id=thread_id,
                 role="user",
-                content=image_message
+                content=(
+                    f"I've uploaded an image file named '{filename}'. "
+                    f"Here is the analysis of the image content:\n\n"
+                    f"ANALYSIS OF {filename}:\n{analysis_text}\n\n"
+                    f"When I ask about {filename} in the future, please refer to this analysis."
+                )
+            )
+            
+            # Store the OCR/analysis result in a separate message with metadata
+            client.beta.threads.messages.create(
+                thread_id=thread_id,
+                role="user",
+                content=f"FILE CONTENT FOR {filename}:\n\n{analysis_text}",
+                metadata={"type": "file_content", "filename": filename, "content_type": "image"}
             )
             
             logging.info(f"Added image analysis to thread {thread_id}")
             
             return JSONResponse(
                 {
-                    "message": "Image successfully processed and analyzed.",
+                    "message": "Image successfully analyzed and processed.",
                     "image_analyzed": True,
                     "file_type": "image"
                 },
                 status_code=200
             )
         
+        # For non-tabular and non-image files, process for vector store
         # Check if there's a file_search resource for non-tabular files
         file_search_resource = getattr(assistant_obj.tool_resources, "file_search", None)
         vector_store_ids = (
@@ -906,24 +895,27 @@ async def upload_file(
             )
 
         # For non-tabular and non-image files, upload to vector store
-        with open(file_path, "rb") as file_stream:
-            file_batch = client.beta.vector_stores.file_batches.upload_and_poll(
-                vector_store_id=vector_store_id,
-                files=[file_stream]
-            )
+        if not is_tabular and not is_image:
+            with open(file_path, "rb") as file_stream:
+                file_batch = client.beta.vector_stores.file_batches.upload_and_poll(
+                    vector_store_id=vector_store_id,
+                    files=[file_stream]
+                )
+            logging.info(f"File uploaded to vector store: {filename}")
             
-        # If thread exists, add message about the uploaded document
-        if thread_id:
-            # Get a summary of the file for the message
-            file_summary = await get_file_summary(file_path, file.filename)
-            
-            client.beta.threads.messages.create(
-                thread_id=thread_id,
-                role="user",
-                content=f"I've uploaded a document named '{file.filename}'.\n\n{file_summary}\n\nYou can reference this document by name in our conversation."
-            )
-            
-        logging.info(f"File uploaded to vector store: {file.filename}")
+            if thread_id:
+                # Create explicit file reference
+                await add_file_reference(client, thread_id, {
+                    "filename": filename,
+                    "type": "Document",
+                    "metadata": f"Added to vector store: {vector_store_id}"
+                })
+                    
+                client.beta.threads.messages.create(
+                    thread_id=thread_id,
+                    role="user",
+                    content=f"I've uploaded a document file named '{filename}'. The file is available for search via the file_search tool."
+                )
             
         # If context provided and thread exists, update context
         if context and thread_id:
@@ -936,8 +928,8 @@ async def upload_file(
         return JSONResponse(
             {
                 "message": "File successfully processed.",
-                "image_analyzed": is_image,
-                "file_type": "document"
+                "image_analyzed": is_image and thread_id is not None,
+                "file_type": "image" if is_image else "document"
             },
             status_code=200
         )
