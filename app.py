@@ -318,7 +318,7 @@ async def upload_file(file: UploadFile = Form(...), assistant: str = Form(...), 
 
         # Upload the file to the existing vector store
         with open(file_path, "rb") as file_stream:
-            client.beta.vector_stores.file_batches.upload_and_poll(
+            file_batch = client.beta.vector_stores.file_batches.upload_and_poll(
                 vector_store_id=vector_store_id,
                 files=[file_stream]
             )
@@ -447,152 +447,129 @@ async def chat(
 
 
 @app.post("/trim-thread")
-async def trim_thread(assistant_id: str, max_age_days: int = 30, **kwargs):
+async def trim_thread(request: Request, assistant_id: str = None, max_age_hours: int = None, **kwargs):
     """
     Gets all threads for a given assistant, summarizes them, and removes old threads.
-    Summaries > 30 days old will be deleted as well.
+    Default time limit is 48 hours.
     """
+    # Get parameters from form data if not provided in query
+    if not assistant_id:
+        form_data = await request.form()
+        assistant_id = form_data.get("assistant_id")
+        max_age_hours_str = form_data.get("max_age_hours")
+        if max_age_hours_str:
+            try:
+                max_age_hours = int(max_age_hours_str)
+            except ValueError:
+                pass
+                
+    # Default to 48 hours if not specified
+    if not max_age_hours:
+        max_age_hours = 48
+        
+    if not assistant_id:
+        raise HTTPException(status_code=400, detail="assistant_id is required")
+    
     client = create_client()
-    summary_store = {}
     deleted_count = 0
     summarized_count = 0
     
     try:
-        # Step 1: Get all runs to identify threads used with this assistant
-        # Note: OpenAI API doesn't directly support filtering threads by assistant_id
-        # This is a workaround to find all threads associated with this assistant
+        # Get all threads - first we need to find runs associated with the assistant
         all_threads = {}
+        cutoff_time = datetime.datetime.now() - datetime.timedelta(hours=max_age_hours)
+        cutoff_timestamp = cutoff_time.timestamp()
         
-        # Get all runs (limited by API, may need pagination in production)
-        runs = client.beta.threads.runs.list_all_runs()
-        
-        # Filter runs by assistant_id and collect their thread_ids
-        for run in runs.data:
-            if run.assistant_id == assistant_id:
-                thread_id = run.thread_id
-                # Get the last_active timestamp (using the run's created_at as proxy)
-                last_active = datetime.datetime.fromtimestamp(run.created_at)
-                
-                if thread_id in all_threads:
-                    # Keep the most recent timestamp
-                    if last_active > all_threads[thread_id]['last_active']:
-                        all_threads[thread_id]['last_active'] = last_active
-                else:
-                    all_threads[thread_id] = {
-                        'thread_id': thread_id,
-                        'last_active': last_active
-                    }
-        
-        # Sort threads by last_active time (most recent first)
-        sorted_threads = sorted(
-            all_threads.values(), 
-            key=lambda x: x['last_active'], 
-            reverse=True
-        )
-        
-        # Get current time for age comparison
-        now = datetime.datetime.now()
-        
-        # Step 2: Process each thread
-        for thread_info in sorted_threads:
-            thread_id = thread_info['thread_id']
-            last_active = thread_info['last_active']
-            thread_age_days = (now - last_active).days
+        # Get all runs for the assistant (this may need pagination for production)
+        try:
+            # We need to list all threads first since there's no direct API to list threads by assistant
+            threads = client.beta.threads.list(limit=100)  # Max limit allowed
             
-            # Skip active threads that are recent
-            if thread_age_days <= 1:  # Keep very recent threads untouched
-                continue
+            # For each thread, check if it has runs with this assistant
+            for thread in threads.data:
+                thread_id = thread.id
                 
-            # Check if thread has summary metadata
-            try:
-                thread = client.beta.threads.retrieve(thread_id=thread_id)
-                metadata = thread.metadata if hasattr(thread, 'metadata') else {}
+                # Get runs for this thread
+                runs = client.beta.threads.runs.list(thread_id=thread_id, limit=5)  # Just check recent runs
                 
-                # If it's a summary thread and too old, delete it
-                if metadata.get('is_summary') and thread_age_days > max_age_days:
-                    client.beta.threads.delete(thread_id=thread_id)
-                    deleted_count += 1
-                    continue
-                
-                # If regular thread and old, summarize it
-                if thread_age_days > 7:  # Threads older than a week get summarized
-                    # Get messages in the thread
-                    messages = client.beta.threads.messages.list(thread_id=thread_id)
-                    
-                    if len(list(messages.data)) > 0:
-                        # Create prompt for summarization
-                        summary_content = "\n\n".join([
-                            f"{msg.role}: {msg.content[0].text.value if hasattr(msg, 'content') and len(msg.content) > 0 else 'No content'}" 
-                            for msg in messages.data
-                        ])
+                # Check if any run used our assistant
+                for run in runs.data:
+                    if run.assistant_id == assistant_id:
+                        # Thread is associated with our assistant
+                        last_active = datetime.datetime.fromtimestamp(run.created_at)
                         
-                        # Create a new thread for the summary
-                        summary_thread = client.beta.threads.create(
-                            metadata={"is_summary": True, "original_thread_id": thread_id}
-                        )
-                        
-                        # Add a request to summarize
-                        client.beta.threads.messages.create(
-                            thread_id=summary_thread.id,
-                            role="user",
-                            content=f"Summarize the following conversation in a concise paragraph:\n\n{summary_content}"
-                        )
-                        
-                        # Run the summarization
-                        run = client.beta.threads.runs.create(
-                            thread_id=summary_thread.id,
-                            assistant_id=assistant_id
-                        )
-                        
-                        # Wait for completion with timeout
-                        max_wait = 30  # 30 seconds timeout
-                        start_time = time.time()
-                        
-                        while True:
-                            if time.time() - start_time > max_wait:
-                                logging.warning(f"Timeout waiting for summarization of thread {thread_id}")
-                                break
-                                
-                            run_status = client.beta.threads.runs.retrieve(
-                                thread_id=summary_thread.id,
-                                run_id=run.id
-                            )
-                            
-                            if run_status.status == "completed":
-                                # Get the summary
-                                summary_messages = client.beta.threads.messages.list(
-                                    thread_id=summary_thread.id,
-                                    order="desc"
-                                )
-                                
-                                # Extract the summary text
-                                summary_text = next(
-                                    (msg.content[0].text.value for msg in summary_messages.data 
-                                     if msg.role == "assistant" and hasattr(msg, 'content') and len(msg.content) > 0),
-                                    "Summary not available."
-                                )
-                                
-                                # Store summary info
-                                summary_store[thread_id] = {
-                                    "summary": summary_text,
-                                    "summary_thread_id": summary_thread.id,
-                                    "original_thread_id": thread_id,
-                                    "summarized_at": now.isoformat()
+                        # Only process threads that are older than the cutoff
+                        if run.created_at < cutoff_timestamp:
+                            if thread_id not in all_threads:
+                                all_threads[thread_id] = {
+                                    'thread_id': thread_id,
+                                    'last_active': last_active
                                 }
-                                
-                                # Delete the original thread if it's old enough
-                                if thread_age_days > max_age_days:
-                                    client.beta.threads.delete(thread_id=thread_id)
-                                    deleted_count += 1
-                                    
-                                summarized_count += 1
-                                break
+                            elif last_active > all_threads[thread_id]['last_active']:
+                                all_threads[thread_id]['last_active'] = last_active
                             
-                            elif run_status.status in ["failed", "cancelled", "expired"]:
-                                logging.error(f"Summary generation failed for thread {thread_id}: {run_status.status}")
-                                break
-                                
-                            time.sleep(1)
+                        break  # We found a match, no need to check other runs
+        except Exception as e:
+            logging.error(f"Error listing threads/runs: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to list threads: {str(e)}")
+            
+        # Now process each thread that's older than the cutoff
+        for thread_id, thread_info in all_threads.items():
+            try:
+                # Get messages in the thread
+                messages = client.beta.threads.messages.list(thread_id=thread_id)
+                
+                if len(list(messages.data)) > 0:
+                    # Create a summary thread
+                    summary_thread = client.beta.threads.create(
+                        metadata={"is_summary": True, "original_thread_id": thread_id}
+                    )
+                    
+                    # Prepare message content for summarization
+                    summary_content = "\n\n".join([
+                        f"{msg.role}: {msg.content[0].text.value if hasattr(msg, 'content') and len(msg.content) > 0 else 'No content'}" 
+                        for msg in messages.data
+                    ])
+                    
+                    # Add request to summarize
+                    client.beta.threads.messages.create(
+                        thread_id=summary_thread.id,
+                        role="user",
+                        content=f"Summarize the following conversation in a concise paragraph:\n\n{summary_content}"
+                    )
+                    
+                    # Run the summarization
+                    run = client.beta.threads.runs.create(
+                        thread_id=summary_thread.id,
+                        assistant_id=assistant_id
+                    )
+                    
+                    # Wait for completion with timeout
+                    max_wait = 30  # 30 seconds timeout
+                    start_time = time.time()
+                    
+                    while True:
+                        if time.time() - start_time > max_wait:
+                            logging.warning(f"Timeout waiting for summarization of thread {thread_id}")
+                            break
+                            
+                        run_status = client.beta.threads.runs.retrieve(
+                            thread_id=summary_thread.id,
+                            run_id=run.id
+                        )
+                        
+                        if run_status.status == "completed":
+                            summarized_count += 1
+                            # Delete the original thread
+                            client.beta.threads.delete(thread_id=thread_id)
+                            deleted_count += 1
+                            break
+                        
+                        elif run_status.status in ["failed", "cancelled", "expired"]:
+                            logging.error(f"Summary generation failed for thread {thread_id}: {run_status.status}")
+                            break
+                            
+                        time.sleep(1)
             
             except Exception as e:
                 logging.error(f"Error processing thread {thread_id}: {e}")
@@ -600,10 +577,10 @@ async def trim_thread(assistant_id: str, max_age_days: int = 30, **kwargs):
         
         return JSONResponse({
             "status": "Thread trimming completed",
-            "threads_processed": len(sorted_threads),
+            "threads_processed": len(all_threads),
             "threads_summarized": summarized_count,
             "threads_deleted": deleted_count,
-            "summaries_stored": len(summary_store)
+            "max_age_hours": max_age_hours
         })
         
     except Exception as e:
@@ -612,18 +589,36 @@ async def trim_thread(assistant_id: str, max_age_days: int = 30, **kwargs):
 
 
 @app.post("/file-cleanup")
-async def file_cleanup(vector_store_id: str, max_age_days: int = 30, **kwargs):
+async def file_cleanup(request: Request, vector_store_id: str = None, max_age_hours: int = None, **kwargs):
     """
-    Lists and deletes all previous files, storing summaries.
-    Summaries > 30 days old will be deleted as well.
+    Deletes files older than the specified age from the vector store.
+    Default time limit is 48 hours.
+    Maintains the same vector store ID.
     """
+    # Get parameters from form data if not provided in query
+    if not vector_store_id:
+        form_data = await request.form()
+        vector_store_id = form_data.get("vector_store_id")
+        max_age_hours_str = form_data.get("max_age_hours")
+        if max_age_hours_str:
+            try:
+                max_age_hours = int(max_age_hours_str)
+            except ValueError:
+                pass
+                
+    # Default to 48 hours if not specified
+    if not max_age_hours:
+        max_age_hours = 48
+        
+    if not vector_store_id:
+        raise HTTPException(status_code=400, detail="vector_store_id is required")
+    
     client = create_client()
     deleted_count = 0
-    summarized_count = 0
-    summary_store = {}
+    files_processed = 0
     
     try:
-        # Step 1: Get all files in the vector store
+        # Get all file batches in the vector store
         file_batches = client.beta.vector_stores.file_batches.list(vector_store_id=vector_store_id)
         
         if not file_batches.data:
@@ -634,148 +629,50 @@ async def file_cleanup(vector_store_id: str, max_age_days: int = 30, **kwargs):
         
         # Get current time for age comparison
         now = datetime.datetime.now()
+        cutoff_time = now - datetime.timedelta(hours=max_age_hours)
         
-        # List of files to delete after processing
-        files_to_delete = []
-        
-        # Create a new vector store for summaries if needed
-        summary_vector_store = client.beta.vector_stores.create(
-            name=f"Summary_Store_{vector_store_id}"
-        )
-        
-        # Step 2: Create a thread for generating file summaries
-        summary_thread = client.beta.threads.create(
-            metadata={"is_file_summary": True, "source_vector_store": vector_store_id}
-        )
-        
-        # Step 3: Process each file batch
+        # Process each file batch
         for batch in file_batches.data:
-            # Skip very recent batches (less than a day old)
             batch_created = datetime.datetime.fromtimestamp(batch.created_at)
-            batch_age_days = (now - batch_created).days
             
-            if batch_age_days <= 1:
+            # Skip recent batches
+            if batch_created > cutoff_time:
                 continue
                 
-            # Process file batch if older than threshold
-            if batch_age_days > max_age_days:
-                # Get files in this batch
+            # Get files in this batch
+            try:
                 files = client.beta.vector_stores.files.list(
                     vector_store_id=vector_store_id,
                     file_batch_id=batch.id
                 )
                 
-                # First, generate a summary of these files
-                file_descriptions = []
-                
+                # Process each file
                 for file in files.data:
-                    # Add to list for summary generation
-                    file_info = {
-                        "file_id": file.id,
-                        "filename": file.filename,
-                        "created_at": datetime.datetime.fromtimestamp(file.created_at).isoformat()
-                    }
-                    file_descriptions.append(f"File: {file.filename}, ID: {file.id}")
-                    files_to_delete.append(file.id)
-                
-                # Generate a summary of the files in this batch
-                if file_descriptions:
-                    # Create a message asking for summary
-                    client.beta.threads.messages.create(
-                        thread_id=summary_thread.id,
-                        role="user",
-                        content=f"Please summarize the content and purpose of the following files (without actually accessing them):\n\n" + 
-                                "\n".join(file_descriptions)
-                    )
+                    files_processed += 1
+                    file_created = datetime.datetime.fromtimestamp(file.created_at)
                     
-                    # Run the summarization
-                    run = client.beta.threads.runs.create(
-                        thread_id=summary_thread.id,
-                        assistant_id=client.beta.assistants.list().data[0].id  # Use first available assistant
-                    )
-                    
-                    # Wait for completion with timeout
-                    max_wait = 30  # 30 seconds timeout
-                    start_time = time.time()
-                    
-                    while True:
-                        if time.time() - start_time > max_wait:
-                            logging.warning(f"Timeout waiting for file batch summary")
-                            break
-                            
-                        run_status = client.beta.threads.runs.retrieve(
-                            thread_id=summary_thread.id,
-                            run_id=run.id
-                        )
-                        
-                        if run_status.status == "completed":
-                            # Get the summary
-                            summary_messages = client.beta.threads.messages.list(
-                                thread_id=summary_thread.id,
-                                order="desc"
+                    # Delete files older than the cutoff
+                    if file_created <= cutoff_time:
+                        try:
+                            # Delete the file from the vector store
+                            client.beta.vector_stores.files.delete(
+                                vector_store_id=vector_store_id,
+                                file_id=file.id
                             )
-                            
-                            # Extract the summary text
-                            summary_text = next(
-                                (msg.content[0].text.value for msg in summary_messages.data 
-                                 if msg.role == "assistant" and hasattr(msg, 'content') and len(msg.content) > 0),
-                                "Summary not available."
-                            )
-                            
-                            # Create a summary file
-                            summary_filename = f"summary_batch_{batch.id}.txt"
-                            summary_path = f"/tmp/{summary_filename}"
-                            
-                            with open(summary_path, "w") as f:
-                                f.write(f"Summary of files from batch {batch.id}\n")
-                                f.write(f"Generated on: {now.isoformat()}\n\n")
-                                f.write(summary_text)
-                                f.write("\n\nOriginal files:\n")
-                                for desc in file_descriptions:
-                                    f.write(f"- {desc}\n")
-                            
-                            # Upload the summary to the summary vector store
-                            with open(summary_path, "rb") as file_stream:
-                                summary_batch = client.beta.vector_stores.file_batches.upload_and_poll(
-                                    vector_store_id=summary_vector_store.id,
-                                    files=[file_stream]
-                                )
-                            
-                            # Store summary info
-                            summary_store[batch.id] = {
-                                "summary": summary_text,
-                                "summary_file_id": summary_batch.id,
-                                "original_batch_id": batch.id,
-                                "summarized_at": now.isoformat()
-                            }
-                            
-                            summarized_count += 1
-                            break
-                        
-                        elif run_status.status in ["failed", "cancelled", "expired"]:
-                            logging.error(f"Summary generation failed for file batch {batch.id}: {run_status.status}")
-                            break
-                            
-                        time.sleep(1)
-        
-        # Step 4: Delete the files that were summarized
-        for file_id in files_to_delete:
-            try:
-                client.beta.vector_stores.files.delete(
-                    vector_store_id=vector_store_id,
-                    file_id=file_id
-                )
-                deleted_count += 1
+                            deleted_count += 1
+                        except Exception as e:
+                            logging.error(f"Error deleting file {file.id}: {e}")
+            
             except Exception as e:
-                logging.error(f"Error deleting file {file_id}: {e}")
+                logging.error(f"Error listing files for batch {batch.id}: {e}")
+                continue
         
         return JSONResponse({
             "status": "File cleanup completed",
             "vector_store_id": vector_store_id,
-            "summary_vector_store_id": summary_vector_store.id,
+            "files_processed": files_processed,
             "files_deleted": deleted_count,
-            "batches_summarized": summarized_count,
-            "summaries_stored": len(summary_store)
+            "max_age_hours": max_age_hours
         })
         
     except Exception as e:
