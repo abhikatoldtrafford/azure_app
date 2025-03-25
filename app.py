@@ -176,7 +176,7 @@ async def update_context(client, thread_id, context):
         # Continue the flow even if context update fails
 
 @app.post("/initiate-chat")
-async def initiate_chat(request: Request, **kwargs):
+async def initiate_chat(request: Request):
     """
     Initiates the assistant and session and optionally uploads a file to its vector store, 
     all in one go.
@@ -186,7 +186,7 @@ async def initiate_chat(request: Request, **kwargs):
     # Parse the form data
     form = await request.form()
     file = form.get("file", None)
-    context = form.get("context", None)  # New: Get optional context parameter
+    context = form.get("context", None)  # Get optional context parameter
 
     # Create a vector store up front
     vector_store = client.beta.vector_stores.create(name="demo")
@@ -365,7 +365,7 @@ async def initiate_chat(request: Request, **kwargs):
 
 
 @app.post("/co-pilot")
-async def co_pilot(request: Request, **kwargs):
+async def co_pilot(request: Request):
     """
     Handles co-pilot creation or updates with optional file upload and system prompt.
     """
@@ -375,7 +375,7 @@ async def co_pilot(request: Request, **kwargs):
     form = await request.form()
     file = form.get("file", None)
     system_prompt = form.get("system_prompt", None)
-    context = form.get("context", None)  # New: Get optional context parameter
+    context = form.get("context", None)  # Optional context parameter
 
     # Attempt to get the assistant & vector store from the form
     assistant_id = form.get("assistant", None)
@@ -498,16 +498,19 @@ async def co_pilot(request: Request, **kwargs):
 
 
 @app.post("/upload-file")
-async def upload_file(file: UploadFile = Form(...), assistant: str = Form(...), **kwargs):
+async def upload_file(
+    file: UploadFile = Form(...), 
+    assistant: str = Form(...), 
+    session: Optional[str] = Form(None),
+    context: Optional[str] = Form(None),
+    prompt: Optional[str] = Form(None)
+):
     """
     Uploads a file and associates it with the given assistant.
     Handles different file types appropriately (tabular files use code_interpreter, others use vector_store).
     """
     client = create_client()
-    # Get context if provided (in kwargs or form data)
-    context = kwargs.get("context", None)
-    thread_id = kwargs.get("session", None)
-    prompt = kwargs.get("prompt", None)  # Optional prompt for image analysis
+    thread_id = session  # Rename for clarity
 
     try:
         # Save the uploaded file locally and get the data
@@ -658,13 +661,11 @@ async def conversation(
     session: Optional[str] = None,
     prompt: Optional[str] = None,
     assistant: Optional[str] = None,
-    context: Optional[str] = None,  # New: Optional context parameter
-    **kwargs
+    context: Optional[str] = None
 ):
     """
     Handles conversation queries. 
     Preserves the original query parameters and output format.
-    Additional parameters are accepted but ignored.
     """
     client = create_client()
 
@@ -721,13 +722,11 @@ async def chat(
     session: Optional[str] = None,
     prompt: Optional[str] = None,
     assistant: Optional[str] = None,
-    context: Optional[str] = None,  # New: Optional context parameter
-    **kwargs
+    context: Optional[str] = None
 ):
     """
     Handles conversation queries.
     Preserves the original query parameters and output format.
-    Additional parameters are accepted but ignored.
     """
     client = create_client()
 
@@ -775,16 +774,22 @@ async def chat(
 
 
 @app.post("/trim-thread")
-async def trim_thread(request: Request, assistant_id: str = None, max_age_days: Optional[int] = None, **kwargs):
+async def trim_thread(request: Request):
     """
     Gets all threads for a given assistant, summarizes them, and removes old threads.
     Uses 48 hours as the threshold for thread cleanup.
     Accepts both query parameters and form data.
     """
-    # Get parameters from form data if not provided in query
-    if not assistant_id:
-        form_data = await request.form()
-        assistant_id = form_data.get("assistant_id")
+    # Get parameters from form data
+    form_data = await request.form()
+    assistant_id = form_data.get("assistant_id")
+    max_age_days = form_data.get("max_age_days")
+    
+    if max_age_days is not None:
+        try:
+            max_age_days = int(max_age_days)
+        except ValueError:
+            max_age_days = None
     
     # Set default cleanup threshold to 48 hours
     time_threshold_hours = 48
@@ -950,17 +955,16 @@ async def trim_thread(request: Request, assistant_id: str = None, max_age_days: 
 
 
 @app.post("/file-cleanup")
-async def file_cleanup(request: Request, vector_store_id: str = None, **kwargs):
+async def file_cleanup(request: Request):
     """
     Lists and deletes files older than 48 hours.
     Simplified implementation with no summarization.
     Maintains the same vector store.
     Accepts both query parameters and form data.
     """
-    # Get parameters from form data if not provided in query
-    if not vector_store_id:
-        form_data = await request.form()
-        vector_store_id = form_data.get("vector_store_id")
+    # Get parameters from form data
+    form_data = await request.form()
+    vector_store_id = form_data.get("vector_store_id")
     
     if not vector_store_id:
         raise HTTPException(status_code=400, detail="vector_store_id is required")
