@@ -26,15 +26,22 @@ def create_client():
         api_version=AZURE_API_VERSION,
     )
 
-# Helper function to check if file is CSV or Excel
+# Helper function to check if a file is tabular data (CSV or Excel)
 def is_tabular_file(filename):
-    """Check if file is a CSV or Excel file"""
+    """Check if the file is a tabular data file (CSV or Excel)."""
     file_ext = os.path.splitext(filename.lower())[1]
     return file_ext in ['.csv', '.xlsx', '.xls']
 
-# Helper function to process tabular data (CSV/Excel)
+# Helper function to check if a file is an image
+def is_image_file(filename, content_type=None):
+    """Check if the file is an image."""
+    image_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']
+    file_ext = os.path.splitext(filename.lower())[1]
+    return file_ext in image_extensions or (content_type and content_type.startswith('image/'))
+
+# Helper function to process tabular data
 async def process_tabular_data(file_path, filename, max_rows=1000):
-    """Process CSV or Excel files and return a description and sample"""
+    """Process CSV or Excel files and return summary data."""
     try:
         file_ext = os.path.splitext(filename.lower())[1]
         
@@ -42,45 +49,33 @@ async def process_tabular_data(file_path, filename, max_rows=1000):
             # Read CSV file
             df = pd.read_csv(file_path)
             if len(df) > max_rows:
-                sample_df = df.sample(max_rows, random_state=42)
-            else:
-                sample_df = df
-                
+                df = df.sample(max_rows, random_state=42)
             return {
-                "file_type": "csv",
+                "type": "csv", 
                 "filename": filename,
-                "total_rows": len(df),
-                "total_columns": len(df.columns),
+                "shape": df.shape,
                 "columns": list(df.columns),
-                "dtypes": df.dtypes.astype(str).to_dict(),
-                "sample_size": len(sample_df),
-                "sample_data": sample_df.to_dict(orient='records')
+                "dataframe": df
             }
             
         elif file_ext in ['.xlsx', '.xls']:
             # Read Excel file with multiple sheets
             xls = pd.ExcelFile(file_path)
             sheet_names = xls.sheet_names
-            sheets_data = {}
             
+            sheets_data = {}
             for sheet in sheet_names:
                 df = pd.read_excel(file_path, sheet_name=sheet)
                 if len(df) > max_rows:
-                    sample_df = df.sample(max_rows, random_state=42)
-                else:
-                    sample_df = df
-                    
+                    df = df.sample(max_rows, random_state=42)
                 sheets_data[sheet] = {
-                    "total_rows": len(df),
-                    "total_columns": len(df.columns),
+                    "shape": df.shape,
                     "columns": list(df.columns),
-                    "dtypes": df.dtypes.astype(str).to_dict(),
-                    "sample_size": len(sample_df),
-                    "sample_data": sample_df.to_dict(orient='records')
+                    "dataframe": df
                 }
-                
+            
             return {
-                "file_type": "excel",
+                "type": "excel",
                 "filename": filename,
                 "sheets": sheet_names,
                 "sheets_data": sheets_data
@@ -88,14 +83,13 @@ async def process_tabular_data(file_path, filename, max_rows=1000):
             
     except Exception as e:
         logging.error(f"Error processing tabular file: {e}")
-        return {
-            "error": f"Failed to process {filename}: {str(e)}"
-        }
+        return {"error": f"Error processing {filename}: {str(e)}"}
 
 # Accept and ignore additional parameters
 async def ignore_additional_params(request: Request):
     form_data = await request.form()
     return {k: v for k, v in form_data.items()}
+
 async def image_analysis(client, image_data: bytes, filename: str, prompt: Optional[str] = None) -> str:
     """Analyzes an image using Azure OpenAI vision capabilities and returns the analysis text."""
     try:
@@ -240,10 +234,10 @@ async def initiate_chat(request: Request, **kwargs):
             - Maintain a balance between technical detail and accessibility, ensuring responses are understandable yet informative.
 
         3. **Data Analysis with Code Interpreter:**
-        - When provided with dataframes or tabular data (CSV or Excel files), use the code_interpreter tool to analyze the data.
-        - Only use code_interpreter when a dataframe is explicitly included in the prompt with text like "dataframe to be processed by code interpreter: df".
-        - For large datasets, use sampling techniques like df.sample(1000) to manage token usage.
-        - Present analysis results in a clear, organized manner with appropriate visualizations when helpful.
+        - When prompted with "dataframe to be processed by code interpreter: df", use the code_interpreter tool to analyze the provided data.
+        - Only use code_interpreter when explicitly directed to do so in the prompt.
+        - Perform appropriate data analysis on the dataframe, including statistical summaries, visualizations, and relevant insights.
+        - Present your analysis results in a clear, organized manner.
 
         ### **Behavioral Guidelines:**
 
@@ -271,6 +265,7 @@ async def initiate_chat(request: Request, **kwargs):
 
         - **Tool Utilization:**
         - Always evaluate whether the file_search tool can enhance the quality of your response before using it.
+        - Use the code_interpreter tool only when explicitly prompted to process a dataframe.
         
         - **Data Privacy:**
         - Handle all uploaded files and user data with the utmost confidentiality and in compliance with relevant data protection standards.
@@ -323,12 +318,42 @@ async def initiate_chat(request: Request, **kwargs):
         file_path = os.path.join('/tmp/', filename)
         with open(file_path, 'wb') as f:
             f.write(await file.read())
-        with open(file_path, "rb") as file_stream:
-            file_batch = client.beta.vector_stores.file_batches.upload_and_poll(
-                vector_store_id=vector_store.id, 
-                files=[file_stream]
-            )
-        logging.info(f"File uploaded to vector store: status={file_batch.status}, count={file_batch.file_counts}")
+            
+        # Check if it's a tabular file (CSV/Excel)
+        if is_tabular_file(filename):
+            # Process the file with the code interpreter directly
+            try:
+                # Upload file for code interpreter
+                with open(file_path, "rb") as file_stream:
+                    file_obj = client.files.create(
+                        file=file_stream,
+                        purpose="assistants"
+                    )
+                
+                # Associate the file with the assistant for code interpreter
+                client.beta.assistants.files.create(
+                    assistant_id=assistant.id,
+                    file_id=file_obj.id
+                )
+                
+                # Create message to instruct code interpreter to process the file
+                client.beta.threads.messages.create(
+                    thread_id=thread.id,
+                    role="user",
+                    content=f"I've uploaded a file named {filename}. Please use code interpreter to analyze this data. dataframe to be processed by code interpreter: df"
+                )
+                
+                logging.info(f"Tabular file {filename} associated with code interpreter")
+            except Exception as e:
+                logging.error(f"Error processing tabular file: {e}")
+        else:
+            # Normal file upload to vector store for file_search
+            with open(file_path, "rb") as file_stream:
+                file_batch = client.beta.vector_stores.file_batches.upload_and_poll(
+                    vector_store_id=vector_store.id, 
+                    files=[file_stream]
+                )
+            logging.info(f"File uploaded to vector store: status={file_batch.status}, count={file_batch.file_counts}")
 
     res = {
         "assistant": assistant.id,
@@ -364,11 +389,13 @@ async def co_pilot(request: Request, **kwargs):
             vector_store_id = vector_store.id
         base_prompt = "You are a product management AI assistant, a product co-pilot."
         instructions = base_prompt if not system_prompt else f"{base_prompt} {system_prompt}"
+        
+        # Update to include code interpreter capability
         assistant = client.beta.assistants.create(
             name="demo_co_pilot",
             model="gpt-4o-mini",
             instructions=instructions,
-            tools=[{"type": "code_interpreter"}, {"type": "file_search"}],  # Added code_interpreter
+            tools=[{"type": "code_interpreter"}, {"type": "file_search"}],
             tool_resources={"file_search": {"vector_store_ids": [vector_store_id]}},
         )
         assistant_id = assistant.id
@@ -400,9 +427,11 @@ async def co_pilot(request: Request, **kwargs):
                 existing_tools = assistant_obj.tools if assistant_obj.tools else []
                 if not any(t["type"] == "file_search" for t in existing_tools):
                     existing_tools.append({"type": "file_search"})
-                # Add code_interpreter if not already present
+                    
+                # Ensure code_interpreter is in the tools
                 if not any(t["type"] == "code_interpreter" for t in existing_tools):
                     existing_tools.append({"type": "code_interpreter"})
+                    
                 client.beta.assistants.update(
                     assistant_id=assistant_id,
                     tools=existing_tools,
@@ -413,12 +442,43 @@ async def co_pilot(request: Request, **kwargs):
     if file:
         file_path = f"/tmp/{file.filename}"
         with open(file_path, "wb") as ftemp:
-            ftemp.write(await file.read())
-        with open(file_path, "rb") as file_stream:
-            client.beta.vector_stores.file_batches.upload_and_poll(
-                vector_store_id=vector_store_id,
-                files=[file_stream]
-            )
+            file_content = await file.read()
+            ftemp.write(file_content)
+            
+        # Check if it's a tabular file (CSV/Excel)
+        if is_tabular_file(file.filename):
+            try:
+                # Upload file for code interpreter
+                with open(file_path, "rb") as file_stream:
+                    file_obj = client.files.create(
+                        file=file_stream,
+                        purpose="assistants"
+                    )
+                
+                # Associate the file with the assistant for code interpreter
+                client.beta.assistants.files.create(
+                    assistant_id=assistant_id,
+                    file_id=file_obj.id
+                )
+                
+                # If thread exists, create message to process the file
+                if thread_id:
+                    client.beta.threads.messages.create(
+                        thread_id=thread_id,
+                        role="user",
+                        content=f"I've uploaded a file named {file.filename}. Please use code interpreter to analyze this data. dataframe to be processed by code interpreter: df"
+                    )
+                
+                logging.info(f"Tabular file {file.filename} associated with code interpreter")
+            except Exception as e:
+                logging.error(f"Error processing tabular file: {e}")
+        else:
+            # Normal file upload to vector store for file_search
+            with open(file_path, "rb") as file_stream:
+                client.beta.vector_stores.file_batches.upload_and_poll(
+                    vector_store_id=vector_store_id,
+                    files=[file_stream]
+                )
 
     # If context provided and thread exists, update context
     if context and thread_id:
@@ -441,7 +501,7 @@ async def co_pilot(request: Request, **kwargs):
 async def upload_file(file: UploadFile = Form(...), assistant: str = Form(...), **kwargs):
     """
     Uploads a file and associates it with the given assistant.
-    Maintains the same input-output as before, ensures a single vector store per assistant.
+    Handles different file types appropriately (tabular files use code_interpreter, others use vector_store).
     """
     client = create_client()
     # Get context if provided (in kwargs or form data)
@@ -457,14 +517,80 @@ async def upload_file(file: UploadFile = Form(...), assistant: str = Form(...), 
             temp_file.write(file_content)
             
         # Determine file type
-        image_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']
-        file_ext = os.path.splitext(file.filename.lower())[1]
-        is_image = file_ext in image_extensions or (file.content_type and file.content_type.startswith('image/'))
+        is_image = is_image_file(file.filename, file.content_type)
         is_tabular = is_tabular_file(file.filename)
         
         # Retrieve the assistant
         assistant_obj = client.beta.assistants.retrieve(assistant_id=assistant)
-        # Check if there's a file_search resource
+        
+        # Process based on file type
+        if is_tabular:
+            # This is a CSV or Excel file - use code interpreter
+            try:
+                # Process file data
+                tabular_data = await process_tabular_data(file_path, file.filename)
+                
+                # Upload file to OpenAI for code interpreter
+                with open(file_path, "rb") as file_stream:
+                    file_obj = client.files.create(
+                        file=file_stream,
+                        purpose="assistants"
+                    )
+                
+                # Associate the file with the assistant
+                client.beta.assistants.files.create(
+                    assistant_id=assistant,
+                    file_id=file_obj.id
+                )
+                
+                # If we have a thread, add a message to process the file
+                if thread_id:
+                    # Create a message with instructions to process the dataframe
+                    file_type = "CSV" if tabular_data["type"] == "csv" else "Excel"
+                    
+                    if file_type == "CSV":
+                        shape = tabular_data["shape"]
+                        columns = tabular_data["columns"]
+                        message = f"I've uploaded a {file_type} file named {file.filename} with shape {shape} and columns {columns}. dataframe to be processed by code interpreter: df"
+                    else:
+                        sheets = tabular_data["sheets"]
+                        message = f"I've uploaded an {file_type} file named {file.filename} with sheets {sheets}. Please analyze each sheet. dataframe to be processed by code interpreter: df"
+                    
+                    client.beta.threads.messages.create(
+                        thread_id=thread_id,
+                        role="user",
+                        content=message
+                    )
+                
+                logging.info(f"Tabular file {file.filename} processed with code interpreter")
+                
+                return JSONResponse(
+                    {
+                        "message": "File successfully uploaded for code interpreter.",
+                        "file_type": "tabular",
+                        "file_id": file_obj.id
+                    },
+                    status_code=200
+                )
+                
+            except Exception as e:
+                logging.error(f"Error processing tabular file with code interpreter: {e}")
+                # If code interpreter processing fails, try vector store as fallback
+                
+        # For images with thread_id, analyze and add to thread
+        if is_image and thread_id:
+            logging.info(f"Analyzing image file: {file.filename}")
+            analysis_text = await image_analysis(client, file_content, file.filename, prompt)
+            
+            # Add the analysis to the thread
+            client.beta.threads.messages.create(
+                thread_id=thread_id,
+                role="user",
+                content=f"Image Analysis for {file.filename}: {analysis_text}"
+            )
+            logging.info(f"Added image analysis to thread {thread_id}")
+        
+        # Check if there's a file_search resource for non-tabular files
         file_search_resource = getattr(assistant_obj.tool_resources, "file_search", None)
         vector_store_ids = (
             file_search_resource.vector_store_ids
@@ -485,10 +611,6 @@ async def upload_file(file: UploadFile = Form(...), assistant: str = Form(...), 
             existing_tools = assistant_obj.tools if assistant_obj.tools else []
             if not any(t["type"] == "file_search" for t in existing_tools):
                 existing_tools.append({"type": "file_search"})
-                
-            # Ensure code_interpreter is also available
-            if not any(t["type"] == "code_interpreter" for t in existing_tools):
-                existing_tools.append({"type": "code_interpreter"})
 
             # Update the assistant to associate with this new vector store
             client.beta.assistants.update(
@@ -501,63 +623,14 @@ async def upload_file(file: UploadFile = Form(...), assistant: str = Form(...), 
                 }
             )
 
-        # Process based on file type
-        if is_image and thread_id:
-            # For images, analyze using vision API
-            logging.info(f"Analyzing image file: {file.filename}")
-            analysis_text = await image_analysis(client, file_content, file.filename, prompt)
-            
-            # Add the analysis to the thread
-            client.beta.threads.messages.create(
-                thread_id=thread_id,
-                role="user",
-                content=f"Image Analysis for {file.filename}: {analysis_text}"
-            )
-            logging.info(f"Added image analysis to thread {thread_id}")
-            
-        elif is_tabular and thread_id:
-            # For tabular data (CSV/Excel), process and provide to code interpreter
-            logging.info(f"Processing tabular data file: {file.filename}")
-            data_info = await process_tabular_data(file_path, file.filename)
-            
-            # Add data information to the thread with code interpreter instructions
-            data_message = f"""
-Tabular data file uploaded: {file.filename}
-File type: {data_info.get('file_type', 'unknown')}
-"""
-            
-            if data_info.get('file_type') == 'csv':
-                data_message += f"""
-Total rows: {data_info.get('total_rows', 'N/A')}
-Total columns: {data_info.get('total_columns', 'N/A')}
-Columns: {', '.join(data_info.get('columns', []))}
-
-dataframe to be processed by code interpreter: df
-The dataframe has been loaded from the file. Please use the code interpreter to analyze this data.
-"""
-            elif data_info.get('file_type') == 'excel':
-                sheets = data_info.get('sheets', [])
-                data_message += f"""
-This is an Excel file with {len(sheets)} sheets: {', '.join(sheets)}
-
-dataframe to be processed by code interpreter: df
-The dataframe has been loaded from the file. Please use the code interpreter to analyze this data.
-You can access different sheets if needed.
-"""
-            
-            client.beta.threads.messages.create(
-                thread_id=thread_id,
-                role="user",
-                content=data_message
-            )
-            logging.info(f"Added tabular data information to thread {thread_id}")
-
-        # Upload the file to the vector store (for all file types)
-        with open(file_path, "rb") as file_stream:
-            file_batch = client.beta.vector_stores.file_batches.upload_and_poll(
-                vector_store_id=vector_store_id,
-                files=[file_stream]
-            )
+        # For non-tabular and non-image files, upload to vector store
+        if not is_tabular and not is_image:
+            with open(file_path, "rb") as file_stream:
+                file_batch = client.beta.vector_stores.file_batches.upload_and_poll(
+                    vector_store_id=vector_store_id,
+                    files=[file_stream]
+                )
+            logging.info(f"File uploaded to vector store: {file.filename}")
             
         # If context provided and thread exists, update context
         if context and thread_id:
@@ -569,9 +642,9 @@ You can access different sheets if needed.
 
         return JSONResponse(
             {
-                "message": "File successfully uploaded to vector store.",
+                "message": "File successfully processed.",
                 "image_analyzed": is_image and thread_id is not None,
-                "tabular_data_processed": is_tabular and thread_id is not None
+                "file_type": "image" if is_image else "document"
             },
             status_code=200
         )
