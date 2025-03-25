@@ -6,6 +6,8 @@ from typing import Optional, List, Dict, Any
 import os
 import datetime
 import time
+import base64
+import mimetypes
 
 app = FastAPI()
 
@@ -25,7 +27,48 @@ def create_client():
 async def ignore_additional_params(request: Request):
     form_data = await request.form()
     return {k: v for k, v in form_data.items()}
-
+async def image_analysis(client, image_data: bytes, filename: str, prompt: Optional[str] = None) -> str:
+    """Analyzes an image using Azure OpenAI vision capabilities and returns the analysis text."""
+    try:
+        ext = os.path.splitext(filename)[1].lower()
+        b64_img = base64.b64encode(image_data).decode("utf-8")
+        # Default to jpeg if extension can't be determined
+        mime = f"image/{ext[1:]}" if ext and ext[1:] in ['jpg', 'jpeg', 'png', 'gif', 'webp'] else "image/jpeg"
+        data_url = f"data:{mime};base64,{b64_img}"
+        
+        default_prompt = (
+            "Analyze this image and provide a thorough summary including all elements. "
+            "If there's any text visible, include all the textual content. Describe:"
+        )
+        combined_prompt = f"{default_prompt} {prompt}" if prompt else default_prompt
+        
+        # Create a client for vision API
+        vision_client = AzureOpenAI(
+            azure_endpoint=AZURE_ENDPOINT,
+            api_key=AZURE_API_KEY,
+            api_version=AZURE_API_VERSION,
+        )
+        
+        # Use the chat completions API to analyze the image
+        response = vision_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{
+                "role": "user", 
+                "content": [
+                    {"type": "text", "text": combined_prompt},
+                    {"type": "image_url", "image_url": {"url": data_url, "detail": "high"}}
+                ]
+            }],
+            max_tokens=500
+        )
+        
+        analysis_text = response.choices[0].message.content
+        return analysis_text
+        
+    except Exception as e:
+        logging.error(f"Image analysis error: {e}")
+        return f"Error analyzing image: {str(e)}"
+        
 # Helper function to update user persona context
 async def update_context(client, thread_id, context):
     """Updates the user persona context in a thread by adding a special message."""
@@ -326,8 +369,20 @@ async def upload_file(file: UploadFile = Form(...), assistant: str = Form(...), 
     # Get context if provided (in kwargs or form data)
     context = kwargs.get("context", None)
     thread_id = kwargs.get("session", None)
+    prompt = kwargs.get("prompt", None)  # Optional prompt for image analysis
 
     try:
+        # Save the uploaded file locally and get the data
+        file_content = await file.read()
+        file_path = f"/tmp/{file.filename}"
+        with open(file_path, "wb") as temp_file:
+            temp_file.write(file_content)
+            
+        # Determine if the file is an image
+        image_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']
+        file_ext = os.path.splitext(file.filename.lower())[1]
+        is_image = file_ext in image_extensions or (file.content_type and file.content_type.startswith('image/'))
+        
         # Retrieve the assistant
         assistant_obj = client.beta.assistants.retrieve(assistant_id=assistant)
         # Check if there's a file_search resource
@@ -363,12 +418,20 @@ async def upload_file(file: UploadFile = Form(...), assistant: str = Form(...), 
                 }
             )
 
-        # Save the uploaded file locally
-        file_path = f"/tmp/{file.filename}"
-        with open(file_path, "wb") as temp_file:
-            temp_file.write(await file.read())
+        # If it's an image and we have a thread_id, analyze it and add to thread
+        if is_image and thread_id:
+            logging.info(f"Analyzing image file: {file.filename}")
+            analysis_text = await image_analysis(client, file_content, file.filename, prompt)
+            
+            # Add the analysis to the thread
+            client.beta.threads.messages.create(
+                thread_id=thread_id,
+                role="user",
+                content=f"Image Analysis for {file.filename}: {analysis_text}"
+            )
+            logging.info(f"Added image analysis to thread {thread_id}")
 
-        # Upload the file to the existing vector store
+        # Upload the file to the existing vector store (do this for all files, including images)
         with open(file_path, "rb") as file_stream:
             file_batch = client.beta.vector_stores.file_batches.upload_and_poll(
                 vector_store_id=vector_store_id,
@@ -386,6 +449,7 @@ async def upload_file(file: UploadFile = Form(...), assistant: str = Form(...), 
         return JSONResponse(
             {
                 "message": "File successfully uploaded to vector store.",
+                "image_analyzed": is_image and thread_id is not None
             },
             status_code=200
         )
@@ -393,7 +457,6 @@ async def upload_file(file: UploadFile = Form(...), assistant: str = Form(...), 
     except Exception as e:
         logging.error(f"Error uploading file: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
-
 
 @app.get("/conversation")
 async def conversation(
