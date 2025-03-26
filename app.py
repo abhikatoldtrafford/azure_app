@@ -550,17 +550,24 @@ async def co_pilot(request: Request, **kwargs): # Using **kwargs is okay but les
             if len(current_tools) != len(assistant_obj.tools or []):
                 needs_update = True
 
+            # --- Update Assistant if tools or resources changed ---
             if needs_update:
-                 # Update assistant with potentially new tools and VS links
-                 update_payload = {
-                     "tools": current_tools,
-                     "tool_resources": {
-                         "file_search": {"vector_store_ids": existing_vs_ids},
-                         "code_interpreter": {"file_ids": code_interpreter_file_ids} # Keep existing files
-                     }
-                 }
-                 client.beta.assistants.update(assistant_id=assistant_id, **update_payload)
-                 logging.info(f"Updated tools/resources for assistant {assistant_id}")
+                update_payload = {"tools": current_tools, "tool_resources": {}}
+    
+                # Preserve/update file search resources
+                fs_resource_payload = {"vector_store_ids": vector_store_ids}
+                update_payload["tool_resources"]["file_search"] = fs_resource_payload
+    
+                # Preserve/update code interpreter resources (ALWAYS include the current list)
+                # <<< FIX APPLIED HERE >>>
+                ci_resource_payload = {"file_ids": code_interpreter_file_ids}
+                update_payload["tool_resources"]["code_interpreter"] = ci_resource_payload
+    
+                try:
+                    client.beta.assistants.update(assistant_id=assistant, **update_payload)
+                    logging.info(f"Updated assistant {assistant} with new tool/resource associations.")
+                except Exception as update_err:
+                     logging.error(f"Failed to update assistant {assistant}: {update_err}")
 
         # --- Handle file upload (similar logic to /initiate-chat but updates existing assistant) ---
         if file:
