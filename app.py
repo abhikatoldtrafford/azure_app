@@ -108,15 +108,8 @@ async def image_analysis(client, image_data: bytes, filename: str, prompt: Optio
         )
         combined_prompt = f"{default_prompt} {prompt}" if prompt else default_prompt
         
-        # Create a client for vision API
-        vision_client = AzureOpenAI(
-            azure_endpoint=AZURE_ENDPOINT,
-            api_key=AZURE_API_KEY,
-            api_version=AZURE_API_VERSION,
-        )
-        
-        # Use the chat completions API to analyze the image
-        response = vision_client.chat.completions.create(
+        # Use the existing client instead of creating a new one
+        response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{
                 "role": "user", 
@@ -244,7 +237,7 @@ async def initiate_chat(request: Request):
 
     # Always include file_search tool and associate with the vector store
     assistant_tools = [{"type": "code_interpreter"}, {"type": "file_search"}]
-    assistant_tool_resources = {"file_search": {"vector_store_ids": [vector_store.id]}}
+    assistant_tool_resources = {"file_search": {"vector_store_ids": [vector_store.id]}, "code_interpreter": {"file_ids": []}}
     system_prompt = '''
         You are a highly skilled Product Management AI Assistant and Co-Pilot. Your primary responsibilities include generating comprehensive Product Requirements Documents (PRDs) and providing insightful answers to a wide range of product-related queries. You seamlessly integrate information from uploaded files and your extensive knowledge base to deliver contextually relevant and actionable insights.
 
@@ -383,10 +376,22 @@ async def initiate_chat(request: Request):
                         purpose="assistants"
                     )
                 
-                # Associate the file with the assistant for code interpreter
-                client.beta.assistants.files.create(
+                # Get existing file IDs for code interpreter
+                current_assistant = client.beta.assistants.retrieve(
+                    assistant_id=assistant.id
+                )
+                
+                code_interpreter_resources = current_assistant.tool_resources.code_interpreter if hasattr(current_assistant.tool_resources, 'code_interpreter') else None
+                existing_file_ids = code_interpreter_resources.file_ids if code_interpreter_resources and hasattr(code_interpreter_resources, 'file_ids') else []
+                
+                # Update the assistant with the new file ID specifically for code_interpreter
+                updated_file_ids = existing_file_ids + [file_obj.id]
+                client.beta.assistants.update(
                     assistant_id=assistant.id,
-                    file_id=file_obj.id
+                    tool_resources={
+                        "file_search": {"vector_store_ids": [vector_store.id]},
+                        "code_interpreter": {"file_ids": updated_file_ids}
+                    }
                 )
                 
                 # Add message about the file to make the assistant aware of it
@@ -495,7 +500,10 @@ async def co_pilot(request: Request):
             model="gpt-4o-mini",
             instructions=instructions,
             tools=[{"type": "code_interpreter"}, {"type": "file_search"}],
-            tool_resources={"file_search": {"vector_store_ids": [vector_store_id]}},
+            tool_resources={
+                "file_search": {"vector_store_ids": [vector_store_id]},
+                "code_interpreter": {"file_ids": []}
+            },
         )
         assistant_id = assistant.id
     else:
@@ -543,6 +551,15 @@ async def co_pilot(request: Request):
             else:
                 vector_store = client.beta.vector_stores.create(name="demo")
                 vector_store_id = vector_store.id
+                
+                # Get existing code_interpreter file_ids
+                code_interpreter_resource = getattr(assistant_obj.tool_resources, "code_interpreter", None)
+                existing_file_ids = (
+                    code_interpreter_resource.file_ids
+                    if (code_interpreter_resource and hasattr(code_interpreter_resource, "file_ids"))
+                    else []
+                )
+                
                 existing_tools = assistant_obj.tools if assistant_obj.tools else []
                 if not any(t["type"] == "file_search" for t in existing_tools):
                     existing_tools.append({"type": "file_search"})
@@ -554,7 +571,10 @@ async def co_pilot(request: Request):
                 client.beta.assistants.update(
                     assistant_id=assistant_id,
                     tools=existing_tools,
-                    tool_resources={"file_search": {"vector_store_ids": [vector_store_id]}},
+                    tool_resources={
+                        "file_search": {"vector_store_ids": [vector_store_id]},
+                        "code_interpreter": {"file_ids": existing_file_ids}
+                    },
                 )
 
     # Handle file upload if present
@@ -582,10 +602,22 @@ async def co_pilot(request: Request):
                         purpose="assistants"
                     )
                 
-                # Associate the file with the assistant for code interpreter
-                client.beta.assistants.files.create(
+                # Get existing file IDs for code interpreter
+                current_assistant = client.beta.assistants.retrieve(
+                    assistant_id=assistant_id
+                )
+                
+                code_interpreter_resources = current_assistant.tool_resources.code_interpreter if hasattr(current_assistant.tool_resources, 'code_interpreter') else None
+                existing_file_ids = code_interpreter_resources.file_ids if code_interpreter_resources and hasattr(code_interpreter_resources, 'file_ids') else []
+                
+                # Update the assistant with the new file ID specifically for code_interpreter
+                updated_file_ids = existing_file_ids + [file_obj.id]
+                client.beta.assistants.update(
                     assistant_id=assistant_id,
-                    file_id=file_obj.id
+                    tool_resources={
+                        "file_search": {"vector_store_ids": [vector_store_id]},
+                        "code_interpreter": {"file_ids": updated_file_ids}
+                    }
                 )
                 
                 # If thread exists, add file awareness
@@ -684,6 +716,30 @@ async def upload_file(
         # Retrieve the assistant
         assistant_obj = client.beta.assistants.retrieve(assistant_id=assistant)
         
+        # Get vector store IDs (if any)
+        file_search_resource = getattr(assistant_obj.tool_resources, "file_search", None)
+        vector_store_ids = (
+            file_search_resource.vector_store_ids
+            if (file_search_resource and hasattr(file_search_resource, "vector_store_ids"))
+            else []
+        )
+
+        # Get existing file IDs for code interpreter
+        code_interpreter_resource = getattr(assistant_obj.tool_resources, "code_interpreter", None)
+        existing_file_ids = (
+            code_interpreter_resource.file_ids
+            if (code_interpreter_resource and hasattr(code_interpreter_resource, "file_ids"))
+            else []
+        )
+        
+        # Create vector store if we don't have one
+        if not vector_store_ids:
+            vector_store = client.beta.vector_stores.create(name=f"Assistant_{assistant}_Store")
+            vector_store_id = vector_store.id
+            vector_store_ids = [vector_store_id]
+        else:
+            vector_store_id = vector_store_ids[0]
+        
         # Process based on file type
         if is_tabular:
             # This is a CSV or Excel file - use code interpreter
@@ -699,10 +755,14 @@ async def upload_file(
                         purpose="assistants"
                     )
                 
-                # Associate the file with the assistant
-                client.beta.assistants.files.create(
+                # Update the assistant with the new file ID specifically for code_interpreter
+                updated_file_ids = existing_file_ids + [file_obj.id]
+                client.beta.assistants.update(
                     assistant_id=assistant,
-                    file_id=file_obj.id
+                    tool_resources={
+                        "file_search": {"vector_store_ids": vector_store_ids},
+                        "code_interpreter": {"file_ids": updated_file_ids}
+                    }
                 )
                 
                 # If we have a thread, add file awareness
@@ -738,23 +798,14 @@ async def upload_file(
             
             # Try to add to vector store if possible (will likely fail but attempt)
             try:
-                # Check if there's a file_search resource
-                file_search_resource = getattr(assistant_obj.tool_resources, "file_search", None)
-                vector_store_ids = (
-                    file_search_resource.vector_store_ids
-                    if (file_search_resource and hasattr(file_search_resource, "vector_store_ids"))
-                    else []
-                )
-                
-                if vector_store_ids:
-                    with open(file_path, "rb") as file_stream:
-                        try:
-                            file_batch = client.beta.vector_stores.file_batches.upload_and_poll(
-                                vector_store_id=vector_store_ids[0],
-                                files=[file_stream]
-                            )
-                        except Exception as e:
-                            logging.warning(f"Could not add image to vector store: {e}")
+                with open(file_path, "rb") as file_stream:
+                    try:
+                        file_batch = client.beta.vector_stores.file_batches.upload_and_poll(
+                            vector_store_id=vector_store_id,
+                            files=[file_stream]
+                        )
+                    except Exception as e:
+                        logging.warning(f"Could not add image to vector store: {e}")
             except Exception as e:
                 logging.warning(f"Error with vector store for image: {e}")
             
@@ -768,37 +819,13 @@ async def upload_file(
             )
         
         # For other document types, use vector store
-        # Check if there's a file_search resource
-        file_search_resource = getattr(assistant_obj.tool_resources, "file_search", None)
-        vector_store_ids = (
-            file_search_resource.vector_store_ids
-            if (file_search_resource and hasattr(file_search_resource, "vector_store_ids"))
-            else []
-        )
-
-        if vector_store_ids:
-            # If a vector store already exists, reuse it
-            vector_store_id = vector_store_ids[0]
-        else:
-            # No vector store associated yet, create one
-            logging.info("No associated vector store found. Creating a new one.")
-            vector_store = client.beta.vector_stores.create(name=f"Assistant_{assistant}_Store")
-            vector_store_id = vector_store.id
-
-            # Ensure the 'file_search' tool is present in the assistant's tools
-            existing_tools = assistant_obj.tools if assistant_obj.tools else []
-            if not any(t["type"] == "file_search" for t in existing_tools):
-                existing_tools.append({"type": "file_search"})
-
-            # Update the assistant to associate with this new vector store
+        # Ensure the 'file_search' tool is present in the assistant's tools
+        existing_tools = assistant_obj.tools if assistant_obj.tools else []
+        if not any(t["type"] == "file_search" for t in existing_tools):
+            existing_tools.append({"type": "file_search"})
             client.beta.assistants.update(
                 assistant_id=assistant,
-                tools=existing_tools,
-                tool_resources={
-                    "file_search": {
-                        "vector_store_ids": [vector_store_id]
-                    }
-                }
+                tools=existing_tools
             )
 
         # For document files, upload to vector store
@@ -872,7 +899,9 @@ async def conversation(
                 3. **Document Files:**
                    - You can search these through the file_search tool
                    - Reference specific sections and content when answering questions
-                '''
+                ''',
+                tools=[{"type": "code_interpreter"}, {"type": "file_search"}],
+                tool_resources={"code_interpreter": {"file_ids": []}}
             )
             assistant = assistant_obj.id
 
@@ -952,7 +981,9 @@ async def chat(
                 3. **Document Files:**
                    - You can search these through the file_search tool
                    - Reference specific sections and content when answering questions
-                '''
+                ''',
+                tools=[{"type": "code_interpreter"}, {"type": "file_search"}],
+                tool_resources={"code_interpreter": {"file_ids": []}}
             )
             assistant = assistant_obj.id
 
@@ -1174,72 +1205,146 @@ async def trim_thread(request: Request):
 async def file_cleanup(request: Request):
     """
     Lists and deletes files older than 48 hours.
-    Simplified implementation with no summarization.
-    Maintains the same vector store.
-    Accepts both query parameters and form data.
+    Cleans up both vector store files and code interpreter files.
+    Accepts form data.
     """
     # Get parameters from form data
     form_data = await request.form()
     vector_store_id = form_data.get("vector_store_id")
+    assistant_id = form_data.get("assistant_id")  # Added to handle code interpreter files
     
-    if not vector_store_id:
-        raise HTTPException(status_code=400, detail="vector_store_id is required")
+    if not vector_store_id and not assistant_id:
+        raise HTTPException(status_code=400, detail="Either vector_store_id or assistant_id is required")
     
     client = create_client()
-    deleted_count = 0
-    skipped_count = 0
+    vs_deleted_count = 0
+    vs_skipped_count = 0
+    ci_deleted_count = 0
+    ci_skipped_count = 0
     
-    try:
-        # Step 1: Get all files in the vector store
-        file_batches = client.beta.vector_stores.file_batches.list(vector_store_id=vector_store_id)
-        
-        if not file_batches.data:
-            return JSONResponse({
-                "status": "No files found in the vector store",
-                "vector_store_id": vector_store_id
-            })
-        
-        # Get current time for age comparison
-        now = datetime.datetime.now()
-        
-        # Step 2: Process each file batch to find files older than 48 hours
-        for batch in file_batches.data:
-            # Calculate age in hours
-            batch_created = datetime.datetime.fromtimestamp(batch.created_at)
-            batch_age_hours = (now - batch_created).total_seconds() / 3600
+    # Get current time for age comparison
+    now = datetime.datetime.now()
+    
+    # Process vector store files if vector_store_id is provided
+    if vector_store_id:
+        try:
+            # Step 1: Get all files in the vector store
+            file_batches = client.beta.vector_stores.file_batches.list(vector_store_id=vector_store_id)
             
-            # Skip recent batches
-            if batch_age_hours <= 48:
-                skipped_count += 1
-                continue
-                
-            # Get files in this batch
-            files = client.beta.vector_stores.files.list(
-                vector_store_id=vector_store_id,
-                file_batch_id=batch.id
-            )
-            
-            # Delete files older than 48 hours
-            for file in files.data:
-                try:
-                    client.beta.vector_stores.files.delete(
+            if file_batches.data:
+                # Step 2: Process each file batch to find files older than 48 hours
+                for batch in file_batches.data:
+                    # Calculate age in hours
+                    batch_created = datetime.datetime.fromtimestamp(batch.created_at)
+                    batch_age_hours = (now - batch_created).total_seconds() / 3600
+                    
+                    # Skip recent batches
+                    if batch_age_hours <= 48:
+                        vs_skipped_count += 1
+                        continue
+                        
+                    # Get files in this batch
+                    files = client.beta.vector_stores.files.list(
                         vector_store_id=vector_store_id,
-                        file_id=file.id
+                        file_batch_id=batch.id
                     )
-                    deleted_count += 1
-                except Exception as e:
-                    logging.error(f"Error deleting file {file.id}: {e}")
-        
-        return JSONResponse({
-            "status": "File cleanup completed",
+                    
+                    # Delete files older than 48 hours
+                    for file in files.data:
+                        try:
+                            client.beta.vector_stores.files.delete(
+                                vector_store_id=vector_store_id,
+                                file_id=file.id
+                            )
+                            vs_deleted_count += 1
+                        except Exception as e:
+                            logging.error(f"Error deleting file {file.id} from vector store: {e}")
+        except Exception as e:
+            logging.error(f"Error cleaning up vector store files: {e}")
+    
+    # Process code interpreter files if assistant_id is provided
+    if assistant_id:
+        try:
+            # Get current assistant
+            assistant = client.beta.assistants.retrieve(assistant_id=assistant_id)
+            
+            # Check if it has code_interpreter tool resources
+            code_interpreter_resource = getattr(assistant.tool_resources, "code_interpreter", None)
+            if code_interpreter_resource and hasattr(code_interpreter_resource, "file_ids"):
+                file_ids = code_interpreter_resource.file_ids
+                
+                # No files to process
+                if not file_ids:
+                    logging.info(f"No code interpreter files found for assistant {assistant_id}")
+                else:
+                    # Process each file to determine age
+                    current_file_ids = []
+                    for file_id in file_ids:
+                        try:
+                            # Get file details
+                            file = client.files.retrieve(file_id=file_id)
+                            
+                            # Calculate age in hours
+                            file_created = datetime.datetime.fromtimestamp(file.created_at)
+                            file_age_hours = (now - file_created).total_seconds() / 3600
+                            
+                            # Skip recent files
+                            if file_age_hours <= 48:
+                                current_file_ids.append(file_id)
+                                ci_skipped_count += 1
+                                continue
+                                
+                            # Delete old files
+                            try:
+                                client.files.delete(file_id=file_id)
+                                ci_deleted_count += 1
+                            except Exception as e:
+                                logging.error(f"Error deleting file {file_id} from code interpreter: {e}")
+                                # Keep it in the list if deletion fails
+                                current_file_ids.append(file_id)
+                                
+                        except Exception as e:
+                            logging.error(f"Error processing file {file_id}: {e}")
+                            # Keep it in the list if processing fails
+                            current_file_ids.append(file_id)
+                    
+                    # Update the assistant with the remaining file IDs
+                    if len(current_file_ids) != len(file_ids):
+                        tool_resources = assistant.tool_resources
+                        
+                        # Get vector store IDs if they exist
+                        file_search_resource = getattr(tool_resources, "file_search", None)
+                        vector_store_ids = (
+                            file_search_resource.vector_store_ids
+                            if (file_search_resource and hasattr(file_search_resource, "vector_store_ids"))
+                            else []
+                        )
+                        
+                        # Update the assistant
+                        client.beta.assistants.update(
+                            assistant_id=assistant_id,
+                            tool_resources={
+                                "file_search": {"vector_store_ids": vector_store_ids},
+                                "code_interpreter": {"file_ids": current_file_ids}
+                            }
+                        )
+                        logging.info(f"Updated assistant {assistant_id} with {len(current_file_ids)} code interpreter files")
+        except Exception as e:
+            logging.error(f"Error cleaning up code interpreter files: {e}")
+    
+    return JSONResponse({
+        "status": "File cleanup completed",
+        "vector_store": {
             "vector_store_id": vector_store_id,
-            "files_deleted": deleted_count,
-            "batches_skipped": skipped_count
-        })
-        
-    except Exception as e:
-        logging.error(f"Error in file-cleanup: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to clean up files: {str(e)}")
+            "files_deleted": vs_deleted_count,
+            "batches_skipped": vs_skipped_count
+        },
+        "code_interpreter": {
+            "assistant_id": assistant_id,
+            "files_deleted": ci_deleted_count,
+            "files_skipped": ci_skipped_count
+        }
+    })
 
 
 if __name__ == "__main__":
