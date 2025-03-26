@@ -609,9 +609,6 @@ async def co_pilot(request: Request, **kwargs): # Using **kwargs is okay but les
                     if thread_id:
                         await add_file_awareness(client, thread_id, file_info)
                     logging.info(f"Added '{filename}' (ID: {uploaded_file.id}) to code interpreter for assistant {assistant_id}")
-                else:
-                    logging.info(f"File '{filename}' (ID: {uploaded_file.id}) already associated with assistant {assistant_id}")
-
 
                 elif is_image:
                     # Image analysis requires a thread context
