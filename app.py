@@ -43,7 +43,7 @@ async def image_analysis(client, image_data: bytes, filename: str, prompt: Optio
         )
         combined_prompt = f"{default_prompt} {prompt}" if prompt else default_prompt
         
-        # Use the existing client instead of creating a new vision client
+        # Use the existing client instead of creating a new one
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{
@@ -122,7 +122,7 @@ async def add_file_awareness(client, thread_id, file_info):
         awareness_message = f"FILE INFORMATION: A file named '{file_name}' of type '{file_type}' has been uploaded. "
         
         if file_type in ["csv", "excel"]:
-            awareness_message += f"This file is available for analysis using the code interpreter. File ID: {file_id}."
+            awareness_message += f"This file is available for analysis using the code interpreter."
             if file_type == "excel":
                 awareness_message += " This is an Excel file with potentially multiple sheets."
         elif file_type == "image":
@@ -513,32 +513,22 @@ async def co_pilot(request: Request, **kwargs):
             
                             # Get the assistant to update its code_interpreter file_ids
             assistant_obj = client.beta.assistants.retrieve(assistant_id=assistant_id)
-            tool_resources = assistant_obj.tool_resources if hasattr(assistant_obj, "tool_resources") else None
+            tool_resources = assistant_obj.tool_resources
             code_interpreter_file_ids = []
             
-            if tool_resources and hasattr(tool_resources, "code_interpreter"):
-                code_interpreter = tool_resources.code_interpreter
-                if hasattr(code_interpreter, "file_ids"):
-                    code_interpreter_file_ids = list(code_interpreter.file_ids)
+            if hasattr(tool_resources, "code_interpreter") and tool_resources.code_interpreter is not None:
+                if hasattr(tool_resources.code_interpreter, "file_ids"):
+                    code_interpreter_file_ids = list(tool_resources.code_interpreter.file_ids)
             
             # Add the new file
             code_interpreter_file_ids.append(uploaded_file.id)
-            
-            # Prepare file_search resource
-            file_search_resource = {}
-            if tool_resources and hasattr(tool_resources, "file_search"):
-                file_search = tool_resources.file_search
-                if hasattr(file_search, "vector_store_ids"):
-                    file_search_resource = {"vector_store_ids": list(file_search.vector_store_ids)}
-            elif vector_store_id:
-                file_search_resource = {"vector_store_ids": [vector_store_id]}
             
             # Update the assistant
             client.beta.assistants.update(
                 assistant_id=assistant_id,
                 tool_resources={
                     "code_interpreter": {"file_ids": code_interpreter_file_ids},
-                    "file_search": file_search_resource
+                    "file_search": {"vector_store_ids": [vector_store_id] if vector_store_id else []}
                 }
             )
             
@@ -609,7 +599,7 @@ async def co_pilot(request: Request, **kwargs):
 
 
 @app.post("/upload-file")
-async def upload_file(file: UploadFile = Form(...), assistant: str = Form(...), **kwargs):
+async def upload_file(file: UploadFile = Form(...), assistant: str = Form(...), session: Optional[str] = Form(None), context: Optional[str] = Form(None), prompt: Optional[str] = Form(None)):
     """
     Uploads a file and associates it with the given assistant.
     Handles different file types appropriately:
@@ -618,10 +608,8 @@ async def upload_file(file: UploadFile = Form(...), assistant: str = Form(...), 
     - Other files are sent to vector store
     """
     client = create_client()
-    # Get context if provided (in kwargs or form data)
-    context = kwargs.get("context", None)
-    thread_id = kwargs.get("session", None)
-    prompt = kwargs.get("prompt", None)  # Optional prompt for image analysis
+    # Using form parameters directly instead of kwargs
+    thread_id = session  # Optional thread id / session
 
     try:
         # Save the uploaded file locally and get the data
@@ -630,10 +618,12 @@ async def upload_file(file: UploadFile = Form(...), assistant: str = Form(...), 
         with open(file_path, "wb") as temp_file:
             temp_file.write(file_content)
             
-        # Check if it's CSV or Excel
+        # Determine file type
+        file_ext = os.path.splitext(file.filename.lower())[1]
         is_csv = file_ext == '.csv'
         is_excel = file_ext in ['.xlsx', '.xls', '.xlsm']
         is_image = file_ext in ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'] or (file.content_type and file.content_type.startswith('image/'))
+        is_pdf = file_ext in ['.pdf', '.doc', '.docx', '.txt']  # Explicitly identify document types for vector store
         
         # Retrieve the assistant
         assistant_obj = client.beta.assistants.retrieve(assistant_id=assistant)
@@ -652,14 +642,15 @@ async def upload_file(file: UploadFile = Form(...), assistant: str = Form(...), 
             logging.info(f"Added code_interpreter tool to assistant {assistant}")
         
         # Check if there's a file_search resource for vector store files
-        tool_resources = assistant_obj.tool_resources if hasattr(assistant_obj, "tool_resources") else None
+        file_search_resource = None
         vector_store_ids = []
         
-        if tool_resources and hasattr(tool_resources, "file_search"):
-            file_search = tool_resources.file_search
-            if hasattr(file_search, "vector_store_ids"):
-                vector_store_ids = list(file_search.vector_store_ids)
-        
+        if hasattr(assistant_obj, "tool_resources") and assistant_obj.tool_resources is not None:
+            if hasattr(assistant_obj.tool_resources, "file_search") and assistant_obj.tool_resources.file_search is not None:
+                file_search_resource = assistant_obj.tool_resources.file_search
+                if hasattr(file_search_resource, "vector_store_ids"):
+                    vector_store_ids = list(file_search_resource.vector_store_ids)
+
         if not vector_store_ids:
             # No vector store associated yet, create one
             logging.info("No associated vector store found. Creating a new one.")
@@ -695,18 +686,17 @@ async def upload_file(file: UploadFile = Form(...), assistant: str = Form(...), 
                 )
             
             # Get existing code_interpreter file_ids
-            tool_resources = assistant_obj.tool_resources if hasattr(assistant_obj, "tool_resources") else None
             code_interpreter_file_ids = []
             
-            if tool_resources and hasattr(tool_resources, "code_interpreter"):
-                code_interpreter = tool_resources.code_interpreter
-                if hasattr(code_interpreter, "file_ids"):
-                    code_interpreter_file_ids = list(code_interpreter.file_ids)
+            if hasattr(assistant_obj, "tool_resources") and assistant_obj.tool_resources is not None:
+                if hasattr(assistant_obj.tool_resources, "code_interpreter") and assistant_obj.tool_resources.code_interpreter is not None:
+                    if hasattr(assistant_obj.tool_resources.code_interpreter, "file_ids"):
+                        code_interpreter_file_ids = list(assistant_obj.tool_resources.code_interpreter.file_ids)
             
             # Add the new file
             code_interpreter_file_ids.append(uploaded_file.id)
             
-            # Update the assistant with file search and code interpreter resources
+            # Update the assistant
             client.beta.assistants.update(
                 assistant_id=assistant,
                 tool_resources={
@@ -762,10 +752,10 @@ async def upload_file(file: UploadFile = Form(...), assistant: str = Form(...), 
                 },
                 status_code=200
             )
-        elif is_pdf_or_doc or not (is_csv or is_excel or is_image):
-            # Upload to vector store for PDF/document files and any other file types
+        elif is_pdf or not (is_csv or is_excel or is_image):
+            # Upload to vector store for document types and any other non-CSV/Excel/Image files
             with open(file_path, "rb") as file_stream:
-                file_batch = client.beta.vector_stores.file_batches.upload_and_poll(
+                client.beta.vector_stores.file_batches.upload_and_poll(
                     vector_store_id=vector_store_id,
                     files=[file_stream]
                 )
@@ -779,7 +769,7 @@ async def upload_file(file: UploadFile = Form(...), assistant: str = Form(...), 
                 }
                 await add_file_awareness(client, thread_id, file_info)
             
-            logging.info(f"File uploaded to vector store: status={file_batch.status}")
+            logging.info(f"File uploaded to vector store: {file.filename}")
             
             return JSONResponse(
                 {
@@ -805,13 +795,11 @@ async def conversation(
     session: Optional[str] = None,
     prompt: Optional[str] = None,
     assistant: Optional[str] = None,
-    context: Optional[str] = None,  # New: Optional context parameter
-    **kwargs
+    context: Optional[str] = None  # Optional context parameter
 ):
     """
     Handles conversation queries. 
     Preserves the original query parameters and output format.
-    Additional parameters are accepted but ignored.
     """
     client = create_client()
 
@@ -873,13 +861,11 @@ async def chat(
     session: Optional[str] = None,
     prompt: Optional[str] = None,
     assistant: Optional[str] = None,
-    context: Optional[str] = None,  # New: Optional context parameter
-    **kwargs
+    context: Optional[str] = None  # Optional context parameter
 ):
     """
     Handles conversation queries.
     Preserves the original query parameters and output format.
-    Additional parameters are accepted but ignored.
     """
     client = create_client()
 
