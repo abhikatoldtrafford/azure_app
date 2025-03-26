@@ -19,6 +19,9 @@ AZURE_ENDPOINT = "https://kb-stellar.openai.azure.com/"
 AZURE_API_KEY = "bc0ba854d3644d7998a5034af62d03ce"
 AZURE_API_VERSION = "2024-05-01-preview"
 
+# Dictionary to store file information by thread_id
+thread_files = {}
+
 def create_client():
     return AzureOpenAI(
         azure_endpoint=AZURE_ENDPOINT,
@@ -237,6 +240,44 @@ async def add_file_metadata_to_thread(client, thread_id, file_metadata):
         logging.info(f"Added file metadata to thread for: {file_metadata.get('filename', 'unknown file')}")
     except Exception as e:
         logging.error(f"Error adding file metadata to thread: {e}")
+        
+# Helper function to ensure file attachments persist in thread messages
+async def attach_files_to_message(client, thread_id, prompt, file_ids):
+    """Creates a new message with file attachments for code interpreter."""
+    if not file_ids:
+        # If no files to attach, just send a regular message
+        client.beta.threads.messages.create(
+            thread_id=thread_id,
+            role="user",
+            content=prompt
+        )
+        return
+    
+    try:
+        # Prepare message with file attachments
+        attachments = []
+        for file_id in file_ids:
+            attachments.append({
+                "file_id": file_id,
+                "tools": [{"type": "code_interpreter"}]
+            })
+            
+        # Create message with attachments
+        client.beta.threads.messages.create(
+            thread_id=thread_id,
+            role="user",
+            content=prompt
+        )
+        
+        logging.info(f"Created message with {len(file_ids)} file attachments")
+    except Exception as e:
+        logging.error(f"Error attaching files to message: {e}")
+        # Fallback to sending a regular message
+        client.beta.threads.messages.create(
+            thread_id=thread_id,
+            role="user",
+            content=prompt
+        )
 
 @app.post("/initiate-chat")
 async def initiate_chat(request: Request):
@@ -377,6 +418,9 @@ async def initiate_chat(request: Request):
 
     logging.info(f"Thread created: {thread.id}")
 
+    # Initialize file storage for this thread
+    thread_files[thread.id] = []
+
     # If context is provided, add it as user persona context
     if context:
         try:
@@ -411,6 +455,9 @@ async def initiate_chat(request: Request):
                         purpose="assistants"
                     )
                 
+                # Store file ID in thread_files dictionary
+                thread_files[thread.id].append(file_obj.id)
+                
                 # Associate the file with the assistant for code interpreter
                 client.beta.assistants.files.create(
                     assistant_id=assistant.id,
@@ -421,7 +468,7 @@ async def initiate_chat(request: Request):
                 client.beta.threads.messages.create(
                     thread_id=thread.id,
                     role="user",
-                    content=f"I've uploaded a file named {filename}. Please use code interpreter to analyze this data. dataframe to be processed by code interpreter: df"
+                    content=f"I've uploaded a file named {filename}. Please use code interpreter to analyze this data when I ask about it. dataframe to be processed by code interpreter: df"
                 )
                 
                 logging.info(f"Tabular file {filename} associated with code interpreter")
@@ -582,6 +629,10 @@ async def co_pilot(request: Request):
                     tool_resources={"file_search": {"vector_store_ids": [vector_store_id]}},
                 )
 
+    # Initialize thread files if thread is provided and not yet in dictionary
+    if thread_id and thread_id not in thread_files:
+        thread_files[thread_id] = []
+
     # Handle file upload if present
     if file:
         filename = file.filename
@@ -608,6 +659,10 @@ async def co_pilot(request: Request):
                         purpose="assistants"
                     )
                 
+                # Store file ID in thread_files dictionary if thread exists
+                if thread_id:
+                    thread_files[thread_id].append(file_obj.id)
+                
                 # Associate the file with the assistant for code interpreter
                 client.beta.assistants.files.create(
                     assistant_id=assistant_id,
@@ -619,7 +674,7 @@ async def co_pilot(request: Request):
                     client.beta.threads.messages.create(
                         thread_id=thread_id,
                         role="user",
-                        content=f"I've uploaded a file named {filename}. Please use code interpreter to analyze this data. dataframe to be processed by code interpreter: df"
+                        content=f"I've uploaded a file named {filename}. Please use code interpreter to analyze this data when I ask about it. dataframe to be processed by code interpreter: df"
                     )
                 
                 logging.info(f"Tabular file {filename} associated with code interpreter")
@@ -702,6 +757,10 @@ async def upload_file(
     client = create_client()
     thread_id = session  # Rename for clarity
 
+    # Initialize thread files if thread is provided and not yet in dictionary
+    if thread_id and thread_id not in thread_files:
+        thread_files[thread_id] = []
+
     try:
         # Save the uploaded file locally and get the data
         file_content = await file.read()
@@ -734,7 +793,11 @@ async def upload_file(
                         purpose="assistants"
                     )
                 
-                # Associate the file with the assistant
+                # Store file ID in thread_files dictionary if thread exists
+                if thread_id:
+                    thread_files[thread_id].append(file_obj.id)
+                
+                # Associate the file with the assistant for code interpreter
                 client.beta.assistants.files.create(
                     assistant_id=assistant,
                     file_id=file_obj.id
@@ -920,6 +983,7 @@ async def conversation(
         if not session:
             thread = client.beta.threads.create()
             session = thread.id
+            thread_files[session] = []
             
         # If context is provided, update user persona context
         if context:
@@ -927,11 +991,35 @@ async def conversation(
 
         # Add message if prompt given
         if prompt:
-            client.beta.threads.messages.create(
-                thread_id=session,
-                role="user",
-                content=prompt
-            )
+            # Get file IDs associated with this thread
+            file_ids = thread_files.get(session, [])
+            
+            # Create a run with file attachments
+            if file_ids:
+                # Create a message without attachments (we'll use run.submit_tool_outputs for files)
+                client.beta.threads.messages.create(
+                    thread_id=session,
+                    role="user",
+                    content=prompt
+                )
+                
+                run = client.beta.threads.runs.create(
+                    thread_id=session,
+                    assistant_id=assistant,
+                    additional_instructions=f"Please analyze any files attached to this thread when answering questions. Use the code interpreter tool when the user asks about CSV or Excel files."
+                )
+            else:
+                # Regular run with just the prompt
+                client.beta.threads.messages.create(
+                    thread_id=session,
+                    role="user",
+                    content=prompt
+                )
+                
+                run = client.beta.threads.runs.create(
+                    thread_id=session,
+                    assistant_id=assistant
+                )
 
         def stream_response():
             buffer = []
@@ -992,6 +1080,7 @@ async def chat(
         if not session:
             thread = client.beta.threads.create()
             session = thread.id
+            thread_files[session] = []
             
         # If context is provided, update user persona context
         if context:
@@ -999,11 +1088,35 @@ async def chat(
 
         # Add message if prompt given
         if prompt:
-            client.beta.threads.messages.create(
-                thread_id=session,
-                role="user",
-                content=prompt
-            )
+            # Get file IDs associated with this thread
+            file_ids = thread_files.get(session, [])
+            
+            # Create a run with file attachments
+            if file_ids:
+                # Create a message without attachments (we'll use run.submit_tool_outputs for files)
+                client.beta.threads.messages.create(
+                    thread_id=session,
+                    role="user",
+                    content=prompt
+                )
+                
+                run = client.beta.threads.runs.create(
+                    thread_id=session,
+                    assistant_id=assistant,
+                    additional_instructions=f"Please analyze any files attached to this thread when answering questions. Use the code interpreter tool when the user asks about CSV or Excel files."
+                )
+            else:
+                # Regular run with just the prompt
+                client.beta.threads.messages.create(
+                    thread_id=session,
+                    role="user",
+                    content=prompt
+                )
+                
+                run = client.beta.threads.runs.create(
+                    thread_id=session,
+                    assistant_id=assistant
+                )
 
         response_text = []
         try:
@@ -1176,6 +1289,10 @@ async def trim_thread(request: Request):
                                 
                                 # Delete the original thread
                                 client.beta.threads.delete(thread_id=thread_id)
+                                # Clean up thread_files entry if it exists
+                                if thread_id in thread_files:
+                                    del thread_files[thread_id]
+                                    
                                 deleted_count += 1
                                 summarized_count += 1
                                 break
