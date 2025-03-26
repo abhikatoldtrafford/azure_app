@@ -14,10 +14,6 @@ import json
 
 app = FastAPI()
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
 # Azure OpenAI client configuration
 AZURE_ENDPOINT = "https://kb-stellar.openai.azure.com/"
 AZURE_API_KEY = "bc0ba854d3644d7998a5034af62d03ce"
@@ -103,9 +99,12 @@ async def image_analysis(client, image_data: bytes, filename: str, prompt: Optio
         mime = f"image/{ext[1:]}" if ext and ext[1:] in ['jpg', 'jpeg', 'png', 'gif', 'webp'] else "image/jpeg"
         data_url = f"data:{mime};base64,{b64_img}"
         
+        # Add OCR prompt to always extract text if visible
         default_prompt = (
-            "Analyze this image and provide a thorough summary including all elements. "
-            "If there's any text visible, include all the textual content (perform OCR). Describe:"
+            "Analyze this image thoroughly and provide a detailed description. "
+            "If there's any text visible in the image, perform OCR and extract ALL text content word-for-word. "
+            "For documents, receipts or invoices, list every field and value visible. "
+            "Provide a comprehensive analysis including visual elements, text content, and overall context."
         )
         combined_prompt = f"{default_prompt} {prompt}" if prompt else default_prompt
         
@@ -126,7 +125,7 @@ async def image_analysis(client, image_data: bytes, filename: str, prompt: Optio
                     {"type": "image_url", "image_url": {"url": data_url, "detail": "high"}}
                 ]
             }],
-            max_tokens=1000
+            max_tokens=1000  # Increased token limit for more detailed analysis
         )
         
         analysis_text = response.choices[0].message.content
@@ -179,117 +178,53 @@ async def update_context(client, thread_id, context):
         logging.error(f"Error updating context: {e}")
         # Continue the flow even if context update fails
 
-# Function to associate files with an assistant
-async def associate_file_with_assistant(client, file_id, assistant_id):
-    """Associate a file with an assistant using the correct API method"""
+# Helper function to add file awareness to thread
+async def add_file_awareness(client, thread_id, file_info):
+    """Add information about uploaded files to the thread so the assistant is aware of them."""
+    if not thread_id or not file_info:
+        return
+    
     try:
-        # Get current file IDs if any
-        assistant_obj = client.beta.assistants.retrieve(assistant_id=assistant_id)
-        existing_file_ids = getattr(assistant_obj, "file_ids", []) or []
-        
-        # Add the new file ID to the list (avoid duplicates)
-        if file_id not in existing_file_ids:
-            updated_file_ids = existing_file_ids + [file_id]
-            
-            # Update the assistant with the new file IDs
-            client.beta.assistants.update(
-                assistant_id=assistant_id,
-                file_ids=updated_file_ids
-            )
-            
-            logging.info(f"File {file_id} associated with assistant {assistant_id}")
-        else:
-            logging.info(f"File {file_id} already associated with assistant {assistant_id}")
-        return True
-    except Exception as e:
-        logging.error(f"Error associating file with assistant: {e}")
-        return False
-
-# Function to create a message with file attachment
-async def create_message_with_attachment(client, thread_id, content, file_id):
-    """Create a message with a file attachment in a thread"""
-    try:
-        # First attempt with attachments field
-        try:
-            client.beta.threads.messages.create(
-                thread_id=thread_id,
-                role="user",
-                content=content,
-                attachments=[
-                    {
-                        "file_id": file_id,
-                        "tools": [{"type": "code_interpreter"}]
-                    }
-                ]
-            )
-            logging.info(f"Message with attachment created in thread {thread_id}")
-            return True
-        except Exception as e:
-            logging.error(f"Error with attachments approach: {e}")
-            
-            # Try alternative approach with file_ids
-            client.beta.threads.messages.create(
-                thread_id=thread_id,
-                role="user",
-                content=content,
-                file_ids=[file_id]
-            )
-            logging.info(f"Message with file_ids created in thread {thread_id}")
-            return True
-    except Exception as e:
-        logging.error(f"All approaches to create message with attachment failed: {e}")
-        
-        # If all attachment approaches fail, just create a regular message
-        try:
-            client.beta.threads.messages.create(
-                thread_id=thread_id,
-                role="user",
-                content=f"{content} (Note: File {file_id} is available for analysis.)"
-            )
-            logging.info(f"Fallback message created in thread {thread_id}")
-            return True
-        except Exception as e_fallback:
-            logging.error(f"Fallback message creation failed: {e_fallback}")
-            return False
-
-# Add file reference to thread
-async def add_file_reference(client, thread_id, file_info):
-    """Add a file reference to the thread so assistant knows what files are available."""
-    try:
-        if not thread_id or not file_info:
-            return
-            
         file_type = file_info.get("type", "unknown")
         filename = file_info.get("filename", "unknown")
         
-        message = f"FILE REFERENCE: A {file_type} file named '{filename}' has been uploaded and is available for analysis."
+        # Create a message that informs the assistant about the available file
+        message = f"FILE NOTIFICATION: A new file has been uploaded and is available: {filename} (Type: {file_type}). "
         
-        if file_type == "tabular":
-            details = file_info.get("details", {})
-            if details:
-                if "sheets" in details and details["sheets"]:
-                    message += f" It is an Excel file with sheets: {', '.join(details['sheets'])}."
-                elif "column_names" in details and details["column_names"]:
-                    message += f" It is a CSV file with columns: {', '.join(details['column_names'])}."
-                message += " Use the code_interpreter tool to analyze this file."
-        elif file_type == "image":
-            message += f" Image analysis/OCR result: {file_info.get('analysis', 'No analysis available')}"
-        else:
-            message += " Use the file_search tool to find information in this document."
+        if file_type == "csv":
+            # Add CSV specific details
+            columns = file_info.get("columns", [])
+            shape = file_info.get("shape", (0, 0))
+            message += f"This is a CSV file with {shape[0]} rows and {shape[1]} columns. "
+            message += f"The columns are: {', '.join(columns)}. "
+            message += "You have access to this file through the code_interpreter tool. When asked about this file, use code_interpreter to analyze it."
             
-        # Add the file reference to the thread
+        elif file_type == "excel":
+            # Add Excel specific details
+            sheets = file_info.get("sheets", [])
+            message += f"This is an Excel file with {len(sheets)} sheets: {', '.join(sheets)}. "
+            message += "You have access to this file through the code_interpreter tool. When asked about this file, use code_interpreter to analyze it."
+            
+        elif file_type == "image":
+            # Add image specific details
+            analysis = file_info.get("analysis", "No analysis available")
+            message += f"This is an image file. An analysis has been stored: {analysis}"
+            
+        else:
+            message += "This file is available through file_search."
+        
+        # Add the message to the thread
         client.beta.threads.messages.create(
             thread_id=thread_id,
             role="user",
             content=message,
-            metadata={"type": "file_reference", "filename": filename}
+            metadata={"type": "file_notification"}
         )
         
-        logging.info(f"Added file reference for {filename} to thread {thread_id}")
-        return True
+        logging.info(f"Added file awareness for {filename} to thread {thread_id}")
     except Exception as e:
-        logging.error(f"Error adding file reference: {e}")
-        return False
+        logging.error(f"Error adding file awareness to thread: {e}")
+        # Continue the flow even if this fails
 
 @app.post("/initiate-chat")
 async def initiate_chat(request: Request):
@@ -313,28 +248,22 @@ async def initiate_chat(request: Request):
     system_prompt = '''
         You are a highly skilled Product Management AI Assistant and Co-Pilot. Your primary responsibilities include generating comprehensive Product Requirements Documents (PRDs) and providing insightful answers to a wide range of product-related queries. You seamlessly integrate information from uploaded files and your extensive knowledge base to deliver contextually relevant and actionable insights.
 
-        ### **File Handling Guidelines:**
+        ### **File Handling Instructions:**
 
-        - **CSV and Excel Files:**
-          - When a user refers to any CSV or Excel file by name, ALWAYS use the code_interpreter tool to analyze it.
-          - Access these files directly, analyze them, and provide insights based on their contents.
-          - Never claim you can't access a CSV or Excel file that has been mentioned in the conversation.
-          - Generate appropriate visualizations when useful.
-
-        - **Image Files:**
-          - For any uploaded images, use the provided OCR/analysis text that has been extracted.
-          - When a user refers to an image file by name, respond as if you can directly see the image.
-          - Never claim you can't access an image that has been mentioned in the conversation.
-          - Reference the comprehensive analysis already performed on these images.
-
-        - **Other Document Files:**
-          - For PDFs, DOCs, TXTs, and other document files, use the file_search tool to extract relevant information.
-          - When a user refers to a document by name, search for its contents using file_search.
-
-        - **File References:**
-          - Pay careful attention to file references in the conversation.
-          - When a user mentions any part of a filename, associate it with the full file that was uploaded.
-          - For example, if "sales_data_2023.csv" was uploaded and the user asks about "sales data", recognize this refers to the CSV file.
+        1. **CSV and Excel Files:**
+           - You have access to these files through the code_interpreter tool
+           - When asked about data in these files, ALWAYS use code_interpreter to analyze them
+           - Use the exact filename when referencing these files in your code
+           - Users may refer to files by partial names or extensions - match them appropriately
+        
+        2. **Image Files:**
+           - When users ask about images, provide the full analysis that was performed
+           - Users may refer to images by partial filenames - match appropriately
+           - Always include text extracted from images when present
+        
+        3. **Document Files:**
+           - You can search these through the file_search tool
+           - Reference specific sections and content when answering questions
 
         ### **Primary Tasks:**
 
@@ -367,18 +296,18 @@ async def initiate_chat(request: Request):
             - Maintain a balance between technical detail and accessibility, ensuring responses are understandable yet informative.
 
         3. **Data Analysis with Code Interpreter:**
-        - When a user asks about any CSV or Excel file, ALWAYS use the code_interpreter tool to analyze the data.
-        - Perform appropriate data analysis based on the query, including statistical summaries and visualizations.
-        - Present analysis results in a clear, organized manner.
-        - Never claim you don't have access to a CSV or Excel file that has been referenced.
+        - When asked about CSV or Excel files, ALWAYS use the code_interpreter tool to analyze them
+        - When users mention specific files by name or even partial names, identify the correct file and use it
+        - Present your analysis results in a clear, organized manner
+        - If users ask about data without specifying the file, infer which file they are referring to
 
         ### **Behavioral Guidelines:**
 
         - **File Awareness:**
-        - Always maintain awareness of all files that have been uploaded.
-        - When a user refers to a file, even partially (e.g., "the CSV" or "the image"), connect this to the specific file that was uploaded.
-        - NEVER claim you don't have access to a file that has been mentioned earlier in the conversation.
-
+        - Maintain awareness of all files that have been uploaded
+        - When users refer to files by name (even partial names), understand which file they mean
+        - If a user asks about a specific file, assume they want you to analyze it
+        
         - **Contextual Awareness:**
         - Always consider the context provided by the uploaded files and previous interactions.
         - Adapt your responses based on the specific needs and preferences of the user.
@@ -391,7 +320,11 @@ async def initiate_chat(request: Request):
         - Maintain a professional, clear, and concise communication style.
         - Ensure all interactions are respectful, objective, and goal-oriented.
 
-        By adhering to these guidelines, you will function as an effective Product Management AI Assistant, delivering high-quality PRDs and insightful answers that closely mimic the expertise of a seasoned product manager.
+        - **Error Handling:**
+        - If you cannot find a file the user mentions, ask them to clarify or re-upload it
+        - Clearly indicate when you are making assumptions due to missing information
+
+        By adhering to these guidelines, you will function as an effective Product Management AI Assistant, delivering high-quality insights and analysis.
         '''
     # Create the assistant
     try:
@@ -430,101 +363,76 @@ async def initiate_chat(request: Request):
         filename = file.filename
         file_path = os.path.join('/tmp/', filename)
         with open(file_path, 'wb') as f:
-            file_content = await file.read()
-            f.write(file_content)
+            f.write(await file.read())
             
+        # Check file type and process accordingly
+        file_info = {"filename": filename}
+        
         # Check if it's a tabular file (CSV/Excel)
         if is_tabular_file(filename):
             # Process the file with the code interpreter directly
             try:
-                # Process tabular data to get file info
+                # Process tabular data for metadata
                 tabular_data = await process_tabular_data(file_path, filename)
+                file_info.update(tabular_data)
                 
-                # Upload file to OpenAI
+                # Upload file for code interpreter
                 with open(file_path, "rb") as file_stream:
                     file_obj = client.files.create(
                         file=file_stream,
                         purpose="assistants"
                     )
                 
-                # Associate file with assistant
-                await associate_file_with_assistant(client, file_obj.id, assistant.id)
-                
-                # Add file reference to thread
-                file_info = {
-                    "type": "tabular",
-                    "filename": filename,
-                    "details": {
-                        "rows": tabular_data.get("shape", (0, 0))[0] if "shape" in tabular_data else 0,
-                        "columns": len(tabular_data.get("columns", [])) if "columns" in tabular_data else 0,
-                        "column_names": tabular_data.get("columns", []),
-                        "sheets": tabular_data.get("sheets", []) if "sheets" in tabular_data else []
-                    }
-                }
-                await add_file_reference(client, thread.id, file_info)
-                
-                # Create message to instruct code interpreter to process the file
-                await create_message_with_attachment(
-                    client, 
-                    thread.id, 
-                    f"I've uploaded a file named {filename}. Please analyze this data using the code_interpreter tool. This file is now available for analysis throughout our conversation whenever I refer to {filename}.",
-                    file_obj.id
+                # Associate the file with the assistant for code interpreter
+                client.beta.assistants.files.create(
+                    assistant_id=assistant.id,
+                    file_id=file_obj.id
                 )
+                
+                # Add message about the file to make the assistant aware of it
+                await add_file_awareness(client, thread.id, file_info)
                 
                 logging.info(f"Tabular file {filename} associated with code interpreter")
             except Exception as e:
                 logging.error(f"Error processing tabular file: {e}")
-                
+        
         # Check if it's an image file
-        elif is_image_file(filename, None):
+        elif is_image_file(filename):
             try:
                 # Analyze the image
-                analysis_result = await image_analysis(client, file_content, filename)
+                with open(file_path, "rb") as file_stream:
+                    file_content = file_stream.read()
                 
-                # Add file reference with analysis to thread
-                file_info = {
-                    "type": "image",
-                    "filename": filename,
-                    "analysis": analysis_result
-                }
-                await add_file_reference(client, thread.id, file_info)
+                analysis_text = await image_analysis(client, file_content, filename)
+                file_info.update({"type": "image", "analysis": analysis_text})
                 
-                # Create message about the image
-                client.beta.threads.messages.create(
-                    thread_id=thread.id,
-                    role="user",
-                    content=f"I've uploaded an image named {filename}. Here's what it contains: {analysis_result}"
-                )
+                # Add message about the image analysis
+                await add_file_awareness(client, thread.id, file_info)
+                
+                # Also add to vector store if possible
+                try:
+                    with open(file_path, "rb") as file_stream:
+                        file_batch = client.beta.vector_stores.file_batches.upload_and_poll(
+                            vector_store_id=vector_store.id, 
+                            files=[file_stream]
+                        )
+                except Exception as e:
+                    logging.warning(f"Could not add image to vector store: {e}")
                 
                 logging.info(f"Image file {filename} analyzed and added to thread")
             except Exception as e:
                 logging.error(f"Error processing image file: {e}")
+                
         else:
             # Normal file upload to vector store for file_search
-            try:
-                with open(file_path, "rb") as file_stream:
-                    file_batch = client.beta.vector_stores.file_batches.upload_and_poll(
-                        vector_store_id=vector_store.id, 
-                        files=[file_stream]
-                    )
-                    
-                # Add file reference to thread
-                file_info = {
-                    "type": "document",
-                    "filename": filename
-                }
-                await add_file_reference(client, thread.id, file_info)
-                
-                # Create message about the document
-                client.beta.threads.messages.create(
-                    thread_id=thread.id,
-                    role="user",
-                    content=f"I've uploaded a document named {filename}. The document has been processed and is now available for reference whenever I refer to this document."
+            with open(file_path, "rb") as file_stream:
+                file_batch = client.beta.vector_stores.file_batches.upload_and_poll(
+                    vector_store_id=vector_store.id, 
+                    files=[file_stream]
                 )
-                
-                logging.info(f"Document file {filename} uploaded to vector store")
-            except Exception as e:
-                logging.error(f"Error uploading document to vector store: {e}")
+            file_info.update({"type": "document"})
+            await add_file_awareness(client, thread.id, file_info)
+            logging.info(f"Document file {filename} uploaded to vector store")
 
     res = {
         "assistant": assistant.id,
@@ -559,25 +467,26 @@ async def co_pilot(request: Request):
             vector_store = client.beta.vector_stores.create(name="demo")
             vector_store_id = vector_store.id
         base_prompt = '''
-        You are a product management AI assistant, a product co-pilot.
+        You are a product management AI assistant, a product co-pilot. 
         
-        ### **File Handling Guidelines:**
+        ### **File Handling Instructions:**
 
-        - **CSV and Excel Files:**
-          - When a user refers to any CSV or Excel file by name, ALWAYS use the code_interpreter tool to analyze it.
-          - Access these files directly and never claim you can't access a CSV or Excel file.
-
-        - **Image Files:**
-          - For any uploaded images, use the provided OCR/analysis text that has been extracted.
-          - When a user refers to an image file by name, respond as if you can directly see the image.
-
-        - **Other Document Files:**
-          - For PDFs, DOCs, TXTs, and other document files, use the file_search tool to extract relevant information.
-
-        - **File References:**
-          - Pay careful attention to file references in the conversation.
-          - When a user mentions any part of a filename, associate it with the full file that was uploaded.
+        1. **CSV and Excel Files:**
+           - You have access to these files through the code_interpreter tool
+           - When asked about data in these files, ALWAYS use code_interpreter to analyze them
+           - Use the exact filename when referencing these files in your code
+           - Users may refer to files by partial names or extensions - match them appropriately
+        
+        2. **Image Files:**
+           - When users ask about images, provide the full analysis that was performed
+           - Users may refer to images by partial filenames - match appropriately
+           - Always include text extracted from images when present
+        
+        3. **Document Files:**
+           - You can search these through the file_search tool
+           - Reference specific sections and content when answering questions
         '''
+        
         instructions = base_prompt if not system_prompt else f"{base_prompt} {system_prompt}"
         
         # Update to include code interpreter capability
@@ -592,39 +501,34 @@ async def co_pilot(request: Request):
     else:
         # If user gave an assistant, update instructions if needed
         if system_prompt:
-            # Get existing assistant instructions
-            assistant_obj = client.beta.assistants.retrieve(assistant_id=assistant_id)
-            existing_instructions = getattr(assistant_obj, "instructions", "")
+            # Ensure file handling instructions are included
+            file_instructions = '''
+            ### **File Handling Instructions:**
+
+            1. **CSV and Excel Files:**
+               - You have access to these files through the code_interpreter tool
+               - When asked about data in these files, ALWAYS use code_interpreter to analyze them
+               - Use the exact filename when referencing these files in your code
+               - Users may refer to files by partial names or extensions - match them appropriately
             
-            # Add file handling guidelines if not already present
-            if "File Handling Guidelines" not in existing_instructions:
-                file_guidelines = '''
-                ### **File Handling Guidelines:**
-
-                - **CSV and Excel Files:**
-                  - When a user refers to any CSV or Excel file by name, ALWAYS use the code_interpreter tool to analyze it.
-                  - Access these files directly and never claim you can't access a CSV or Excel file.
-
-                - **Image Files:**
-                  - For any uploaded images, use the provided OCR/analysis text that has been extracted.
-                  - When a user refers to an image file by name, respond as if you can directly see the image.
-
-                - **Other Document Files:**
-                  - For PDFs, DOCs, TXTs, and other document files, use the file_search tool to extract relevant information.
-
-                - **File References:**
-                  - Pay careful attention to file references in the conversation.
-                  - When a user mentions any part of a filename, associate it with the full file that was uploaded.
-                '''
-                updated_instructions = f"You are a product management AI assistant, a product co-pilot. {system_prompt}\n\n{file_guidelines}"
-            else:
-                updated_instructions = f"You are a product management AI assistant, a product co-pilot. {system_prompt}"
-                
+            2. **Image Files:**
+               - When users ask about images, provide the full analysis that was performed
+               - Users may refer to images by partial filenames - match appropriately
+               - Always include text extracted from images when present
+            
+            3. **Document Files:**
+               - You can search these through the file_search tool
+               - Reference specific sections and content when answering questions
+            '''
+            
             client.beta.assistants.update(
                 assistant_id=assistant_id,
-                instructions=updated_instructions,
+                instructions=(
+                    f"You are a product management AI assistant, a product co-pilot. {file_instructions} {system_prompt}"
+                    if system_prompt
+                    else f"You are a product management AI assistant, a product co-pilot. {file_instructions}"
+                ),
             )
-        
         # If no vector_store, check existing or create new
         if not vector_store_id:
             assistant_obj = client.beta.assistants.retrieve(assistant_id=assistant_id)
@@ -660,110 +564,82 @@ async def co_pilot(request: Request):
         with open(file_path, "wb") as ftemp:
             file_content = await file.read()
             ftemp.write(file_content)
+        
+        # Prepare file info for awareness
+        file_info = {"filename": filename}
             
         # Check if it's a tabular file (CSV/Excel)
         if is_tabular_file(filename):
             try:
-                # Process tabular data to get file info
+                # Process tabular data for metadata
                 tabular_data = await process_tabular_data(file_path, filename)
+                file_info.update(tabular_data)
                 
-                # Upload file to OpenAI
+                # Upload file for code interpreter
                 with open(file_path, "rb") as file_stream:
                     file_obj = client.files.create(
                         file=file_stream,
                         purpose="assistants"
                     )
                 
-                # Associate file with assistant
-                await associate_file_with_assistant(client, file_obj.id, assistant_id)
+                # Associate the file with the assistant for code interpreter
+                client.beta.assistants.files.create(
+                    assistant_id=assistant_id,
+                    file_id=file_obj.id
+                )
                 
-                # If thread exists, add file reference and create message
+                # If thread exists, add file awareness
                 if thread_id:
-                    # Add file reference to thread
-                    file_info = {
-                        "type": "tabular",
-                        "filename": filename,
-                        "details": {
-                            "rows": tabular_data.get("shape", (0, 0))[0] if "shape" in tabular_data else 0,
-                            "columns": len(tabular_data.get("columns", [])) if "columns" in tabular_data else 0,
-                            "column_names": tabular_data.get("columns", []),
-                            "sheets": tabular_data.get("sheets", []) if "sheets" in tabular_data else []
-                        }
-                    }
-                    await add_file_reference(client, thread_id, file_info)
-                    
-                    # Create message with file attachment
-                    await create_message_with_attachment(
-                        client, 
-                        thread_id, 
-                        f"I've uploaded a file named {filename}. Please analyze this data using the code_interpreter tool. This file is now available for analysis throughout our conversation whenever I refer to {filename}.",
-                        file_obj.id
-                    )
+                    await add_file_awareness(client, thread_id, file_info)
                 
                 logging.info(f"Tabular file {filename} associated with code interpreter")
             except Exception as e:
                 logging.error(f"Error processing tabular file: {e}")
-                
+        
         # Check if it's an image file
-        elif is_image_file(filename, None):
+        elif is_image_file(filename):
             try:
                 # Analyze the image
-                analysis_result = await image_analysis(client, file_content, filename)
+                analysis_text = await image_analysis(client, file_content, filename)
+                file_info.update({"type": "image", "analysis": analysis_text})
                 
-                # If thread exists, add file reference with analysis and create message
+                # If thread exists, add file awareness
                 if thread_id:
-                    # Add file reference with analysis to thread
-                    file_info = {
-                        "type": "image",
-                        "filename": filename,
-                        "analysis": analysis_result
-                    }
-                    await add_file_reference(client, thread_id, file_info)
-                    
-                    # Create message about the image
-                    client.beta.threads.messages.create(
-                        thread_id=thread_id,
-                        role="user",
-                        content=f"I've uploaded an image named {filename}. Here's what it contains: {analysis_result}"
-                    )
+                    await add_file_awareness(client, thread_id, file_info)
+                
+                # Also add to vector store if possible
+                try:
+                    with open(file_path, "rb") as file_stream:
+                        file_batch = client.beta.vector_stores.file_batches.upload_and_poll(
+                            vector_store_id=vector_store_id,
+                            files=[file_stream]
+                        )
+                except Exception as e:
+                    logging.warning(f"Could not add image to vector store: {e}")
                 
                 logging.info(f"Image file {filename} analyzed and added to thread")
             except Exception as e:
                 logging.error(f"Error processing image file: {e}")
+        
         else:
             # Normal file upload to vector store for file_search
-            try:
-                with open(file_path, "rb") as file_stream:
-                    file_batch = client.beta.vector_stores.file_batches.upload_and_poll(
-                        vector_store_id=vector_store_id,
-                        files=[file_stream]
-                    )
-                    
-                # If thread exists, add file reference and create message
-                if thread_id:
-                    # Add file reference to thread
-                    file_info = {
-                        "type": "document",
-                        "filename": filename
-                    }
-                    await add_file_reference(client, thread_id, file_info)
-                    
-                    # Create message about the document
-                    client.beta.threads.messages.create(
-                        thread_id=thread_id,
-                        role="user",
-                        content=f"I've uploaded a document named {filename}. The document has been processed and is now available for reference whenever I refer to this document."
-                    )
-                
-                logging.info(f"Document file {filename} uploaded to vector store")
-            except Exception as e:
-                logging.error(f"Error uploading document to vector store: {e}")
+            with open(file_path, "rb") as file_stream:
+                client.beta.vector_stores.file_batches.upload_and_poll(
+                    vector_store_id=vector_store_id,
+                    files=[file_stream]
+                )
+            
+            file_info.update({"type": "document"})
+            if thread_id:
+                await add_file_awareness(client, thread_id, file_info)
+            
+            logging.info(f"Document file {filename} uploaded to vector store")
 
     # If context provided and thread exists, update context
     if context and thread_id:
         try:
             await update_context(client, thread_id, context)
-        except Exception as e:
+        except BaseException as e:
             logging.info(f"An error occurred while adding context to the thread: {e}")
             # Don't fail the entire request if just adding context fails
 
@@ -794,14 +670,16 @@ async def upload_file(
     try:
         # Save the uploaded file locally and get the data
         file_content = await file.read()
-        filename = file.filename
-        file_path = f"/tmp/{filename}"
+        file_path = f"/tmp/{file.filename}"
         with open(file_path, "wb") as temp_file:
             temp_file.write(file_content)
+        
+        # Prepare file info for awareness
+        file_info = {"filename": file.filename}
             
         # Determine file type
-        is_image = is_image_file(filename, file.content_type)
-        is_tabular = is_tabular_file(filename)
+        is_image = is_image_file(file.filename, file.content_type)
+        is_tabular = is_tabular_file(file.filename)
         
         # Retrieve the assistant
         assistant_obj = client.beta.assistants.retrieve(assistant_id=assistant)
@@ -810,54 +688,28 @@ async def upload_file(
         if is_tabular:
             # This is a CSV or Excel file - use code interpreter
             try:
-                # Process tabular data to get file info
-                tabular_data = await process_tabular_data(file_path, filename)
+                # Process file data for metadata
+                tabular_data = await process_tabular_data(file_path, file.filename)
+                file_info.update(tabular_data)
                 
-                # Upload file to OpenAI
+                # Upload file to OpenAI for code interpreter
                 with open(file_path, "rb") as file_stream:
                     file_obj = client.files.create(
                         file=file_stream,
                         purpose="assistants"
                     )
                 
-                # Associate file with assistant
-                await associate_file_with_assistant(client, file_obj.id, assistant)
+                # Associate the file with the assistant
+                client.beta.assistants.files.create(
+                    assistant_id=assistant,
+                    file_id=file_obj.id
+                )
                 
-                # If we have a thread, add file reference and create message with attachment
+                # If we have a thread, add file awareness
                 if thread_id:
-                    # Add file reference to thread
-                    file_info = {
-                        "type": "tabular",
-                        "filename": filename,
-                        "details": {
-                            "rows": tabular_data.get("shape", (0, 0))[0] if "shape" in tabular_data else 0,
-                            "columns": len(tabular_data.get("columns", [])) if "columns" in tabular_data else 0,
-                            "column_names": tabular_data.get("columns", []),
-                            "sheets": tabular_data.get("sheets", []) if "sheets" in tabular_data else []
-                        }
-                    }
-                    await add_file_reference(client, thread_id, file_info)
-                    
-                    # Create message with file attachment
-                    if 'csv' in filename.lower():
-                        columns = tabular_data.get("columns", [])
-                        message = (
-                            f"I've uploaded a CSV file named {filename}. "
-                            f"The columns are: {', '.join(columns)}. "
-                            f"Please analyze this data using the code_interpreter tool. "
-                            f"This file is now available for analysis throughout our conversation whenever I refer to {filename}."
-                        )
-                    else:
-                        sheets = tabular_data.get("sheets", [])
-                        message = (
-                            f"I've uploaded an Excel file named {filename} with sheets: {', '.join(sheets)}. "
-                            f"Please analyze this data using the code_interpreter tool. "
-                            f"This file is now available for analysis throughout our conversation whenever I refer to {filename}."
-                        )
-                    
-                    await create_message_with_attachment(client, thread_id, message, file_obj.id)
+                    await add_file_awareness(client, thread_id, file_info)
                 
-                logging.info(f"Tabular file {filename} processed with code interpreter")
+                logging.info(f"Tabular file {file.filename} processed with code interpreter")
                 
                 return JSONResponse(
                     {
@@ -870,118 +722,98 @@ async def upload_file(
                 
             except Exception as e:
                 logging.error(f"Error processing tabular file with code interpreter: {e}")
-                return JSONResponse({"error": str(e)}, status_code=500)
-                
+                # If code interpreter processing fails, try vector store as fallback
+        
         # For images, analyze and add to thread
-        elif is_image:
+        if is_image:
+            logging.info(f"Analyzing image file: {file.filename}")
+            analysis_text = await image_analysis(client, file_content, file.filename, prompt)
+            file_info.update({"type": "image", "analysis": analysis_text})
+            
+            # If thread exists, add the analysis to the thread
+            if thread_id:
+                await add_file_awareness(client, thread_id, file_info)
+            
+            logging.info(f"Added image analysis to thread {thread_id}")
+            
+            # Try to add to vector store if possible (will likely fail but attempt)
             try:
-                # Analyze the image
-                analysis_result = await image_analysis(client, file_content, filename, prompt)
-                
-                # Add the analysis to the thread if thread_id is provided
-                if thread_id:
-                    # Add file reference with analysis to thread
-                    file_info = {
-                        "type": "image",
-                        "filename": filename,
-                        "analysis": analysis_result
-                    }
-                    await add_file_reference(client, thread_id, file_info)
-                    
-                    # Create message about the image
-                    client.beta.threads.messages.create(
-                        thread_id=thread_id,
-                        role="user",
-                        content=f"I've uploaded an image named {filename}. Here's what it contains: {analysis_result}"
-                    )
-                
-                logging.info(f"Image file {filename} analyzed and added to thread")
-                
-                return JSONResponse(
-                    {
-                        "message": "Image file successfully analyzed and added to thread.",
-                        "file_type": "image",
-                        "image_analyzed": True
-                    },
-                    status_code=200
+                # Check if there's a file_search resource
+                file_search_resource = getattr(assistant_obj.tool_resources, "file_search", None)
+                vector_store_ids = (
+                    file_search_resource.vector_store_ids
+                    if (file_search_resource and hasattr(file_search_resource, "vector_store_ids"))
+                    else []
                 )
                 
+                if vector_store_ids:
+                    with open(file_path, "rb") as file_stream:
+                        try:
+                            file_batch = client.beta.vector_stores.file_batches.upload_and_poll(
+                                vector_store_id=vector_store_ids[0],
+                                files=[file_stream]
+                            )
+                        except Exception as e:
+                            logging.warning(f"Could not add image to vector store: {e}")
             except Exception as e:
-                logging.error(f"Error processing image file: {e}")
-                return JSONResponse({"error": str(e)}, status_code=500)
+                logging.warning(f"Error with vector store for image: {e}")
+            
+            return JSONResponse(
+                {
+                    "message": "Image successfully analyzed and processed.",
+                    "image_analyzed": True,
+                    "file_type": "image"
+                },
+                status_code=200
+            )
         
-        # For other files, use vector store
+        # For other document types, use vector store
+        # Check if there's a file_search resource
+        file_search_resource = getattr(assistant_obj.tool_resources, "file_search", None)
+        vector_store_ids = (
+            file_search_resource.vector_store_ids
+            if (file_search_resource and hasattr(file_search_resource, "vector_store_ids"))
+            else []
+        )
+
+        if vector_store_ids:
+            # If a vector store already exists, reuse it
+            vector_store_id = vector_store_ids[0]
         else:
-            # Check if there's a file_search resource
-            file_search_resource = getattr(assistant_obj.tool_resources, "file_search", None)
-            vector_store_ids = (
-                file_search_resource.vector_store_ids
-                if (file_search_resource and hasattr(file_search_resource, "vector_store_ids"))
-                else []
+            # No vector store associated yet, create one
+            logging.info("No associated vector store found. Creating a new one.")
+            vector_store = client.beta.vector_stores.create(name=f"Assistant_{assistant}_Store")
+            vector_store_id = vector_store.id
+
+            # Ensure the 'file_search' tool is present in the assistant's tools
+            existing_tools = assistant_obj.tools if assistant_obj.tools else []
+            if not any(t["type"] == "file_search" for t in existing_tools):
+                existing_tools.append({"type": "file_search"})
+
+            # Update the assistant to associate with this new vector store
+            client.beta.assistants.update(
+                assistant_id=assistant,
+                tools=existing_tools,
+                tool_resources={
+                    "file_search": {
+                        "vector_store_ids": [vector_store_id]
+                    }
+                }
             )
 
-            if vector_store_ids:
-                # If a vector store already exists, reuse it
-                vector_store_id = vector_store_ids[0]
-            else:
-                # No vector store associated yet, create one
-                logging.info("No associated vector store found. Creating a new one.")
-                vector_store = client.beta.vector_stores.create(name=f"Assistant_{assistant}_Store")
-                vector_store_id = vector_store.id
-
-                # Ensure the 'file_search' tool is present in the assistant's tools
-                existing_tools = assistant_obj.tools if assistant_obj.tools else []
-                if not any(t["type"] == "file_search" for t in existing_tools):
-                    existing_tools.append({"type": "file_search"})
-
-                # Update the assistant to associate with this new vector store
-                client.beta.assistants.update(
-                    assistant_id=assistant,
-                    tools=existing_tools,
-                    tool_resources={
-                        "file_search": {
-                            "vector_store_ids": [vector_store_id]
-                        }
-                    }
-                )
-
-            try:
-                with open(file_path, "rb") as file_stream:
-                    file_batch = client.beta.vector_stores.file_batches.upload_and_poll(
-                        vector_store_id=vector_store_id,
-                        files=[file_stream]
-                    )
-                    
-                # If thread exists, add file reference and create message
-                if thread_id:
-                    # Add file reference to thread
-                    file_info = {
-                        "type": "document",
-                        "filename": filename
-                    }
-                    await add_file_reference(client, thread_id, file_info)
-                    
-                    # Create message about the document
-                    client.beta.threads.messages.create(
-                        thread_id=thread_id,
-                        role="user",
-                        content=f"I've uploaded a document named {filename}. The document has been processed and is now available for reference whenever I refer to this document."
-                    )
-                
-                logging.info(f"Document file {filename} uploaded to vector store")
-                
-                return JSONResponse(
-                    {
-                        "message": "Document successfully uploaded to vector store.",
-                        "file_type": "document"
-                    },
-                    status_code=200
-                )
-                
-            except Exception as e:
-                logging.error(f"Error uploading document to vector store: {e}")
-                return JSONResponse({"error": str(e)}, status_code=500)
-            
+        # For document files, upload to vector store
+        with open(file_path, "rb") as file_stream:
+            file_batch = client.beta.vector_stores.file_batches.upload_and_poll(
+                vector_store_id=vector_store_id,
+                files=[file_stream]
+            )
+        
+        file_info.update({"type": "document"})
+        if thread_id:
+            await add_file_awareness(client, thread_id, file_info)
+        
+        logging.info(f"Document file {file.filename} uploaded to vector store")
+        
         # If context provided and thread exists, update context
         if context and thread_id:
             try:
@@ -990,10 +822,17 @@ async def upload_file(
                 logging.error(f"Error updating context in thread: {e}")
                 # Continue even if context update fails
 
+        return JSONResponse(
+            {
+                "message": "File successfully processed.",
+                "file_type": "document"
+            },
+            status_code=200
+        )
+
     except Exception as e:
         logging.error(f"Error uploading file: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
-
 
 @app.get("/conversation")
 async def conversation(
@@ -1017,22 +856,22 @@ async def conversation(
                 instructions='''
                 You are a conversation assistant.
                 
-                ### **File Handling Guidelines:**
+                ### **File Handling Instructions:**
 
-                - **CSV and Excel Files:**
-                  - When a user refers to any CSV or Excel file by name, ALWAYS use the code_interpreter tool to analyze it.
-                  - Access these files directly and never claim you can't access a CSV or Excel file.
-
-                - **Image Files:**
-                  - For any uploaded images, use the provided OCR/analysis text that has been extracted.
-                  - When a user refers to an image file by name, respond as if you can directly see the image.
-
-                - **Other Document Files:**
-                  - For PDFs, DOCs, TXTs, and other document files, use the file_search tool to extract relevant information.
-
-                - **File References:**
-                  - Pay careful attention to file references in the conversation.
-                  - When a user mentions any part of a filename, associate it with the full file that was uploaded.
+                1. **CSV and Excel Files:**
+                   - You have access to these files through the code_interpreter tool
+                   - When asked about data in these files, ALWAYS use code_interpreter to analyze them
+                   - Use the exact filename when referencing these files in your code
+                   - Users may refer to files by partial names or extensions - match them appropriately
+                
+                2. **Image Files:**
+                   - When users ask about images, provide the full analysis that was performed
+                   - Users may refer to images by partial filenames - match appropriately
+                   - Always include text extracted from images when present
+                
+                3. **Document Files:**
+                   - You can search these through the file_search tool
+                   - Reference specific sections and content when answering questions
                 '''
             )
             assistant = assistant_obj.id
@@ -1097,22 +936,22 @@ async def chat(
                 instructions='''
                 You are a conversation assistant.
                 
-                ### **File Handling Guidelines:**
+                ### **File Handling Instructions:**
 
-                - **CSV and Excel Files:**
-                  - When a user refers to any CSV or Excel file by name, ALWAYS use the code_interpreter tool to analyze it.
-                  - Access these files directly and never claim you can't access a CSV or Excel file.
-
-                - **Image Files:**
-                  - For any uploaded images, use the provided OCR/analysis text that has been extracted.
-                  - When a user refers to an image file by name, respond as if you can directly see the image.
-
-                - **Other Document Files:**
-                  - For PDFs, DOCs, TXTs, and other document files, use the file_search tool to extract relevant information.
-
-                - **File References:**
-                  - Pay careful attention to file references in the conversation.
-                  - When a user mentions any part of a filename, associate it with the full file that was uploaded.
+                1. **CSV and Excel Files:**
+                   - You have access to these files through the code_interpreter tool
+                   - When asked about data in these files, ALWAYS use code_interpreter to analyze them
+                   - Use the exact filename when referencing these files in your code
+                   - Users may refer to files by partial names or extensions - match them appropriately
+                
+                2. **Image Files:**
+                   - When users ask about images, provide the full analysis that was performed
+                   - Users may refer to images by partial filenames - match appropriately
+                   - Always include text extracted from images when present
+                
+                3. **Document Files:**
+                   - You can search these through the file_search tool
+                   - Reference specific sections and content when answering questions
                 '''
             )
             assistant = assistant_obj.id
