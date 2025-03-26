@@ -179,6 +179,79 @@ async def update_context(client, thread_id, context):
         logging.error(f"Error updating context: {e}")
         # Continue the flow even if context update fails
 
+# Function to associate files with an assistant
+async def associate_file_with_assistant(client, file_id, assistant_id):
+    """Associate a file with an assistant using the correct API method"""
+    try:
+        # Get current file IDs if any
+        assistant_obj = client.beta.assistants.retrieve(assistant_id=assistant_id)
+        existing_file_ids = getattr(assistant_obj, "file_ids", []) or []
+        
+        # Add the new file ID to the list (avoid duplicates)
+        if file_id not in existing_file_ids:
+            updated_file_ids = existing_file_ids + [file_id]
+            
+            # Update the assistant with the new file IDs
+            client.beta.assistants.update(
+                assistant_id=assistant_id,
+                file_ids=updated_file_ids
+            )
+            
+            logging.info(f"File {file_id} associated with assistant {assistant_id}")
+        else:
+            logging.info(f"File {file_id} already associated with assistant {assistant_id}")
+        return True
+    except Exception as e:
+        logging.error(f"Error associating file with assistant: {e}")
+        return False
+
+# Function to create a message with file attachment
+async def create_message_with_attachment(client, thread_id, content, file_id):
+    """Create a message with a file attachment in a thread"""
+    try:
+        # First attempt with attachments field
+        try:
+            client.beta.threads.messages.create(
+                thread_id=thread_id,
+                role="user",
+                content=content,
+                attachments=[
+                    {
+                        "file_id": file_id,
+                        "tools": [{"type": "code_interpreter"}]
+                    }
+                ]
+            )
+            logging.info(f"Message with attachment created in thread {thread_id}")
+            return True
+        except Exception as e:
+            logging.error(f"Error with attachments approach: {e}")
+            
+            # Try alternative approach with file_ids
+            client.beta.threads.messages.create(
+                thread_id=thread_id,
+                role="user",
+                content=content,
+                file_ids=[file_id]
+            )
+            logging.info(f"Message with file_ids created in thread {thread_id}")
+            return True
+    except Exception as e:
+        logging.error(f"All approaches to create message with attachment failed: {e}")
+        
+        # If all attachment approaches fail, just create a regular message
+        try:
+            client.beta.threads.messages.create(
+                thread_id=thread_id,
+                role="user",
+                content=f"{content} (Note: File {file_id} is available for analysis.)"
+            )
+            logging.info(f"Fallback message created in thread {thread_id}")
+            return True
+        except Exception as e_fallback:
+            logging.error(f"Fallback message creation failed: {e_fallback}")
+            return False
+
 # Add file reference to thread
 async def add_file_reference(client, thread_id, file_info):
     """Add a file reference to the thread so assistant knows what files are available."""
@@ -194,10 +267,10 @@ async def add_file_reference(client, thread_id, file_info):
         if file_type == "tabular":
             details = file_info.get("details", {})
             if details:
-                if "sheets" in details:
+                if "sheets" in details and details["sheets"]:
                     message += f" It is an Excel file with sheets: {', '.join(details['sheets'])}."
-                else:
-                    message += f" It is a CSV file with {details.get('rows', 'unknown')} rows and {details.get('columns', 'unknown')} columns."
+                elif "column_names" in details and details["column_names"]:
+                    message += f" It is a CSV file with columns: {', '.join(details['column_names'])}."
                 message += " Use the code_interpreter tool to analyze this file."
         elif file_type == "image":
             message += f" Image analysis/OCR result: {file_info.get('analysis', 'No analysis available')}"
@@ -367,18 +440,15 @@ async def initiate_chat(request: Request):
                 # Process tabular data to get file info
                 tabular_data = await process_tabular_data(file_path, filename)
                 
-                # Upload file for code interpreter
+                # Upload file to OpenAI
                 with open(file_path, "rb") as file_stream:
                     file_obj = client.files.create(
                         file=file_stream,
                         purpose="assistants"
                     )
                 
-                # Associate the file with the assistant for code interpreter
-                client.beta.assistants.files.create(
-                    assistant_id=assistant.id,
-                    file_id=file_obj.id
-                )
+                # Associate file with assistant
+                await associate_file_with_assistant(client, file_obj.id, assistant.id)
                 
                 # Add file reference to thread
                 file_info = {
@@ -394,10 +464,11 @@ async def initiate_chat(request: Request):
                 await add_file_reference(client, thread.id, file_info)
                 
                 # Create message to instruct code interpreter to process the file
-                client.beta.threads.messages.create(
-                    thread_id=thread.id,
-                    role="user",
-                    content=f"I've uploaded a file named {filename}. Please analyze this data using the code_interpreter tool. This file is now available for analysis throughout our conversation whenever I refer to {filename}."
+                await create_message_with_attachment(
+                    client, 
+                    thread.id, 
+                    f"I've uploaded a file named {filename}. Please analyze this data using the code_interpreter tool. This file is now available for analysis throughout our conversation whenever I refer to {filename}.",
+                    file_obj.id
                 )
                 
                 logging.info(f"Tabular file {filename} associated with code interpreter")
@@ -422,7 +493,7 @@ async def initiate_chat(request: Request):
                 client.beta.threads.messages.create(
                     thread_id=thread.id,
                     role="user",
-                    content=f"I've uploaded an image named {filename}. The image has been analyzed and the analysis is now available for reference whenever I refer to this image."
+                    content=f"I've uploaded an image named {filename}. Here's what it contains: {analysis_result}"
                 )
                 
                 logging.info(f"Image file {filename} analyzed and added to thread")
@@ -596,20 +667,17 @@ async def co_pilot(request: Request):
                 # Process tabular data to get file info
                 tabular_data = await process_tabular_data(file_path, filename)
                 
-                # Upload file for code interpreter
+                # Upload file to OpenAI
                 with open(file_path, "rb") as file_stream:
                     file_obj = client.files.create(
                         file=file_stream,
                         purpose="assistants"
                     )
                 
-                # Associate the file with the assistant for code interpreter
-                client.beta.assistants.files.create(
-                    assistant_id=assistant_id,
-                    file_id=file_obj.id
-                )
+                # Associate file with assistant
+                await associate_file_with_assistant(client, file_obj.id, assistant_id)
                 
-                # If thread exists, add file reference and create message to process the file
+                # If thread exists, add file reference and create message
                 if thread_id:
                     # Add file reference to thread
                     file_info = {
@@ -624,11 +692,12 @@ async def co_pilot(request: Request):
                     }
                     await add_file_reference(client, thread_id, file_info)
                     
-                    # Create message to instruct code interpreter to process the file
-                    client.beta.threads.messages.create(
-                        thread_id=thread_id,
-                        role="user",
-                        content=f"I've uploaded a file named {filename}. Please analyze this data using the code_interpreter tool. This file is now available for analysis throughout our conversation whenever I refer to {filename}."
+                    # Create message with file attachment
+                    await create_message_with_attachment(
+                        client, 
+                        thread_id, 
+                        f"I've uploaded a file named {filename}. Please analyze this data using the code_interpreter tool. This file is now available for analysis throughout our conversation whenever I refer to {filename}.",
+                        file_obj.id
                     )
                 
                 logging.info(f"Tabular file {filename} associated with code interpreter")
@@ -655,7 +724,7 @@ async def co_pilot(request: Request):
                     client.beta.threads.messages.create(
                         thread_id=thread_id,
                         role="user",
-                        content=f"I've uploaded an image named {filename}. The image has been analyzed and the analysis is now available for reference whenever I refer to this image."
+                        content=f"I've uploaded an image named {filename}. Here's what it contains: {analysis_result}"
                     )
                 
                 logging.info(f"Image file {filename} analyzed and added to thread")
@@ -744,20 +813,17 @@ async def upload_file(
                 # Process tabular data to get file info
                 tabular_data = await process_tabular_data(file_path, filename)
                 
-                # Upload file for code interpreter
+                # Upload file to OpenAI
                 with open(file_path, "rb") as file_stream:
                     file_obj = client.files.create(
                         file=file_stream,
                         purpose="assistants"
                     )
                 
-                # Associate the file with the assistant for code interpreter
-                client.beta.assistants.files.create(
-                    assistant_id=assistant,
-                    file_id=file_obj.id
-                )
+                # Associate file with assistant
+                await associate_file_with_assistant(client, file_obj.id, assistant)
                 
-                # If we have a thread, add file reference and create message to process the file
+                # If we have a thread, add file reference and create message with attachment
                 if thread_id:
                     # Add file reference to thread
                     file_info = {
@@ -772,29 +838,24 @@ async def upload_file(
                     }
                     await add_file_reference(client, thread_id, file_info)
                     
-                    # Create message to instruct code interpreter to process the file
+                    # Create message with file attachment
                     if 'csv' in filename.lower():
-                        file_type = "CSV"
-                        shape = tabular_data.get("shape", (0, 0))
                         columns = tabular_data.get("columns", [])
                         message = (
-                            f"I've uploaded a {file_type} file named {filename} with {shape[0]} rows and {shape[1]} columns. "
+                            f"I've uploaded a CSV file named {filename}. "
                             f"The columns are: {', '.join(columns)}. "
+                            f"Please analyze this data using the code_interpreter tool. "
                             f"This file is now available for analysis throughout our conversation whenever I refer to {filename}."
                         )
                     else:
-                        file_type = "Excel"
                         sheets = tabular_data.get("sheets", [])
                         message = (
-                            f"I've uploaded an {file_type} file named {filename} with sheets: {', '.join(sheets)}. "
+                            f"I've uploaded an Excel file named {filename} with sheets: {', '.join(sheets)}. "
+                            f"Please analyze this data using the code_interpreter tool. "
                             f"This file is now available for analysis throughout our conversation whenever I refer to {filename}."
                         )
                     
-                    client.beta.threads.messages.create(
-                        thread_id=thread_id,
-                        role="user",
-                        content=message
-                    )
+                    await create_message_with_attachment(client, thread_id, message, file_obj.id)
                 
                 logging.info(f"Tabular file {filename} processed with code interpreter")
                 
