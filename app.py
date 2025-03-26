@@ -373,7 +373,7 @@ async def initiate_chat(request: Request):
             logging.info(f"An error occurred while adding context to the thread: {e}")
             # Don't fail the entire request if just adding context fails
 
-    # If a file is provided, upload it now
+            # If a file is provided, upload it now
     file_info = None
     if file:
         filename = file.filename
@@ -397,16 +397,11 @@ async def initiate_chat(request: Request):
                 )
                 
                 # Update assistant with file ID
-                tool_resources = assistant.tool_resources if hasattr(assistant, 'tool_resources') else {}
-                code_interpreter_resources = tool_resources.get('code_interpreter', {})
-                file_ids = code_interpreter_resources.get('file_ids', [])
-                file_ids.append(openai_file.id)
-                
                 client.beta.assistants.update(
                     assistant_id=assistant.id,
                     tool_resources={
                         "file_search": {"vector_store_ids": [vector_store.id]},
-                        "code_interpreter": {"file_ids": file_ids}
+                        "code_interpreter": {"file_ids": [openai_file.id]}
                     }
                 )
                 
@@ -638,16 +633,11 @@ async def co_pilot(request: Request):
         # Determine file type and process accordingly
         file_ext = os.path.splitext(filename)[1].lower()
         
-        # Get existing assistant to check for file IDs
+        # Get existing tool resources
         assistant_obj = client.beta.assistants.retrieve(assistant_id=assistant_id)
-        
-        # Get existing file IDs more safely
-        existing_file_ids = []
-        if hasattr(assistant_obj, 'tool_resources') and assistant_obj.tool_resources:
-            tool_resources = assistant_obj.tool_resources
-            if hasattr(tool_resources, 'code_interpreter') and tool_resources.code_interpreter:
-                if hasattr(tool_resources.code_interpreter, 'file_ids'):
-                    existing_file_ids = tool_resources.code_interpreter.file_ids
+        tool_resources = getattr(assistant_obj, 'tool_resources', {})
+        code_interpreter_resources = getattr(tool_resources, 'code_interpreter', {})
+        existing_file_ids = getattr(code_interpreter_resources, 'file_ids', [])
         
         # Process based on file type
         if file_ext in ['.csv']:
@@ -662,14 +652,14 @@ async def co_pilot(request: Request):
                 )
                 
                 # Update file IDs
-                file_ids = list(existing_file_ids)
-                file_ids.append(openai_file.id)
+                new_file_ids = list(existing_file_ids)
+                new_file_ids.append(openai_file.id)
                 
                 client.beta.assistants.update(
                     assistant_id=assistant_id,
                     tool_resources={
                         "file_search": {"vector_store_ids": [vector_store_id]},
-                        "code_interpreter": {"file_ids": file_ids}
+                        "code_interpreter": {"file_ids": new_file_ids}
                     }
                 )
                 
@@ -785,24 +775,21 @@ async def upload_file(file: UploadFile = Form(...), assistant: str = Form(...), 
         # Retrieve the assistant
         assistant_obj = client.beta.assistants.retrieve(assistant_id=assistant)
         
-        # Get existing tool resources
-        tool_resources = getattr(assistant_obj, 'tool_resources', {})
-        
-        # Get existing file_search resources
-        file_search_resource = getattr(tool_resources, "file_search", None)
-        vector_store_ids = (
-            file_search_resource.vector_store_ids
-            if (file_search_resource and hasattr(file_search_resource, "vector_store_ids"))
-            else []
-        )
+        # Get existing vector_store_ids from file_search resources
+        vector_store_ids = []
+        if hasattr(assistant_obj, 'tool_resources') and assistant_obj.tool_resources:
+            if hasattr(assistant_obj.tool_resources, 'file_search'):
+                file_search = assistant_obj.tool_resources.file_search
+                if hasattr(file_search, 'vector_store_ids'):
+                    vector_store_ids = file_search.vector_store_ids
 
-        # Get existing code_interpreter resources
-        code_interpreter_resource = getattr(tool_resources, "code_interpreter", None)
-        existing_file_ids = (
-            code_interpreter_resource.file_ids
-            if (code_interpreter_resource and hasattr(code_interpreter_resource, "file_ids"))
-            else []
-        )
+        # Get existing file_ids from code_interpreter resources
+        existing_file_ids = []
+        if hasattr(assistant_obj, 'tool_resources') and assistant_obj.tool_resources:
+            if hasattr(assistant_obj.tool_resources, 'code_interpreter'):
+                code_interpreter = assistant_obj.tool_resources.code_interpreter
+                if hasattr(code_interpreter, 'file_ids'):
+                    existing_file_ids = code_interpreter.file_ids
 
         # Ensure vector store exists
         if not vector_store_ids:
@@ -909,16 +896,15 @@ async def upload_file(file: UploadFile = Form(...), assistant: str = Form(...), 
                 )
             logging.info(f"File uploaded to vector store: status={file_batch.status}, count={file_batch.file_counts}")
             
-            # Update assistant if tools were added
-            if len(existing_tools) > len(assistant_obj.tools):
-                client.beta.assistants.update(
-                    assistant_id=assistant,
-                    tools=existing_tools,
-                    tool_resources={
-                        "file_search": {"vector_store_ids": vector_store_ids},
-                        "code_interpreter": {"file_ids": existing_file_ids}
-                    }
-                )
+            # Make sure vector store is associated with assistant
+            client.beta.assistants.update(
+                assistant_id=assistant,
+                tools=existing_tools,
+                tool_resources={
+                    "file_search": {"vector_store_ids": vector_store_ids},
+                    "code_interpreter": {"file_ids": existing_file_ids}
+                }
+            )
                 
             file_info = {
                 "filename": file.filename,
