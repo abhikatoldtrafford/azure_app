@@ -172,7 +172,7 @@ async def add_file_awareness(client, thread_id, file_info):
         # Continue the flow even if adding awareness fails
 
 @app.post("/initiate-chat")
-async def initiate_chat(request: Request, **kwargs):
+async def initiate_chat(request: Request):
     """
     Initiates the assistant and session and optionally uploads a file to its vector store, 
     all in one go.
@@ -599,7 +599,7 @@ async def co_pilot(request: Request, **kwargs):
 
 
 @app.post("/upload-file")
-async def upload_file(file: UploadFile = Form(...), assistant: str = Form(...), session: Optional[str] = Form(None), context: Optional[str] = Form(None), prompt: Optional[str] = Form(None)):
+async def upload_file(file: UploadFile = Form(...), assistant: str = Form(...)):
     """
     Uploads a file and associates it with the given assistant.
     Handles different file types appropriately:
@@ -608,8 +608,11 @@ async def upload_file(file: UploadFile = Form(...), assistant: str = Form(...), 
     - Other files are sent to vector store
     """
     client = create_client()
-    # Using form parameters directly instead of kwargs
-    thread_id = session  # Optional thread id / session
+    # Get context if provided (in form data)
+    form = await request.form()
+    context = form.get("context", None)
+    thread_id = form.get("session", None)
+    prompt = form.get("prompt", None)  # Optional prompt for image analysis
 
     try:
         # Save the uploaded file locally and get the data
@@ -795,7 +798,7 @@ async def conversation(
     session: Optional[str] = None,
     prompt: Optional[str] = None,
     assistant: Optional[str] = None,
-    context: Optional[str] = None  # Optional context parameter
+    context: Optional[str] = None
 ):
     """
     Handles conversation queries. 
@@ -861,7 +864,7 @@ async def chat(
     session: Optional[str] = None,
     prompt: Optional[str] = None,
     assistant: Optional[str] = None,
-    context: Optional[str] = None  # Optional context parameter
+    context: Optional[str] = None
 ):
     """
     Handles conversation queries.
@@ -918,7 +921,7 @@ async def chat(
 
 
 @app.post("/trim-thread")
-async def trim_thread(request: Request, assistant_id: str = None, max_age_days: Optional[int] = None, **kwargs):
+async def trim_thread(request: Request, assistant_id: str = None, max_age_days: Optional[int] = None):
     """
     Gets all threads for a given assistant, summarizes them, and removes old threads.
     Uses 48 hours as the threshold for thread cleanup.
@@ -1101,16 +1104,13 @@ async def file_cleanup(request: Request, vector_store_id: str = None, assistant_
     
     Accepts both query parameters and form data.
     """
-    # Get parameters from form data if not provided in query
-    form_data = {}
-    if request.headers.get("content-type", "").startswith("multipart/form-data"):
-        form_data = await request.form()
+    client = create_client()
+    deleted_vector_files = 0
+    cleared_code_interpreter_files = 0
+    skipped_count = 0
     
-    if not vector_store_id:
-        vector_store_id = form_data.get("vector_store_id")
-    
-    if not assistant_id:
-        assistant_id = form_data.get("assistant_id")
+    if not vector_store_id and not assistant_id:
+        raise HTTPException(status_code=400, detail="Either vector_store_id or assistant_id is required")
     
     if not vector_store_id and not assistant_id:
         raise HTTPException(status_code=400, detail="Either vector_store_id or assistant_id is required")
