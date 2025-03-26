@@ -1438,4 +1438,199 @@ async def trim_thread(request: Request, assistant_id_query: Optional[str] = None
 async def file_cleanup(request: Request, vector_store_id_query: Optional[str] = None, assistant_id_query: Optional[str] = None):
     """
     Cleans up files older than 48 hours:
-    - For specific vector stores (if vector_
+    - For specific vector stores (if vector_store_id provided or linked to assistant_id).
+    - Removes *all* code interpreter file associations from an assistant (if assistant_id provided).
+
+    Accepts vector_store_id and assistant_id via query params or form data.
+    Uses a fixed 48-hour threshold for vector store files.
+    """
+    client = create_client()
+    deleted_vector_files = 0
+    cleared_code_interpreter_files = 0
+    vector_stores_cleaned = []
+    assistants_processed = []
+
+    # Get parameters from form data first, then fallback to query params
+    try:
+        form_data = await request.form()
+        vector_store_id_param = form_data.get("vector_store_id", vector_store_id_query)
+        assistant_id_param = form_data.get("assistant_id", assistant_id_query)
+    except Exception as e:
+         logging.warning(f"Could not parse form data for /file-cleanup: {e}. Falling back to query params.")
+         vector_store_id_param = vector_store_id_query
+         assistant_id_param = assistant_id_query
+
+
+    if not vector_store_id_param and not assistant_id_param:
+        raise HTTPException(status_code=400, detail="Either vector_store_id or assistant_id (or both) is required")
+
+    # --- Determine Vector Store(s) to Clean ---
+    vs_ids_to_clean = set()
+    if vector_store_id_param:
+        vs_ids_to_clean.add(vector_store_id_param)
+
+    # If assistant_id is provided, try to find its linked vector store(s)
+    if assistant_id_param:
+         assistants_processed.append(assistant_id_param)
+         try:
+             assistant_obj = client.beta.assistants.retrieve(assistant_id=assistant_id_param)
+             if hasattr(assistant_obj, "tool_resources") and assistant_obj.tool_resources:
+                 fs_resources = getattr(assistant_obj.tool_resources, "file_search", None)
+                 if fs_resources and hasattr(fs_resources, "vector_store_ids"):
+                     found_vs_ids = [vs_id for vs_id in fs_resources.vector_store_ids if vs_id]
+                     if found_vs_ids:
+                         vs_ids_to_clean.update(found_vs_ids)
+                         logging.info(f"Identified vector stores linked to assistant {assistant_id_param}: {found_vs_ids}")
+                     else:
+                          logging.info(f"Assistant {assistant_id_param} has file_search enabled but no vector stores linked.")
+                 else:
+                      logging.info(f"Assistant {assistant_id_param} does not have file_search resources configured.")
+             else:
+                  logging.info(f"Assistant {assistant_id_param} does not have tool_resources configured.")
+
+         except Exception as e:
+             # Handle case where assistant doesn't exist
+             if "No assistant found with id" in str(e):
+                  logging.warning(f"Assistant {assistant_id_param} not found. Cannot clean its linked vector stores or CI files.")
+             else:
+                  logging.error(f"Could not retrieve assistant {assistant_id_param} to find linked vector stores: {e}")
+
+
+    # --- Vector Store File Cleanup (Fixed 48-hour threshold) ---
+    if vs_ids_to_clean:
+        logging.info(f"Starting vector store file cleanup for VS IDs: {list(vs_ids_to_clean)} (older than 48 hours)")
+        now_utc = datetime.datetime.now(datetime.timezone.utc)
+        threshold_seconds = 48 * 3600
+        threshold_time = now_utc - datetime.timedelta(seconds=threshold_seconds)
+
+        for vs_id in vs_ids_to_clean:
+            try:
+                logging.info(f"Processing vector store: {vs_id}")
+                # List files directly with pagination
+                has_more = True
+                after_cursor = None
+                limit = 100
+
+                while has_more:
+                    files_in_store = client.beta.vector_stores.files.list(
+                        vector_store_id=vs_id,
+                        limit=limit,
+                        after=after_cursor
+                    )
+                    if not files_in_store.data:
+                        break
+
+                    for file in files_in_store.data:
+                        try:
+                            file_created_ts = datetime.datetime.fromtimestamp(file.created_at, tz=datetime.timezone.utc)
+
+                            if file_created_ts < threshold_time:
+                                logging.info(f"Deleting old file {file.id} (created: {file_created_ts.isoformat()}) from VS {vs_id}")
+                                # Attempt deletion, handle potential errors (e.g., file already deleted)
+                                try:
+                                    client.beta.vector_stores.files.delete(
+                                        vector_store_id=vs_id,
+                                        file_id=file.id
+                                    )
+                                    deleted_vector_files += 1
+                                except Exception as delete_e:
+                                     # Check if it's a "not found" error, which is okay
+                                     if "No file found with id" in str(delete_e) or "FileNotFoundError" in str(delete_e): # Adapt based on actual API error
+                                         logging.warning(f"File {file.id} already deleted or not found in VS {vs_id}. Skipping.")
+                                     else:
+                                          logging.error(f"Error deleting file {file.id} from VS {vs_id}: {delete_e}")
+                            # else:
+                                # logging.debug(f"Skipping recent file {file.id} in VS {vs_id}")
+
+                        except Exception as file_process_e:
+                            logging.error(f"Error processing file {file.id} in VS {vs_id}: {file_process_e}")
+
+                    has_more = files_in_store.has_more
+                    if has_more:
+                        after_cursor = files_in_store.last_id
+                    else:
+                         logging.info(f"Finished processing files for VS {vs_id}")
+
+                vector_stores_cleaned.append(vs_id)
+
+            except Exception as vs_e:
+                 # Handle case where VS doesn't exist
+                 if "No vector store found with id" in str(vs_e) or "VectorStoreNotFoundError" in str(vs_e):
+                     logging.warning(f"Vector store {vs_id} not found. Skipping cleanup for this VS.")
+                 else:
+                      logging.error(f"Error processing vector store {vs_id}: {vs_e}")
+                 continue # Move to next vector store
+
+    # --- Code Interpreter File Cleanup (Removes ALL associated files) ---
+    if assistant_id_param:
+        logging.info(f"Starting code interpreter file cleanup for assistant: {assistant_id_param}")
+        try:
+            # Retrieve assistant again to ensure we have latest state (handle not found)
+            try:
+                 assistant_obj = client.beta.assistants.retrieve(assistant_id=assistant_id_param)
+            except Exception as retrieve_e:
+                 if "No assistant found with id" in str(retrieve_e):
+                      logging.warning(f"Assistant {assistant_id_param} not found. Skipping CI file cleanup.")
+                      assistant_obj = None # Ensure assistant_obj is None if not found
+                 else:
+                      raise retrieve_e # Re-raise other retrieval errors
+
+            if assistant_obj: # Proceed only if assistant was found
+                current_tool_resources = assistant_obj.tool_resources if assistant_obj.tool_resources else {}
+
+                # Get current code interpreter file IDs
+                code_interpreter_file_ids = []
+                ci_resources = getattr(current_tool_resources, "code_interpreter", None)
+                if ci_resources and hasattr(ci_resources, "file_ids"):
+                    code_interpreter_file_ids = list(ci_resources.file_ids)
+
+                if code_interpreter_file_ids:
+                     # Preserve file search resources
+                     fs_resource_payload = {}
+                     fs_resources = getattr(current_tool_resources, "file_search", None)
+                     if fs_resources and hasattr(fs_resources, "vector_store_ids"):
+                         fs_resource_payload = {"vector_store_ids": list(fs_resources.vector_store_ids)}
+
+                     # Update assistant to clear code interpreter files
+                     client.beta.assistants.update(
+                         assistant_id=assistant_id_param,
+                         tool_resources={
+                             "code_interpreter": {"file_ids": []}, # Set to empty list
+                             "file_search": fs_resource_payload # Keep existing VS links
+                         }
+                     )
+                     cleared_code_interpreter_files = len(code_interpreter_file_ids)
+                     logging.info(f"Cleared {cleared_code_interpreter_files} code interpreter file associations from assistant {assistant_id_param}")
+
+                     # Optionally: Delete the actual files from OpenAI storage (use with caution)
+                     # for file_id in code_interpreter_file_ids:
+                     #     try:
+                     #         client.files.delete(file_id)
+                     #         logging.info(f"Deleted file {file_id} from OpenAI storage.")
+                     #     except Exception as delete_file_e:
+                     #         logging.error(f"Failed to delete file {file_id} from storage: {delete_file_e}")
+
+                else:
+                     logging.info(f"No code interpreter files associated with assistant {assistant_id_param}.")
+
+        except Exception as e:
+            # Log general errors during CI cleanup, avoid raising HTTPException if VS cleanup might have worked
+            logging.error(f"Error cleaning code interpreter files for assistant {assistant_id_param}: {e}")
+
+    logging.info("File cleanup process finished.")
+    return JSONResponse({
+        "status": "File cleanup completed",
+        "vector_stores_processed": list(vs_ids_to_clean),
+        "vector_files_deleted_older_than_48h": deleted_vector_files,
+        "assistants_processed_for_ci": assistants_processed,
+        "code_interpreter_files_cleared": cleared_code_interpreter_files,
+    })
+
+
+if __name__ == "__main__":
+    import uvicorn
+    # Get port from environment variable or default to 8000
+    port = int(os.environ.get("PORT", 8000))
+    print(f"Starting FastAPI server on http://0.0.0.0:{port}")
+    # Set reload=False for production environments like Azure Web Apps
+    uvicorn.run(app, host="0.0.0.0", port=port, reload=False)
