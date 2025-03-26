@@ -1199,8 +1199,8 @@ async def file_cleanup(request: Request, vector_store_id: str = None, assistant_
                             "file_search": file_search_resource
                         }
                     )
-                        cleared_code_interpreter_files = len(file_ids)
-                        logging.info(f"Cleared {cleared_code_interpreter_files} code interpreter files from assistant {assistant_id}")
+                    cleared_code_interpreter_files = len(file_ids)
+                    logging.info(f"Cleared {cleared_code_interpreter_files} code interpreter files from assistant {assistant_id}")
             except Exception as e:
                 logging.error(f"Error clearing code interpreter files: {e}")
         
