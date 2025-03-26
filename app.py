@@ -840,7 +840,11 @@ async def conversation(
         def stream_response():
             buffer = []
             try:
-                with client.beta.threads.runs.stream(thread_id=session, assistant_id=assistant) as stream:
+                # Create run with streaming
+                with client.beta.threads.runs.stream(
+                    thread_id=session, 
+                    assistant_id=assistant
+                ) as stream:
                     for text in stream.text_deltas:
                         buffer.append(text)
                         if len(buffer) >= 10:
@@ -856,7 +860,7 @@ async def conversation(
 
     except Exception as e:
         logging.error(f"Error in conversation: {e}")
-        raise HTTPException(status_code=500, detail="Failed to process conversation")
+        raise HTTPException(status_code=500, detail=f"Failed to process conversation: {str(e)}")
 
 
 @app.get("/chat")
@@ -932,8 +936,20 @@ async def trim_thread(request: Request, assistant_id: str = None, max_age_days: 
         form_data = await request.form()
         assistant_id = form_data.get("assistant_id")
     
-    # Set default cleanup threshold to 48 hours
+    # Get max_age_days from form if provided
+    if max_age_days is None:
+        form_data = await request.form()
+        max_age_days_str = form_data.get("max_age_days")
+        if max_age_days_str:
+            try:
+                max_age_days = int(max_age_days_str)
+            except (ValueError, TypeError):
+                max_age_days = None
+    
+    # Set default cleanup threshold to 48 hours or convert days to hours
     time_threshold_hours = 48
+    if max_age_days:
+        time_threshold_hours = max_age_days * 24
     
     if not assistant_id:
         raise HTTPException(status_code=400, detail="assistant_id is required")
