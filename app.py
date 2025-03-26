@@ -444,7 +444,6 @@ You are a highly skilled Product Management AI Assistant and Co-Pilot. Your prim
     return JSONResponse(res, status_code=200)
 
 @app.post("/co-pilot")
-@app.post("/co-pilot")
 async def co_pilot(request: Request):
     """
     Sets context for a chatbot, creates a new thread using existing assistant and vector store.
