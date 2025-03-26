@@ -638,11 +638,16 @@ async def co_pilot(request: Request):
         # Determine file type and process accordingly
         file_ext = os.path.splitext(filename)[1].lower()
         
-        # Get existing tool resources
+        # Get existing assistant to check for file IDs
         assistant_obj = client.beta.assistants.retrieve(assistant_id=assistant_id)
-        tool_resources = getattr(assistant_obj, 'tool_resources', {})
-        code_interpreter_resources = getattr(tool_resources, 'code_interpreter', {})
-        existing_file_ids = getattr(code_interpreter_resources, 'file_ids', [])
+        
+        # Get existing file IDs more safely
+        existing_file_ids = []
+        if hasattr(assistant_obj, 'tool_resources') and assistant_obj.tool_resources:
+            tool_resources = assistant_obj.tool_resources
+            if hasattr(tool_resources, 'code_interpreter') and tool_resources.code_interpreter:
+                if hasattr(tool_resources.code_interpreter, 'file_ids'):
+                    existing_file_ids = tool_resources.code_interpreter.file_ids
         
         # Process based on file type
         if file_ext in ['.csv']:
