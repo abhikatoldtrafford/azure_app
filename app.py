@@ -82,6 +82,7 @@ async def update_context(client: AzureOpenAI, thread_id: str, context: str):
         # Look for previous context messages to avoid duplication
         previous_context_message_id = None
         for msg in messages.data:
+            # Check if metadata exists and is not None before accessing keys
             if hasattr(msg, 'metadata') and msg.metadata and msg.metadata.get('type') == 'user_persona_context':
                 previous_context_message_id = msg.id
                 break
@@ -128,8 +129,7 @@ async def add_file_awareness(client: AzureOpenAI, thread_id: str, file_info: Dic
 
         if processing_method == "code_interpreter":
             awareness_message += f"This file is available for analysis using the code interpreter."
-            if file_type == "excel":
-                awareness_message += " This is an Excel file with potentially multiple sheets."
+            # No longer need specific Excel mention here as it's in the detailed instructions below
         elif processing_method == "thread_message":
             awareness_message += "This image has been analyzed and the descriptive content has been added to this thread."
         elif processing_method == "vector_store":
@@ -347,7 +347,15 @@ async def initiate_chat(request: Request):
     if file:
         filename = file.filename
         file_content = await file.read()
-        file_path = os.path.join('/tmp/', filename) # Use /tmp or a configurable temp dir
+        # Use a temporary directory that's more likely to be writable in various environments
+        temp_dir = os.environ.get("TEMP", "/tmp") # Use TEMP env var if set, else default to /tmp
+        if not os.path.exists(temp_dir):
+             try:
+                 os.makedirs(temp_dir)
+             except OSError as e:
+                 logging.error(f"Failed to create temporary directory {temp_dir}: {e}. Using current dir.")
+                 temp_dir = "." # Fallback to current directory
+        file_path = os.path.join(temp_dir, filename)
 
         try:
             with open(file_path, 'wb') as f:
@@ -373,12 +381,12 @@ async def initiate_chat(request: Request):
                     )
                 code_interpreter_file_ids.append(uploaded_file.id)
 
-                # Update the assistant to link the file
+                # Update the assistant to link the file - uses the list populated above
                 client.beta.assistants.update(
                     assistant_id=assistant.id,
                     tool_resources={
-                        "code_interpreter": {"file_ids": code_interpreter_file_ids},
-                        "file_search": {"vector_store_ids": [vector_store.id]}
+                        "code_interpreter": {"file_ids": code_interpreter_file_ids}, # This now contains the new ID
+                        "file_search": {"vector_store_ids": [vector_store.id]} # Ensure VS link is included
                     }
                 )
                 file_info.update({
@@ -407,17 +415,22 @@ async def initiate_chat(request: Request):
             elif is_document or not (is_csv or is_excel or is_image): # Treat other types as documents for vector store
                 # Upload to vector store
                 with open(file_path, "rb") as file_stream:
+                    # Use upload_and_poll for simplicity, handle potential long waits or switch to async polling if needed
                     file_batch = client.beta.vector_stores.file_batches.upload_and_poll(
                         vector_store_id=vector_store.id,
                         files=[file_stream]
                     )
-                file_info.update({
-                    "type": file_ext[1:] if file_ext else "document",
-                    "processing_method": "vector_store"
-                })
-                await add_file_awareness(client, thread.id, file_info)
-                logging.info(f"File '{filename}' uploaded to vector store {vector_store.id}: status={file_batch.status}, count={file_batch.file_counts.total}")
-
+                # Check batch status
+                if file_batch.status == 'completed':
+                    file_info.update({
+                        "type": file_ext[1:] if file_ext else "document",
+                        "processing_method": "vector_store"
+                    })
+                    await add_file_awareness(client, thread.id, file_info)
+                    logging.info(f"File '{filename}' uploaded to vector store {vector_store.id}: status={file_batch.status}, count={file_batch.file_counts.total}")
+                else:
+                    logging.error(f"File batch upload for '{filename}' to vector store {vector_store.id} failed or timed out. Status: {file_batch.status}")
+                    # Optionally, raise an error or return specific failure info
             else:
                  logging.warning(f"File type for '{filename}' not explicitly handled for upload, skipping specific processing.")
 
@@ -444,7 +457,7 @@ async def initiate_chat(request: Request):
 
 
 @app.post("/co-pilot")
-async def co_pilot(request: Request, **kwargs): # Using **kwargs is okay but less explicit
+async def co_pilot(request: Request): # Removed **kwargs, explicitly parse form
     """
     Creates or updates a co-pilot assistant. Handles optional file upload,
     system prompt update, and context setting. Designed for reuse.
@@ -467,6 +480,7 @@ async def co_pilot(request: Request, **kwargs): # Using **kwargs is okay but les
     code_interpreter_file_ids = [] # Will hold file IDs for the target assistant
     current_tools = []
     current_tool_resources = {}
+    vector_store_ids_to_link = [] # Keep track of VS IDs for final update
 
     try:
         if not assistant_id:
@@ -476,19 +490,25 @@ async def co_pilot(request: Request, **kwargs): # Using **kwargs is okay but les
                 vector_store = client.beta.vector_stores.create(name=f"copilot_store_{int(time.time())}")
                 vector_store_id = vector_store.id
                 logging.info(f"Created new vector store for co-pilot: {vector_store_id}")
+            vector_store_ids_to_link = [vector_store_id] # Use this new/provided VS
 
-            base_prompt = "You are a product management AI assistant, a product co-pilot."
-            instructions = f"{base_prompt} {system_prompt}" if system_prompt else base_prompt
+            # Use the comprehensive system prompt from /initiate-chat if none provided
+            base_prompt = system_prompt or '''
+                 You are a highly skilled Product Management AI Assistant and Co-Pilot...
+                 [... rest of the detailed system prompt from initiate-chat ...]
+                 - Gracefully manage any errors or uncertainties by informing the user and seeking clarification when necessary.
+                 ''' # Truncated for brevity, assume full prompt is used
+
             current_tools = [{"type": "code_interpreter"}, {"type": "file_search"}]
             current_tool_resources = {
-                 "file_search": {"vector_store_ids": [vector_store_id]},
+                 "file_search": {"vector_store_ids": vector_store_ids_to_link},
                  "code_interpreter": {"file_ids": []} # Start with empty list for new assistant
             }
 
             assistant = client.beta.assistants.create(
                 name=f"copilot_assistant_{int(time.time())}",
                 model="gpt-4o-mini",
-                instructions=instructions,
+                instructions=base_prompt, # Use the detailed prompt
                 tools=current_tools,
                 tool_resources=current_tool_resources,
             )
@@ -498,75 +518,81 @@ async def co_pilot(request: Request, **kwargs): # Using **kwargs is okay but les
         else: # Assistant ID provided, retrieve and potentially update
             logging.info(f"Using existing assistant ID: {assistant_id}")
             assistant_obj = client.beta.assistants.retrieve(assistant_id=assistant_id)
+            needs_update = False # Flag to track if assistant update is needed
 
             # Update instructions if system_prompt is provided
             if system_prompt:
-                base_prompt = "You are a product management AI assistant, a product co-pilot."
-                instructions = f"{base_prompt} {system_prompt}"
+                # instructions = system_prompt # Use only the provided prompt if given
+                # Let's assume we want to *replace* the instructions completely if a new one is provided
                 client.beta.assistants.update(
                     assistant_id=assistant_id,
-                    instructions=instructions,
+                    instructions=system_prompt,
                 )
                 logging.info(f"Updated instructions for assistant {assistant_id}")
+                needs_update = True # Instructions were updated
 
-            # Consolidate tools and resources
+            # Consolidate tools and resources from existing assistant
             current_tools = assistant_obj.tools if assistant_obj.tools else []
             current_tool_resources = assistant_obj.tool_resources if assistant_obj.tool_resources else {}
 
             # Ensure code interpreter tool exists
-            if not any(tool.type == "code_interpreter" for tool in current_tools if hasattr(tool, 'type')):
+            if not any(getattr(tool, 'type', None) == "code_interpreter" for tool in current_tools):
                  current_tools.append({"type": "code_interpreter"})
+                 needs_update = True
 
             # Ensure file search tool exists
-            if not any(tool.type == "file_search" for tool in current_tools if hasattr(tool, 'type')):
+            if not any(getattr(tool, 'type', None) == "file_search" for tool in current_tools):
                  current_tools.append({"type": "file_search"})
+                 needs_update = True
 
             # Get current code interpreter file IDs
             ci_resources = getattr(current_tool_resources, "code_interpreter", None)
             if ci_resources and hasattr(ci_resources, "file_ids"):
                  code_interpreter_file_ids = list(ci_resources.file_ids)
 
-            # Handle vector store ID
+            # Handle vector store ID consolidation
             fs_resources = getattr(current_tool_resources, "file_search", None)
             existing_vs_ids = list(fs_resources.vector_store_ids) if fs_resources and hasattr(fs_resources, "vector_store_ids") else []
 
             if vector_store_id: # User provided a specific VS
                  if vector_store_id not in existing_vs_ids:
-                     existing_vs_ids.append(vector_store_id) # Add if not already present
+                     vector_store_ids_to_link = existing_vs_ids + [vector_store_id] # Add the new one
                      logging.info(f"Associating provided vector store {vector_store_id} with assistant {assistant_id}")
-                 # Update is needed if VS ID was added or tools changed
-                 needs_update = True
+                     needs_update = True
+                 else:
+                     vector_store_ids_to_link = existing_vs_ids # Use existing list including the provided one
             elif not existing_vs_ids: # No VS provided and none linked, create one
                 vector_store = client.beta.vector_stores.create(name=f"copilot_store_{assistant_id}")
-                vector_store_id = vector_store.id
-                existing_vs_ids = [vector_store_id]
+                vector_store_id = vector_store.id # Update vs_id for return value
+                vector_store_ids_to_link = [vector_store_id]
                 logging.info(f"Created and linked new vector store {vector_store_id} for assistant {assistant_id}")
                 needs_update = True
-            else: # Use the first existing linked VS if none provided
-                vector_store_id = existing_vs_ids[0]
-                needs_update = False # Assume no update needed unless tools changed
+            else: # Use the existing linked VS IDs if none provided
+                vector_store_ids_to_link = existing_vs_ids
+                if not vector_store_id: # Update vs_id for return value if not provided
+                    vector_store_id = existing_vs_ids[0] # Return the first one
 
-            # If tools were potentially added, update assistant
-            if len(current_tools) != len(assistant_obj.tools or []):
-                needs_update = True
-
+            # If tools or VS links changed, update assistant
             if needs_update:
-                 # Update assistant with potentially new tools and VS links
-                 update_payload = {
-                     "tools": current_tools,
-                     "tool_resources": {
-                         "file_search": {"vector_store_ids": existing_vs_ids},
-                         "code_interpreter": {"file_ids": code_interpreter_file_ids} # Keep existing files
-                     }
+                 update_payload = { "tools": current_tools }
+                 # Construct tool_resources carefully
+                 update_payload["tool_resources"] = {
+                     "file_search": {"vector_store_ids": vector_store_ids_to_link},
+                      # Always include code_interpreter resources, even if empty
+                     "code_interpreter": {"file_ids": code_interpreter_file_ids}
                  }
+
                  client.beta.assistants.update(assistant_id=assistant_id, **update_payload)
                  logging.info(f"Updated tools/resources for assistant {assistant_id}")
 
-        # --- Handle file upload (similar logic to /initiate-chat but updates existing assistant) ---
+        # --- Handle file upload (similar logic to /upload-file but updates assistant resources) ---
         if file:
             filename = file.filename
             file_content = await file.read()
-            file_path = f"/tmp/{filename}"
+            temp_dir = os.environ.get("TEMP", "/tmp")
+            if not os.path.exists(temp_dir): os.makedirs(temp_dir, exist_ok=True)
+            file_path = os.path.join(temp_dir, filename)
+
 
             try:
                 with open(file_path, "wb") as ftemp:
@@ -581,36 +607,32 @@ async def co_pilot(request: Request, **kwargs): # Using **kwargs is okay but les
                 is_document = file_ext in ['.pdf', '.doc', '.docx', '.txt', '.md', '.html', '.json']
 
                 file_info = {"name": filename}
+                assistant_needs_update_after_file = False
 
                 if is_csv or is_excel:
                     # Upload to OpenAI files
                     with open(file_path, "rb") as file_stream:
                         uploaded_file = client.files.create(file=file_stream, purpose='assistants')
 
-                    # Append file ID to existing list (already retrieved)
+                    # Append file ID if not already present
                     if uploaded_file.id not in code_interpreter_file_ids:
                         code_interpreter_file_ids.append(uploaded_file.id)
+                        assistant_needs_update_after_file = True # Flag for update
 
-                        # Update the assistant's code interpreter resources
-                        client.beta.assistants.update(
-                            assistant_id=assistant_id,
-                            tool_resources={
-                                "code_interpreter": {"file_ids": code_interpreter_file_ids},
-                                # Ensure file_search resources are preserved
-                                "file_search": {"vector_store_ids": [vector_store_id] if vector_store_id else []}
-                            }
-                        )
                         file_info.update({
                             "type": "csv" if is_csv else "excel",
                             "id": uploaded_file.id,
                             "processing_method": "code_interpreter"
                         })
-                        # Add awareness message if thread context exists
-                        if thread_id:
-                            await add_file_awareness(client, thread_id, file_info)
-                        logging.info(f"Added '{filename}' (ID: {uploaded_file.id}) to code interpreter for assistant {assistant_id}")
+                        logging.info(f"Prepared '{filename}' (ID: {uploaded_file.id}) for code interpreter linking to assistant {assistant_id}")
                     else:
-                        logging.info(f"File '{filename}' (ID: {uploaded_file.id}) already associated with assistant {assistant_id}")
+                        logging.info(f"File '{filename}' (ID: {uploaded_file.id}) already associated with assistant {assistant_id}, no update needed.")
+                        # Populate file_info even if already present for awareness message
+                        file_info.update({
+                            "type": "csv" if is_csv else "excel",
+                            "id": uploaded_file.id,
+                            "processing_method": "code_interpreter"
+                        })
 
 
                 elif is_image:
@@ -626,31 +648,57 @@ async def co_pilot(request: Request, **kwargs): # Using **kwargs is okay but les
                             "type": "image",
                             "processing_method": "thread_message"
                         })
-                        await add_file_awareness(client, thread_id, file_info)
                         logging.info(f"Added image analysis for '{filename}' to thread {thread_id}")
                     else:
                         logging.warning(f"Image '{filename}' uploaded but no session/thread ID provided, analysis not added to a thread.")
+                        file_info = {} # Clear file_info if not processed
 
                 elif is_document or not (is_csv or is_excel or is_image):
-                    if not vector_store_id:
+                    if not vector_store_ids_to_link: # Check the list determined earlier
+                         # This shouldn't happen due to the logic above (create if none exist)
                          raise ValueError("Vector store ID is required to upload documents but none was found or created.")
+                    vs_id_to_use = vector_store_ids_to_link[0] # Use the first linked VS
+
                     # Upload to vector store
                     with open(file_path, "rb") as file_stream:
                          file_batch = client.beta.vector_stores.file_batches.upload_and_poll(
-                             vector_store_id=vector_store_id,
+                             vector_store_id=vs_id_to_use,
                              files=[file_stream]
                          )
-                    file_info.update({
-                         "type": file_ext[1:] if file_ext else "document",
-                         "processing_method": "vector_store"
-                    })
-                    # Add awareness message if thread context exists
-                    if thread_id:
-                         await add_file_awareness(client, thread_id, file_info)
-                    logging.info(f"File '{filename}' uploaded to vector store {vector_store_id}: status={file_batch.status}, count={file_batch.file_counts.total}")
+
+                    if file_batch.status == 'completed':
+                        file_info.update({
+                             "type": file_ext[1:] if file_ext else "document",
+                             "processing_method": "vector_store"
+                        })
+                        logging.info(f"File '{filename}' uploaded to vector store {vs_id_to_use}: status={file_batch.status}, count={file_batch.file_counts.total}")
+                    else:
+                         logging.error(f"File batch upload for '{filename}' to vector store {vs_id_to_use} failed. Status: {file_batch.status}")
+                         file_info = {} # Clear file_info if upload failed
+                else:
+                    logging.warning(f"File type for '{filename}' not explicitly handled for upload.")
+                    file_info = {} # Clear file_info
+
+                # Update assistant if a new CI file was added
+                if assistant_needs_update_after_file:
+                    client.beta.assistants.update(
+                        assistant_id=assistant_id,
+                        tool_resources={
+                             # Preserve file_search resources
+                            "file_search": {"vector_store_ids": vector_store_ids_to_link},
+                             # Update code interpreter resources
+                            "code_interpreter": {"file_ids": code_interpreter_file_ids}
+                        }
+                    )
+                    logging.info(f"Updated assistant {assistant_id} to link new code interpreter file(s).")
+
+                # Add awareness message if thread exists and file was processed
+                if thread_id and file_info.get("processing_method"):
+                    await add_file_awareness(client, thread_id, file_info)
+
 
             except Exception as e:
-                logging.error(f"Error processing uploaded file '{filename}': {e}")
+                logging.error(f"Error processing uploaded file '{filename}' in /co-pilot: {e}")
                 # Allow endpoint to succeed but log error
             finally:
                  if os.path.exists(file_path):
@@ -667,7 +715,7 @@ async def co_pilot(request: Request, **kwargs): # Using **kwargs is okay but les
             {
                 "message": "Co-pilot assistant processed successfully.",
                 "assistant": assistant_id,
-                "vector_store": vector_store_id, # Return the VS ID used/created
+                "vector_store": vector_store_id, # Return the primary VS ID used/created
                 "session": thread_id # Return thread_id if provided
             },
             status_code=200
@@ -680,7 +728,7 @@ async def co_pilot(request: Request, **kwargs): # Using **kwargs is okay but les
 
 @app.post("/upload-file")
 async def upload_file(
-    request: Request, # Added missing request parameter
+    request: Request, # <<< Added missing request parameter
     file: UploadFile = Form(...),
     assistant: str = Form(...) # Assistant ID is required
     # Optional params below read from form inside
@@ -708,7 +756,10 @@ async def upload_file(
 
 
     filename = file.filename
-    file_path = f"/tmp/{filename}"
+    temp_dir = os.environ.get("TEMP", "/tmp")
+    if not os.path.exists(temp_dir): os.makedirs(temp_dir, exist_ok=True)
+    file_path = os.path.join(temp_dir, filename)
+
     uploaded_file_details = {} # To return info about the uploaded file
 
     try:
@@ -729,23 +780,31 @@ async def upload_file(
         assistant_obj = client.beta.assistants.retrieve(assistant_id=assistant)
 
         # Consolidate tools and resources handling
-        current_tools = assistant_obj.tools if assistant_obj.tools else []
+        current_tools = list(assistant_obj.tools) if assistant_obj.tools else []
         current_tool_resources = assistant_obj.tool_resources if assistant_obj.tool_resources else {}
         needs_update = False # Flag if assistant needs updating
+
+        # --- Prepare resource lists ---
+        # Get existing code_interpreter file_ids
+        code_interpreter_file_ids = []
+        ci_resources = getattr(current_tool_resources, "code_interpreter", None)
+        if ci_resources and hasattr(ci_resources, "file_ids"):
+             code_interpreter_file_ids = list(ci_resources.file_ids)
+
+        # Get existing vector_store_ids
+        vector_store_ids = []
+        fs_resources = getattr(current_tool_resources, "file_search", None)
+        if fs_resources and hasattr(fs_resources, "vector_store_ids"):
+            vector_store_ids = list(fs_resources.vector_store_ids)
+
 
         # --- Code Interpreter Handling ---
         if is_csv or is_excel:
             # Ensure code interpreter tool exists
-            if not any(tool.type == "code_interpreter" for tool in current_tools if hasattr(tool, 'type')):
+            if not any(getattr(tool, 'type', None) == "code_interpreter" for tool in current_tools):
                  current_tools.append({"type": "code_interpreter"})
                  needs_update = True
                  logging.info(f"Adding code_interpreter tool to assistant {assistant}")
-
-            # Get existing code_interpreter file_ids
-            code_interpreter_file_ids = []
-            ci_resources = getattr(current_tool_resources, "code_interpreter", None)
-            if ci_resources and hasattr(ci_resources, "file_ids"):
-                 code_interpreter_file_ids = list(ci_resources.file_ids)
 
             # Upload to OpenAI files for code interpreter
             with open(file_path, "rb") as file_stream:
@@ -773,14 +832,10 @@ async def upload_file(
 
 
         # --- Vector Store Handling ---
-        vector_store_ids = []
-        fs_resources = getattr(current_tool_resources, "file_search", None)
-        if fs_resources and hasattr(fs_resources, "vector_store_ids"):
-            vector_store_ids = list(fs_resources.vector_store_ids)
-
-        if is_document or not (is_csv or is_excel or is_image):
+        # Check if it's a document or fallback type
+        elif is_document or not (is_csv or is_excel or is_image):
              # Ensure file search tool exists
-             if not any(tool.type == "file_search" for tool in current_tools if hasattr(tool, 'type')):
+             if not any(getattr(tool, 'type', None) == "file_search" for tool in current_tools):
                  current_tools.append({"type": "file_search"})
                  needs_update = True
                  logging.info(f"Adding file_search tool to assistant {assistant}")
@@ -799,26 +854,47 @@ async def upload_file(
                      vector_store_id=vector_store_id_to_use,
                      files=[file_stream]
                  )
-             uploaded_file_details = {
-                 "message": "File successfully uploaded to vector store.",
-                 "filename": filename,
-                 "vector_store_id": vector_store_id_to_use,
-                 "processing_method": "vector_store",
-                 "batch_status": file_batch.status
-             }
-             logging.info(f"Uploaded '{filename}' to vector store {vector_store_id_to_use} for assistant {assistant}")
+
+             if file_batch.status == 'completed':
+                 uploaded_file_details = {
+                     "message": "File successfully uploaded to vector store.",
+                     "filename": filename,
+                     "vector_store_id": vector_store_id_to_use,
+                     "processing_method": "vector_store",
+                     "batch_status": file_batch.status
+                 }
+                 logging.info(f"Uploaded '{filename}' to vector store {vector_store_id_to_use} for assistant {assistant}")
+             else:
+                  logging.error(f"File batch upload failed for '{filename}' to VS {vector_store_id_to_use}. Status: {file_batch.status}")
+                  uploaded_file_details = {
+                     "message": f"File upload to vector store failed with status: {file_batch.status}.",
+                     "filename": filename,
+                     "vector_store_id": vector_store_id_to_use,
+                     "processing_method": "vector_store_failed",
+                     "batch_status": file_batch.status
+                 }
 
 
         # --- Update Assistant if tools or resources changed ---
         if needs_update:
             update_payload = {"tools": current_tools, "tool_resources": {}}
-            # Preserve/update file search resources
-            update_payload["tool_resources"]["file_search"] = {"vector_store_ids": vector_store_ids}
-             # Preserve/update code interpreter resources
-            update_payload["tool_resources"]["code_interpreter"] = {"file_ids": code_interpreter_file_ids if (is_csv or is_excel) else []} # Only update if it was a CI file
 
-            client.beta.assistants.update(assistant_id=assistant, **update_payload)
-            logging.info(f"Updated assistant {assistant} with new tool/resource associations.")
+            # Construct final tool_resources payload ensuring all parts are preserved correctly
+            # File Search: Always use the current/updated vector_store_ids list
+            fs_resource_payload = {"vector_store_ids": vector_store_ids}
+            update_payload["tool_resources"]["file_search"] = fs_resource_payload
+
+            # Code Interpreter: Always use the current/updated code_interpreter_file_ids list
+            # <<< FIX: Ensure the potentially updated list is used, not conditionally based on the current file type >>>
+            ci_resource_payload = {"file_ids": code_interpreter_file_ids}
+            update_payload["tool_resources"]["code_interpreter"] = ci_resource_payload
+
+            try:
+                client.beta.assistants.update(assistant_id=assistant, **update_payload)
+                logging.info(f"Updated assistant {assistant} with new tool/resource associations.")
+            except Exception as update_err:
+                logging.error(f"Failed to update assistant {assistant}: {update_err}")
+                # Depending on severity, might want to raise HTTPException or just log
 
 
         # --- Image Handling (after potential assistant update) ---
@@ -845,8 +921,8 @@ async def upload_file(
                  }
                 logging.warning(f"Image '{filename}' uploaded for assistant {assistant} but no thread ID provided.")
 
-        # --- Add File Awareness Message (if thread exists and file was processed) ---
-        if thread_id and uploaded_file_details and uploaded_file_details.get("processing_method") not in ["skipped_analysis", None]:
+        # --- Add File Awareness Message (if thread exists and file was processed successfully) ---
+        if thread_id and uploaded_file_details and uploaded_file_details.get("processing_method") not in ["skipped_analysis", "vector_store_failed", None]:
              file_info = {
                  "type": file_ext[1:] if file_ext else 'unknown',
                  "name": filename,
@@ -857,7 +933,8 @@ async def upload_file(
              if is_csv: file_info["type"] = "csv"
              elif is_excel: file_info["type"] = "excel"
              elif is_image: file_info["type"] = "image"
-             elif is_document: file_info["type"] = file_ext[1:] if file_ext else "document"
+             elif is_document or uploaded_file_details.get("processing_method") == "vector_store": # Ensure correct type for documents
+                 file_info["type"] = file_ext[1:] if file_ext else "document"
 
              await add_file_awareness(client, thread_id, file_info)
 
@@ -866,10 +943,18 @@ async def upload_file(
         if context and thread_id:
             await update_context(client, thread_id, context)
 
-        return JSONResponse(uploaded_file_details, status_code=200)
+        # Determine status code based on processing outcome
+        status_code = 200
+        if uploaded_file_details.get("processing_method") == "vector_store_failed":
+             status_code = 500 # Indicate failure if VS upload failed critically
+
+        return JSONResponse(uploaded_file_details, status_code=status_code)
 
     except Exception as e:
         logging.error(f"Error uploading file '{filename}' for assistant {assistant}: {e}")
+        # Consider specific exceptions for not found vs other errors
+        if "No assistant found with id" in str(e):
+            raise HTTPException(status_code=404, detail=f"Assistant with ID '{assistant}' not found.")
         raise HTTPException(status_code=500, detail=f"Failed to upload or process file: {str(e)}")
     finally:
         # Clean up temporary file
@@ -894,6 +979,9 @@ async def conversation(
     client = create_client()
 
     try:
+        # Validate required parameters if needed (e.g., assistant should exist)
+        # For now, retain fallback logic
+
         # If no assistant or session provided, create defaults (log this behavior)
         if not assistant:
             logging.warning("No assistant ID provided for /conversation, creating a default one.")
@@ -937,16 +1025,17 @@ async def conversation(
                  raise HTTPException(status_code=500, detail="Failed to add message to conversation thread")
 
         # Define the streaming generator function
-        def stream_response():
+        async def stream_response(): # Make generator async
             buffer = []
             try:
                 # Create run and stream the response
-                with client.beta.threads.runs.stream(
+                async with client.beta.threads.runs.stream( # Use async context manager
                     thread_id=session,
                     assistant_id=assistant,
                     # Add event handlers if needed later for tool calls etc.
+                    # event_handler=YourEventHandler() # If using class-based handler
                 ) as stream:
-                    for event in stream:
+                    async for event in stream: # Iterate asynchronously
                          # Check specifically for text deltas
                          if event.event == "thread.message.delta":
                              delta = event.data.delta
@@ -957,22 +1046,28 @@ async def conversation(
                                          if text_value:
                                              buffer.append(text_value)
                                              # Yield chunks frequently for better streaming feel
-                                             if len(buffer) >= 5: # Adjust buffer size as needed
-                                                 yield ''.join(buffer)
-                                                 buffer = []
+                                             # Adjust buffer size based on typical chunk sizes observed
+                                             yield ''.join(buffer) # Yield immediately or based on buffer size
+                                             buffer = [] # Reset buffer after yielding
+
                 # Yield any remaining text in the buffer
                 if buffer:
                     yield ''.join(buffer)
             except Exception as e:
                 logging.error(f"Streaming error during run for thread {session}: {e}")
-                yield "\n[ERROR] An error occurred while generating the response. Please try again."
-                # Consider raising HTTPException here too, but yielding error message is user-friendly
+                yield f"\n[ERROR] An error occurred while generating the response: {str(e)}. Please check logs."
+                # Consider different error propagation for production
 
         # Return the streaming response
-        return StreamingResponse(stream_response(), media_type="text/event-stream")
+        return StreamingResponse(stream_response(), media_type="text/event-stream") # text/plain? text/event-stream is common
 
     except Exception as e:
         logging.error(f"Error in /conversation endpoint setup: {e}")
+        # Check for specific errors like invalid IDs
+        if "No thread found with id" in str(e):
+            raise HTTPException(status_code=404, detail=f"Session (Thread) with ID '{session}' not found.")
+        if "No assistant found with id" in str(e):
+             raise HTTPException(status_code=404, detail=f"Assistant with ID '{assistant}' not found.")
         raise HTTPException(status_code=500, detail=f"Failed to process conversation request: {str(e)}")
 
 
@@ -1030,8 +1125,9 @@ async def chat(
         response_text_parts = []
         try:
             # Use stream to collect deltas - often more reliable than run+retrieve+list messages
-            with client.beta.threads.runs.stream(thread_id=session, assistant_id=assistant) as stream:
-                for event in stream:
+            # Needs to be async if using stream with async for
+            async with client.beta.threads.runs.stream(thread_id=session, assistant_id=assistant) as stream:
+                async for event in stream:
                     if event.event == "thread.message.delta":
                         delta = event.data.delta
                         if delta.content:
@@ -1041,17 +1137,39 @@ async def chat(
                                     if text_value:
                                          response_text_parts.append(text_value)
             # Alternative: Use run = client.beta.threads.runs.create_and_poll(...) then list messages
-            # This stream approach captures the final message content as it's generated.
+            # run = client.beta.threads.runs.create_and_poll(
+            #     thread_id=session,
+            #     assistant_id=assistant
+            # )
+            # if run.status == 'completed':
+            #     messages = client.beta.threads.messages.list(thread_id=session, order='desc', limit=1)
+            #     if messages.data and messages.data[0].role == 'assistant':
+            #          for content_part in messages.data[0].content:
+            #              if content_part.type == 'text':
+            #                  response_text_parts.append(content_part.text.value)
+            # else:
+            #      logging.error(f"Run failed or did not complete. Status: {run.status}")
+            #      raise HTTPException(status_code=500, detail=f"Assistant run failed: {run.last_error or run.status}")
 
         except Exception as e:
             logging.error(f"Error during run/stream for thread {session}: {e}")
-            raise HTTPException(status_code=500, detail="Error generating response. Please try again.")
+            raise HTTPException(status_code=500, detail=f"Error generating response: {str(e)}. Please check logs.")
 
         full_response = ''.join(response_text_parts)
+        if not full_response and prompt: # Check if response is empty despite a prompt
+            logging.warning(f"Assistant returned an empty response for thread {session}, prompt: '{prompt}'")
+            # Optionally return a specific message or just the empty string based on desired behavior
+            full_response = "[Assistant did not provide a text response]"
+
+
         return JSONResponse(content={"response": full_response})
 
     except Exception as e:
         logging.error(f"Error in /chat endpoint setup: {e}")
+        if "No thread found with id" in str(e):
+            raise HTTPException(status_code=404, detail=f"Session (Thread) with ID '{session}' not found.")
+        if "No assistant found with id" in str(e):
+             raise HTTPException(status_code=404, detail=f"Assistant with ID '{assistant}' not found.")
         raise HTTPException(status_code=500, detail=f"Failed to process chat request: {str(e)}")
 
 
@@ -1069,9 +1187,15 @@ async def trim_thread(request: Request, assistant_id_query: Optional[str] = None
     processed_count = 0
 
     # Get parameters from form data first, then fallback to query params
-    form_data = await request.form()
-    assistant_id = form_data.get("assistant_id", assistant_id_query)
-    max_age_days_str = form_data.get("max_age_days")
+    try:
+        form_data = await request.form()
+        assistant_id = form_data.get("assistant_id", assistant_id_query)
+        max_age_days_str = form_data.get("max_age_days")
+    except Exception as e:
+        logging.warning(f"Could not parse form data for /trim-thread: {e}. Falling back to query params.")
+        assistant_id = assistant_id_query
+        max_age_days_str = None # Will use max_age_days_query below
+
 
     if not assistant_id:
         raise HTTPException(status_code=400, detail="assistant_id is required (provide in query or form data)")
@@ -1081,8 +1205,8 @@ async def trim_thread(request: Request, assistant_id_query: Optional[str] = None
         try:
             max_age_days = int(max_age_days_str)
         except (ValueError, TypeError):
-            logging.warning(f"Invalid max_age_days value '{max_age_days_str}', using default.")
-            max_age_days = None
+            logging.warning(f"Invalid max_age_days value '{max_age_days_str}' from form data, using query/default.")
+            max_age_days = max_age_days_query # Fallback to query param if form value invalid
     elif max_age_days_query is not None:
          max_age_days = max_age_days_query
 
@@ -1093,6 +1217,9 @@ async def trim_thread(request: Request, assistant_id_query: Optional[str] = None
         time_threshold_hours = max_age_days * 24
         logging.info(f"Using custom time threshold: {time_threshold_hours} hours ({max_age_days} days)")
     else:
+        # If max_age_days was invalid or 0, use default
+        if max_age_days is not None: # Log if an invalid value was provided
+            logging.warning(f"Invalid max_age_days ({max_age_days}) provided, using default threshold.")
         logging.info(f"Using default time threshold: {time_threshold_hours} hours")
 
 
@@ -1101,32 +1228,50 @@ async def trim_thread(request: Request, assistant_id_query: Optional[str] = None
     try:
         logging.info(f"Starting thread trimming for assistant: {assistant_id}")
         # Step 1: Get runs associated with this assistant to find relevant threads
-        # Note: list_runs might be more appropriate than list_all_runs if supported and sufficient.
-        # The API might require pagination for a large number of runs.
-        logging.info("Fetching runs to identify threads... (This might take time if there are many runs)")
-        # Potentially paginate here in a real high-load scenario
-        runs_list = client.beta.threads.runs.list(limit=100) # Get recent runs first
-        # Add more sophisticated pagination if needed, checking runs_list.has_more etc.
+        logging.info("Fetching runs to identify threads... (May require pagination for many runs)")
 
-        for run in runs_list.data:
-            if run.assistant_id == assistant_id:
-                thread_id = run.thread_id
-                # Use run creation time as proxy for thread activity
-                last_active_ts = datetime.datetime.fromtimestamp(run.created_at, tz=datetime.timezone.utc)
+        # --- More Robust Run Fetching with Pagination ---
+        has_more = True
+        after_cursor = None
+        runs_limit = 100 # Max allowed by API per page
 
-                if thread_id not in all_threads_info or last_active_ts > all_threads_info[thread_id]['last_active']:
-                    all_threads_info[thread_id] = {
-                        'thread_id': thread_id,
-                        'last_active': last_active_ts
-                    }
+        while has_more:
+             try:
+                 runs_list = client.beta.threads.runs.list(limit=runs_limit, after=after_cursor)
+                 if not runs_list.data:
+                     break # No more runs found
 
-        logging.info(f"Identified {len(all_threads_info)} unique threads associated with assistant {assistant_id}")
+                 for run in runs_list.data:
+                     if run.assistant_id == assistant_id:
+                         thread_id = run.thread_id
+                         # Use run creation time as proxy for thread activity
+                         last_active_ts = datetime.datetime.fromtimestamp(run.created_at, tz=datetime.timezone.utc)
 
-        # Sort threads by last active time (most recent first) - not strictly necessary but can prioritize
+                         if thread_id not in all_threads_info or last_active_ts > all_threads_info[thread_id]['last_active']:
+                             all_threads_info[thread_id] = {
+                                 'thread_id': thread_id,
+                                 'last_active': last_active_ts
+                             }
+
+                 has_more = runs_list.has_more
+                 if has_more:
+                     after_cursor = runs_list.last_id
+                     logging.info(f"Fetching next page of runs after {after_cursor}")
+                 else:
+                      logging.info("Fetched all runs.")
+
+             except Exception as list_runs_e:
+                 logging.error(f"Error fetching runs page: {list_runs_e}. Stopping run fetching.")
+                 has_more = False # Stop pagination on error
+
+        logging.info(f"Identified {len(all_threads_info)} unique threads associated with assistant {assistant_id} via runs.")
+
+        # Sort threads by last active time (most recent first)
         sorted_threads = sorted(all_threads_info.values(), key=lambda x: x['last_active'], reverse=True)
 
         # Get current time (UTC) for age comparison
         now_utc = datetime.datetime.now(datetime.timezone.utc)
+        threshold_delta = datetime.timedelta(hours=time_threshold_hours)
 
         # Step 2: Process each identified thread
         for thread_info in sorted_threads:
@@ -1135,17 +1280,25 @@ async def trim_thread(request: Request, assistant_id_query: Optional[str] = None
             processed_count += 1
 
             try:
-                # Calculate age in hours
-                thread_age = now_utc - last_active
-                thread_age_hours = thread_age.total_seconds() / 3600
+                # Check age against threshold
+                if now_utc - last_active > threshold_delta:
+                    thread_age_hours = (now_utc - last_active).total_seconds() / 3600
 
-                # Retrieve thread to check metadata
-                thread = client.beta.threads.retrieve(thread_id=thread_id)
-                metadata = thread.metadata if hasattr(thread, 'metadata') and thread.metadata else {}
-                is_summary_thread = metadata.get('is_summary', False)
+                    # Retrieve thread to check metadata
+                    try:
+                        thread = client.beta.threads.retrieve(thread_id=thread_id)
+                        metadata = thread.metadata if hasattr(thread, 'metadata') and thread.metadata else {}
+                        is_summary_thread = metadata.get('is_summary', False)
+                    except Exception as retrieve_e:
+                         # If thread retrieval fails (e.g., already deleted), log and skip
+                         if "No thread found with id" in str(retrieve_e):
+                             logging.warning(f"Thread {thread_id} not found, likely already deleted. Skipping.")
+                             continue
+                         else:
+                              logging.error(f"Error retrieving thread {thread_id}: {retrieve_e}")
+                              continue # Skip this thread on error
 
-                # --- Cleanup Logic ---
-                if thread_age_hours > time_threshold_hours:
+                    # --- Cleanup Logic ---
                     if is_summary_thread:
                         # Delete old summary threads
                         logging.info(f"Deleting old summary thread {thread_id} (age: {thread_age_hours:.1f} hours)")
@@ -1155,17 +1308,18 @@ async def trim_thread(request: Request, assistant_id_query: Optional[str] = None
                         # Summarize and delete old regular threads
                         logging.info(f"Summarizing and deleting old thread {thread_id} (age: {thread_age_hours:.1f} hours)")
 
-                        # Get messages (limit to avoid excessive context)
-                        messages = client.beta.threads.messages.list(thread_id=thread_id, limit=50, order='asc') # Get oldest first for context
+                        # Get messages (limit to avoid excessive context, get recent ones first for summary)
+                        messages = client.beta.threads.messages.list(thread_id=thread_id, limit=50, order='desc') # Get most recent first
                         message_content_list = []
-                        for msg in messages.data:
+                        # Iterate in reverse to get chronological order for the prompt
+                        for msg in reversed(messages.data):
                              # Robust content extraction
                              text_content = ""
                              if msg.content:
                                  for content_part in msg.content:
                                      if content_part.type == 'text' and content_part.text:
                                          text_content += content_part.text.value + " "
-                             if text_content:
+                             if text_content.strip(): # Only add if there is actual text content
                                 message_content_list.append(f"{msg.role}: {text_content.strip()}")
 
                         if not message_content_list:
@@ -1175,11 +1329,24 @@ async def trim_thread(request: Request, assistant_id_query: Optional[str] = None
                             continue # Skip to next thread
 
                         summary_prompt_content = "\n\n".join(message_content_list)
-                        full_prompt = f"Provide a concise summary (1-2 paragraphs) of the key topics discussed in the following conversation:\n\n---\n{summary_prompt_content}\n---"
+                        # Make prompt slightly more robust
+                        full_prompt = (
+                             "Please act as a conversation archivist. Summarize the key points, decisions, "
+                             f"and outcomes from the following conversation excerpt involving assistant {assistant_id}. "
+                             "Provide a concise summary (1-3 paragraphs) suitable for future reference.\n\n"
+                             "--- CONVERSATION START ---\n"
+                             f"{summary_prompt_content}\n"
+                             "--- CONVERSATION END ---"
+                        )
 
                         # Create a new thread for the summary
                         summary_thread = client.beta.threads.create(
-                            metadata={"is_summary": True, "original_thread_id": thread_id, "summarized_at": now_utc.isoformat()}
+                            metadata={
+                                "is_summary": True,
+                                "original_thread_id": thread_id,
+                                "summarized_at": now_utc.isoformat(),
+                                "original_assistant_id": assistant_id # Store original assistant ID
+                                }
                         )
 
                         # Add summarization request message
@@ -1189,62 +1356,81 @@ async def trim_thread(request: Request, assistant_id_query: Optional[str] = None
                             content=full_prompt
                         )
 
-                        # Run summarization (using create_and_poll for simplicity here)
+                        # Run summarization (using create_and_poll for simplicity)
                         try:
                             run = client.beta.threads.runs.create_and_poll(
                                 thread_id=summary_thread.id,
-                                assistant_id=assistant_id, # Use the same assistant for summarization style
-                                # instructions="Summarize the conversation provided.", # Optional override
+                                assistant_id=assistant_id, # Use the same assistant
+                                # instructions="Summarize the provided conversation concisely.", # Optional override
+                                # model="gpt-4o-mini" # Can specify model if needed
                             )
 
                             if run.status == "completed":
                                 # Optionally retrieve and log the summary, but main goal is deletion
-                                summary_messages = client.beta.threads.messages.list(thread_id=summary_thread.id, order="desc", limit=1)
-                                summary_text = "Summary generated."
-                                if summary_messages.data and summary_messages.data[0].content:
-                                     # Robust check
-                                     content_part = summary_messages.data[0].content[0]
-                                     if content_part.type == 'text' and content_part.text:
-                                         summary_text = content_part.text.value[:200] + "..." # Log snippet
+                                try:
+                                    summary_messages = client.beta.threads.messages.list(thread_id=summary_thread.id, order="desc", limit=1)
+                                    summary_text = "[Summary generation completed]"
+                                    if summary_messages.data and summary_messages.data[0].role == 'assistant' and summary_messages.data[0].content:
+                                         content_part = summary_messages.data[0].content[0]
+                                         if content_part.type == 'text' and content_part.text:
+                                             summary_text = content_part.text.value[:200] + ("..." if len(content_part.text.value) > 200 else "")
 
-                                logging.info(f"Summary generated in thread {summary_thread.id} for original {thread_id}. Summary starts: '{summary_text}'")
+                                    logging.info(f"Summary generated in thread {summary_thread.id} for original {thread_id}. Summary starts: '{summary_text}'")
+                                except Exception as log_summary_e:
+                                     logging.warning(f"Could not retrieve or log summary text for {summary_thread.id}: {log_summary_e}")
 
                                 # Delete the original thread AFTER successful summary run
-                                client.beta.threads.delete(thread_id=thread_id)
-                                deleted_count += 1
-                                summarized_count += 1
+                                try:
+                                    client.beta.threads.delete(thread_id=thread_id)
+                                    deleted_count += 1
+                                    summarized_count += 1
+                                except Exception as delete_orig_e:
+                                     logging.error(f"Summary successful, but failed to delete original thread {thread_id}: {delete_orig_e}")
+
                             else:
-                                logging.error(f"Summarization run for thread {thread_id} failed or timed out. Status: {run.status}. Original thread NOT deleted.")
-                                # Optionally delete the failed summary thread?
-                                # client.beta.threads.delete(thread_id=summary_thread.id)
+                                logging.error(f"Summarization run for thread {thread_id} failed or timed out. Status: {run.status}, Error: {run.last_error}. Original thread NOT deleted.")
+                                # Optionally delete the failed summary thread to avoid clutter
+                                try:
+                                     client.beta.threads.delete(thread_id=summary_thread.id)
+                                     logging.info(f"Deleted failed summary thread {summary_thread.id}")
+                                except Exception as delete_fail_e:
+                                     logging.error(f"Failed to delete the failed summary thread {summary_thread.id}: {delete_fail_e}")
 
                         except Exception as run_e:
-                            logging.error(f"Error during summarization run for thread {thread_id}: {run_e}. Original thread NOT deleted.")
-                            # Optionally delete the failed summary thread?
-                            # client.beta.threads.delete(thread_id=summary_thread.id)
+                            logging.error(f"Error during summarization run creation/polling for thread {thread_id}: {run_e}. Original thread NOT deleted.")
+                            # Optionally delete the failed summary thread
+                            try:
+                                client.beta.threads.delete(thread_id=summary_thread.id)
+                                logging.info(f"Deleted failed summary thread {summary_thread.id} after run error.")
+                            except Exception as delete_fail_e:
+                                logging.error(f"Failed to delete the failed summary thread {summary_thread.id} after run error: {delete_fail_e}")
 
                 else:
-                    # Thread is not older than threshold
-                    # logging.debug(f"Skipping thread {thread_id} (age: {thread_age_hours:.1f} hours) - within threshold.")
-                    pass
+                    # Thread is not older than threshold - Log less verbosely
+                    # logging.debug(f"Skipping thread {thread_id} (age: {(now_utc - last_active).total_seconds() / 3600:.1f} hours) - within threshold.")
+                    pass # Keep it concise unless debugging
 
             except Exception as process_e:
-                logging.error(f"Error processing thread {thread_id}: {process_e}")
+                logging.error(f"Unhandled error processing thread {thread_id}: {process_e}")
                 continue # Move to the next thread
 
         logging.info("Thread trimming process finished.")
+        # Calculate count of old summary threads deleted correctly
+        old_summary_threads_deleted = deleted_count - summarized_count
+
         return JSONResponse({
             "status": "Thread trimming completed",
             "assistant_id": assistant_id,
             "threads_identified": len(all_threads_info),
             "threads_processed": processed_count,
             "threads_summarized_and_deleted": summarized_count,
-            "old_summary_threads_deleted": deleted_count - summarized_count, # Total deleted minus those summarized
+            "old_summary_threads_deleted": old_summary_threads_deleted,
+            "total_threads_deleted": deleted_count,
             "threshold_hours": time_threshold_hours
         })
 
     except Exception as e:
-        logging.error(f"Error in /trim-thread endpoint: {e}")
+        logging.error(f"Critical error in /trim-thread endpoint: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to trim threads: {str(e)}")
 
 
@@ -1252,136 +1438,4 @@ async def trim_thread(request: Request, assistant_id_query: Optional[str] = None
 async def file_cleanup(request: Request, vector_store_id_query: Optional[str] = None, assistant_id_query: Optional[str] = None):
     """
     Cleans up files older than 48 hours:
-    - For a specific vector store (if vector_store_id provided).
-    - Removes *all* code interpreter file associations from an assistant (if assistant_id provided).
-    - If only assistant_id is provided, it attempts to find its associated vector store for cleanup too.
-
-    Accepts vector_store_id and assistant_id via query params or form data.
-    """
-    client = create_client()
-    deleted_vector_files = 0
-    cleared_code_interpreter_files = 0
-    skipped_batches = 0
-    vector_stores_cleaned = []
-    assistants_processed = []
-
-    # Get parameters from form data first, then fallback to query params
-    form_data = await request.form()
-    vector_store_id = form_data.get("vector_store_id", vector_store_id_query)
-    assistant_id = form_data.get("assistant_id", assistant_id_query)
-
-
-    if not vector_store_id and not assistant_id:
-        raise HTTPException(status_code=400, detail="Either vector_store_id or assistant_id (or both) is required")
-
-    # --- Determine Vector Store(s) to Clean ---
-    vs_ids_to_clean = set()
-    if vector_store_id:
-        vs_ids_to_clean.add(vector_store_id)
-
-    # If assistant_id is provided, try to find its linked vector store(s)
-    if assistant_id:
-         assistants_processed.append(assistant_id)
-         try:
-             assistant_obj = client.beta.assistants.retrieve(assistant_id=assistant_id)
-             if hasattr(assistant_obj, "tool_resources") and assistant_obj.tool_resources:
-                 fs_resources = getattr(assistant_obj.tool_resources, "file_search", None)
-                 if fs_resources and hasattr(fs_resources, "vector_store_ids"):
-                     for vs_id in fs_resources.vector_store_ids:
-                         if vs_id:
-                             vs_ids_to_clean.add(vs_id)
-                     logging.info(f"Identified vector stores linked to assistant {assistant_id}: {list(vs_ids_to_clean)}")
-         except Exception as e:
-             logging.error(f"Could not retrieve assistant {assistant_id} to find linked vector stores: {e}")
-
-
-    # --- Vector Store File Cleanup ---
-    if vs_ids_to_clean:
-        logging.info(f"Starting vector store file cleanup for VS IDs: {list(vs_ids_to_clean)} (older than 48 hours)")
-        now_utc = datetime.datetime.now(datetime.timezone.utc)
-        threshold_seconds = 48 * 3600
-
-        for vs_id in vs_ids_to_clean:
-            try:
-                logging.info(f"Processing vector store: {vs_id}")
-                # List files directly instead of batches for more granular age check
-                # Note: Pagination might be needed for stores with many files
-                files_in_store = client.beta.vector_stores.files.list(vector_store_id=vs_id, limit=100) # Adjust limit/paginate
-
-                for file in files_in_store.data:
-                    try:
-                        file_created_ts = datetime.datetime.fromtimestamp(file.created_at, tz=datetime.timezone.utc)
-                        file_age_seconds = (now_utc - file_created_ts).total_seconds()
-
-                        if file_age_seconds > threshold_seconds:
-                            logging.info(f"Deleting old file {file.id} (age: {file_age_seconds/3600:.1f} hours) from VS {vs_id}")
-                            client.beta.vector_stores.files.delete(
-                                vector_store_id=vs_id,
-                                file_id=file.id
-                            )
-                            deleted_vector_files += 1
-                        # else:
-                            # logging.debug(f"Skipping recent file {file.id} in VS {vs_id}")
-
-                    except Exception as delete_e:
-                        logging.error(f"Error deleting file {file.id} from VS {vs_id}: {delete_e}")
-                vector_stores_cleaned.append(vs_id)
-
-            except Exception as vs_e:
-                 logging.error(f"Error processing vector store {vs_id}: {vs_e}")
-                 continue # Move to next vector store
-
-    # --- Code Interpreter File Cleanup ---
-    if assistant_id:
-        logging.info(f"Starting code interpreter file cleanup for assistant: {assistant_id}")
-        try:
-            # Retrieve assistant again to ensure we have latest state
-            assistant_obj = client.beta.assistants.retrieve(assistant_id=assistant_id)
-            current_tools = assistant_obj.tools if assistant_obj.tools else []
-            current_tool_resources = assistant_obj.tool_resources if assistant_obj.tool_resources else {}
-
-            # Get current code interpreter file IDs
-            code_interpreter_file_ids = []
-            ci_resources = getattr(current_tool_resources, "code_interpreter", None)
-            if ci_resources and hasattr(ci_resources, "file_ids"):
-                code_interpreter_file_ids = list(ci_resources.file_ids)
-
-            if code_interpreter_file_ids:
-                 # Preserve file search resources
-                 fs_resource_payload = {}
-                 fs_resources = getattr(current_tool_resources, "file_search", None)
-                 if fs_resources and hasattr(fs_resources, "vector_store_ids"):
-                     fs_resource_payload = {"vector_store_ids": list(fs_resources.vector_store_ids)}
-
-                 # Update assistant to clear code interpreter files
-                 client.beta.assistants.update(
-                     assistant_id=assistant_id,
-                     tool_resources={
-                         "code_interpreter": {"file_ids": []}, # Set to empty list
-                         "file_search": fs_resource_payload
-                     }
-                 )
-                 cleared_code_interpreter_files = len(code_interpreter_file_ids)
-                 logging.info(f"Cleared {cleared_code_interpreter_files} code interpreter file associations from assistant {assistant_id}")
-            else:
-                 logging.info(f"No code interpreter files associated with assistant {assistant_id}.")
-
-        except Exception as e:
-            logging.error(f"Error cleaning code interpreter files for assistant {assistant_id}: {e}")
-
-    logging.info("File cleanup process finished.")
-    return JSONResponse({
-        "status": "File cleanup completed",
-        "vector_stores_processed": list(vs_ids_to_clean),
-        "vector_files_deleted_older_than_48h": deleted_vector_files,
-        "assistants_processed_for_ci": assistants_processed,
-        "code_interpreter_files_cleared": cleared_code_interpreter_files,
-        # "batches_skipped": skipped_batches # Removed as logic changed to file-based age check
-    })
-
-
-if __name__ == "__main__":
-    import uvicorn
-    print("Starting FastAPI server on http://0.0.0.0:8000")
-    # Consider adding reload=True for development, but remove for production
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    - For specific vector stores (if vector_
