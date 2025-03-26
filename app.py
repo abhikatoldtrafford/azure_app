@@ -551,23 +551,29 @@ async def co_pilot(request: Request, **kwargs): # Using **kwargs is okay but les
                 needs_update = True
 
             # --- Update Assistant if tools or resources changed ---
+            # --- Update Assistant if tools or resources changed ---
             if needs_update:
                 update_payload = {"tools": current_tools, "tool_resources": {}}
-    
-                # Preserve/update file search resources
+            
+                # Construct final tool_resources payload ensuring all parts are preserved correctly
+            
+                # File Search: Always use the current/updated vector_store_ids list
+                # Ensure fs_resources and vector_store_ids are correctly defined earlier in the function
                 fs_resource_payload = {"vector_store_ids": vector_store_ids}
                 update_payload["tool_resources"]["file_search"] = fs_resource_payload
-    
-                # Preserve/update code interpreter resources (ALWAYS include the current list)
-                # <<< FIX APPLIED HERE >>>
+            
+                # Code Interpreter: Always use the current/updated code_interpreter_file_ids list
+                # Ensure code_interpreter_file_ids is correctly defined and updated earlier in the function
+                # <<< THIS IS THE CORRECTED LOGIC >>>
                 ci_resource_payload = {"file_ids": code_interpreter_file_ids}
                 update_payload["tool_resources"]["code_interpreter"] = ci_resource_payload
-    
+            
                 try:
                     client.beta.assistants.update(assistant_id=assistant, **update_payload)
                     logging.info(f"Updated assistant {assistant} with new tool/resource associations.")
                 except Exception as update_err:
-                     logging.error(f"Failed to update assistant {assistant}: {update_err}")
+                    logging.error(f"Failed to update assistant {assistant}: {update_err}")
+                    # Depending on severity, might want to raise HTTPException or just log
 
         # --- Handle file upload (similar logic to /initiate-chat but updates existing assistant) ---
         if file:
