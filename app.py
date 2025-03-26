@@ -43,7 +43,7 @@ async def image_analysis(client, image_data: bytes, filename: str, prompt: Optio
         )
         combined_prompt = f"{default_prompt} {prompt}" if prompt else default_prompt
         
-        # Use the existing client instead of creating a new one
+        # Use the existing client for vision API
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{
@@ -106,73 +106,21 @@ async def update_context(client, thread_id, context):
         logging.error(f"Error updating context: {e}")
         # Continue the flow even if context update fails
 
-# Function to add file awareness to the assistant
-async def add_file_awareness(client, thread_id, file_info):
-    """Adds file awareness to the assistant by sending a message about the file."""
-    if not file_info:
-        return
-
-    try:
-        # Create a message that informs the assistant about the file
-        file_type = file_info.get("type", "unknown")
-        file_name = file_info.get("name", "unnamed_file")
-        file_id = file_info.get("id", "")
-        processing_method = file_info.get("processing_method", "")
-        
-        awareness_message = f"FILE INFORMATION: A file named '{file_name}' of type '{file_type}' has been uploaded. "
-        
-        if file_type in ["csv", "excel"]:
-            awareness_message += f"This file is available for analysis using the code interpreter. File ID: {file_id}."
-            if file_type == "excel":
-                awareness_message += " This is an Excel file with potentially multiple sheets."
-        elif file_type == "image":
-            awareness_message += "This image has been analyzed and the content has been added to this thread."
-        else:
-            awareness_message += "This file has been added to the vector store and is available for search."
-        
-        # Add specific instructions for Excel/CSV handling
-        if file_type in ["csv", "excel"]:
-            awareness_message += "\n\nWhen analyzing this file, follow these instructions:\n"
-            awareness_message += """
-**File Handling:**
-1. If receiving Excel (.xlsx/.xls):
-   - Read ALL sheets using: `df_dict = pd.read_excel(file_path, sheet_name=None)`
-   - Convert each sheet to CSV named: `<original_filename>_<sheet_name>.csv` (e.g., "sales.xlsx" → "sales_Orders.csv", "sales_Clients.csv")
-   - Always reference both original file and sheet name in analysis
-
-2. If receiving CSV:
-   - Use directly for analysis
-   - Preserve original filename in references
-
-**Analysis Requirements:**
-- Start with data overview: shape, columns, missing values
-- Perform sheet-specific analysis for Excel files
-- Compare trends across sheets when applicable
-- Generate visualizations with clear source identification
-- Include code snippets with explanations
-
-**Output Formatting:**
-- Begin with: "Analyzing [file.csv] / [sheet] from [file.xlsx]"
-- Use markdown tables for key statistics
-- Place visualizations under clear headings
-- Separate analysis per sheet/file with horizontal rules
-"""
-
-        # Send the message to the thread
-        client.beta.threads.messages.create(
-            thread_id=thread_id,
-            role="user",
-            content=awareness_message,
-            metadata={"type": "file_awareness"}
-        )
-        
-        logging.info(f"Added file awareness for {file_name} to thread {thread_id}")
-    except Exception as e:
-        logging.error(f"Error adding file awareness: {e}")
-        # Continue the flow even if adding awareness fails
+# Helper function to identify file type
+def get_file_type(filename):
+    """Determine if file is CSV, Excel, image, or other type"""
+    ext = os.path.splitext(filename.lower())[1]
+    if ext in ['.csv']:
+        return 'csv'
+    elif ext in ['.xlsx', '.xls']:
+        return 'excel'
+    elif ext in ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']:
+        return 'image'
+    else:
+        return 'other'
 
 @app.post("/initiate-chat")
-async def initiate_chat(request: Request, **kwargs):
+async def initiate_chat(request: Request):
     """
     Initiates the assistant and session and optionally uploads a file to its vector store, 
     all in one go.
@@ -182,18 +130,17 @@ async def initiate_chat(request: Request, **kwargs):
     # Parse the form data
     form = await request.form()
     file = form.get("file", None)
-    context = form.get("context", None)  # New: Get optional context parameter
+    context = form.get("context", None)  # Get optional context parameter
 
     # Create a vector store up front
     vector_store = client.beta.vector_stores.create(name="demo")
 
-    # Always include code_interpreter and file_search tools
+    # Always include file_search and code_interpreter tools
     assistant_tools = [{"type": "code_interpreter"}, {"type": "file_search"}]
     assistant_tool_resources = {"file_search": {"vector_store_ids": [vector_store.id]}}
     
     # Initialize empty file_ids list for code_interpreter
     code_interpreter_file_ids = []
-    assistant_tool_resources["code_interpreter"] = {"file_ids": code_interpreter_file_ids}
     
     system_prompt = '''
         You are a highly skilled Product Management AI Assistant and Co-Pilot. Your primary responsibilities include generating comprehensive Product Requirements Documents (PRDs) and providing insightful answers to a wide range of product-related queries. You seamlessly integrate information from uploaded files and your extensive knowledge base to deliver contextually relevant and actionable insights.
@@ -222,6 +169,7 @@ async def initiate_chat(request: Request, **kwargs):
 
         - **Guidelines:**
             - Utilize the file_search tool to extract relevant data from uploaded files.
+            - For CSV and Excel files, use the code_interpreter tool to analyze the data.
             - Ensure all sections are contextually relevant, logically structured, and provide actionable insights.
             - If certain information is missing, make informed assumptions or prompt the user for clarification.
             - Incorporate industry best practices and standards where applicable.
@@ -230,56 +178,25 @@ async def initiate_chat(request: Request, **kwargs):
         - **Scope:** Respond to a broad range of product management queries, including strategy, market analysis, feature prioritization, user feedback interpretation, and more.
         - **Methodology:**
             - Use the file_search tool to find pertinent information within uploaded files.
+            - For data analysis of CSV and Excel files, use the code_interpreter tool.
             - Leverage your comprehensive knowledge base to provide thorough and insightful answers.
             - If a question falls outside the scope of the provided files and your expertise, default to a general GPT-4 response without referencing the files.
             - Maintain a balance between technical detail and accessibility, ensuring responses are understandable yet informative.
 
-        3. **Data Analysis with Code Interpreter:**
-        - When users upload CSV or Excel files, you can analyze them using the code_interpreter tool.
-        - For Excel files, remember to examine all sheets and provide comprehensive analysis.
-        - Generate visualizations and statistics to help users understand their data.
-        - Explain your analysis approach and findings clearly.
+        ### **File Handling Guidelines:**
+        1. When working with Excel files:
+           - Analyze all sheets in the file
+           - Reference both the original file and sheet name in your analysis
+           - Perform sheet-specific analysis and compare trends across sheets when applicable
 
-        ### **Behavioral Guidelines:**
-
-        - **Contextual Awareness:**
-        - Always consider the context provided by the uploaded files and previous interactions.
-        - Adapt your responses based on the specific needs and preferences of the user.
-
-        - **Proactive Insight Generation:**
-        - Go beyond surface-level answers by providing deep insights, trends, and actionable recommendations.
-        - Anticipate potential follow-up questions and address them preemptively where appropriate.
-
-        - **Professional Tone:**
-        - Maintain a professional, clear, and concise communication style.
-        - Ensure all interactions are respectful, objective, and goal-oriented.
-
-        - **Seamless Mode Switching:**
-        - Efficiently transition between PRD generation and generic question answering based on user prompts.
-        - Recognize when a query is outside the scope of the uploaded files and adjust your response accordingly without prompting the user.
-
-        - **Continuous Improvement:**
-        - Learn from each interaction to enhance future responses.
-        - Seek feedback when necessary to better align with the user's expectations and requirements.
-
-        ### **Important Notes:**
-
-        - **Tool Utilization:**
-        - Always evaluate whether the file_search tool can enhance the quality of your response before using it.
-        - Use code_interpreter for data analysis when working with CSV or Excel files.
-        
-        - **Data Privacy:**
-        - Handle all uploaded files and user data with the utmost confidentiality and in compliance with relevant data protection standards.
-
-        - **Assumption Handling:**
-        - Clearly indicate when you are making assumptions due to missing information.
-        - Provide rationales for your assumptions to maintain transparency.
-
-        - **Error Handling:**
-        - Gracefully manage any errors or uncertainties by informing the user and seeking clarification when necessary.
+        2. When working with CSV files:
+           - Start with data overview (shape, columns, missing values)
+           - Generate appropriate visualizations with clear source identification
+           - Preserve the original filename in references
 
         By adhering to these guidelines, you will function as an effective Product Management AI Assistant, delivering high-quality PRDs and insightful answers that closely mimic the expertise of a seasoned product manager.
         '''
+    
     # Create the assistant
     try:
         assistant = client.beta.assistants.create(
@@ -317,82 +234,57 @@ async def initiate_chat(request: Request, **kwargs):
         filename = file.filename
         file_path = os.path.join('/tmp/', filename)
         file_content = await file.read()
+        
         with open(file_path, 'wb') as f:
             f.write(file_content)
-
+            
         # Determine file type
-        file_ext = os.path.splitext(filename)[1].lower()
+        file_type = get_file_type(filename)
         
-        # Check if it's CSV or Excel
-        is_csv = file_ext == '.csv'
-        is_excel = file_ext in ['.xlsx', '.xls', '.xlsm']
-        is_image = file_ext in ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']
-        
-        if is_csv or is_excel:
+        if file_type in ['csv', 'excel']:
             # Upload to code interpreter
             with open(file_path, "rb") as file_stream:
-                uploaded_file = client.files.create(
+                code_interpreter_file = client.files.create(
                     file=file_stream,
-                    purpose='assistants'
+                    purpose="assistants"
                 )
-            
-            # Add file to code interpreter resource
-            code_interpreter_file_ids.append(uploaded_file.id)
-            client.beta.assistants.update(
-                assistant_id=assistant.id,
-                tool_resources={
-                    "code_interpreter": {"file_ids": code_interpreter_file_ids},
-                    "file_search": {"vector_store_ids": [vector_store.id]}
-                }
-            )
-            
-            # Add file awareness to the thread
-            file_info = {
-                "type": "csv" if is_csv else "excel",
-                "name": filename,
-                "id": uploaded_file.id,
-                "processing_method": "code_interpreter"
-            }
-            await add_file_awareness(client, thread.id, file_info)
-            
-            logging.info(f"Added {filename} to code interpreter with file_id: {uploaded_file.id}")
-        elif is_image:
-            # Process image and add to thread
-            analysis_text = await image_analysis(client, file_content, filename, None)
-            
-            # Add the analysis to the thread
+                code_interpreter_file_ids.append(code_interpreter_file.id)
+                
+            # Update the assistant with code_interpreter file
+            if code_interpreter_file_ids:
+                assistant_tool_resources["code_interpreter"] = {"file_ids": code_interpreter_file_ids}
+                client.beta.assistants.update(
+                    assistant_id=assistant.id,
+                    tool_resources=assistant_tool_resources
+                )
+                
+            # Add a message to the thread indicating the file type
+            file_description = f"CSV file" if file_type == 'csv' else f"Excel file with multiple sheets"
             client.beta.threads.messages.create(
                 thread_id=thread.id,
                 role="user",
-                content=f"Image Analysis for {filename}: {analysis_text}"
+                content=f"I've uploaded a {file_description} named '{filename}'. Please use the code_interpreter tool to analyze it."
             )
             
-            # Add file awareness
-            file_info = {
-                "type": "image",
-                "name": filename,
-                "processing_method": "thread_message"
-            }
-            await add_file_awareness(client, thread.id, file_info)
-            
-            logging.info(f"Added image analysis for {filename} to thread")
+            logging.info(f"{file_type.capitalize()} file '{filename}' uploaded to code interpreter")
         else:
-            # Upload to vector store for other file types
+            # Upload to vector store (original flow)
             with open(file_path, "rb") as file_stream:
                 file_batch = client.beta.vector_stores.file_batches.upload_and_poll(
                     vector_store_id=vector_store.id, 
                     files=[file_stream]
                 )
+            logging.info(f"File '{filename}' uploaded to vector store: status={file_batch.status}, count={file_batch.file_counts}")
             
-            # Add file awareness
-            file_info = {
-                "type": file_ext[1:] if file_ext else "unknown",
-                "name": filename,
-                "processing_method": "vector_store"
-            }
-            await add_file_awareness(client, thread.id, file_info)
-            
-            logging.info(f"File uploaded to vector store: status={file_batch.status}, count={file_batch.file_counts}")
+            # If it's an image, analyze it
+            if file_type == 'image':
+                analysis_text = await image_analysis(client, file_content, filename, None)
+                client.beta.threads.messages.create(
+                    thread_id=thread.id,
+                    role="user",
+                    content=f"Image Analysis for {filename}: {analysis_text}"
+                )
+                logging.info(f"Added image analysis for '{filename}' to thread {thread.id}")
 
     res = {
         "assistant": assistant.id,
@@ -404,7 +296,7 @@ async def initiate_chat(request: Request, **kwargs):
 
 
 @app.post("/co-pilot")
-async def co_pilot(request: Request, **kwargs):
+async def co_pilot(request: Request):
     """
     Handles co-pilot creation or updates with optional file upload and system prompt.
     """
@@ -414,14 +306,14 @@ async def co_pilot(request: Request, **kwargs):
     form = await request.form()
     file = form.get("file", None)
     system_prompt = form.get("system_prompt", None)
-    context = form.get("context", None)  # New: Get optional context parameter
+    context = form.get("context", None)  # Get optional context parameter
 
     # Attempt to get the assistant & vector store from the form
     assistant_id = form.get("assistant", None)
     vector_store_id = form.get("vector_store", None)
     thread_id = form.get("session", None)
 
-    # Initialize code_interpreter file_ids
+    # Initialize empty file_ids list for code_interpreter
     code_interpreter_file_ids = []
     
     # If no assistant, create one
@@ -429,30 +321,59 @@ async def co_pilot(request: Request, **kwargs):
         if not vector_store_id:
             vector_store = client.beta.vector_stores.create(name="demo")
             vector_store_id = vector_store.id
-        base_prompt = "You are a product management AI assistant, a product co-pilot."
-        instructions = base_prompt if not system_prompt else f"{base_prompt} {system_prompt}"
+            
+        base_prompt = "You are a product management AI assistant, a product co-pilot. "
+        
+        # Add file handling guidelines to the prompt
+        file_handling_guidance = """
+        When working with CSV and Excel files:
+        1. For Excel files:
+           - Analyze all sheets
+           - Reference both original file and sheet names in your analysis
+           - Compare trends across sheets when applicable
+           
+        2. For CSV files:
+           - Provide data overview (shape, columns, missing values)
+           - Generate appropriate visualizations
+           - Preserve original filename in references
+        """
+        
+        instructions = base_prompt + file_handling_guidance if not system_prompt else f"{base_prompt} {system_prompt} {file_handling_guidance}"
+        
+        tools = [{"type": "code_interpreter"}, {"type": "file_search"}]
+        tool_resources = {"file_search": {"vector_store_ids": [vector_store_id]}}
+        
         assistant = client.beta.assistants.create(
             name="demo_co_pilot",
             model="gpt-4o-mini",
             instructions=instructions,
-            tools=[{"type": "code_interpreter"}, {"type": "file_search"}],
-            tool_resources={
-                "file_search": {"vector_store_ids": [vector_store_id]},
-                "code_interpreter": {"file_ids": code_interpreter_file_ids}
-            },
+            tools=tools,
+            tool_resources=tool_resources,
         )
         assistant_id = assistant.id
     else:
         # If user gave an assistant, update instructions if needed
         if system_prompt:
+            file_handling_guidance = """
+            When working with CSV and Excel files:
+            1. For Excel files:
+               - Analyze all sheets
+               - Reference both original file and sheet names in your analysis
+               - Compare trends across sheets when applicable
+               
+            2. For CSV files:
+               - Provide data overview (shape, columns, missing values)
+               - Generate appropriate visualizations
+               - Preserve original filename in references
+            """
+            
+            updated_prompt = f"You are a product management AI assistant, a product co-pilot. {system_prompt} {file_handling_guidance}"
+            
             client.beta.assistants.update(
                 assistant_id=assistant_id,
-                instructions=(
-                    f"You are a product management AI assistant, a product co-pilot. {system_prompt}"
-                    if system_prompt
-                    else "You are a product management AI assistant, a product co-pilot."
-                ),
+                instructions=updated_prompt
             )
+            
         # If no vector_store, check existing or create new
         if not vector_store_id:
             assistant_obj = client.beta.assistants.retrieve(assistant_id=assistant_id)
@@ -468,114 +389,111 @@ async def co_pilot(request: Request, **kwargs):
                 vector_store = client.beta.vector_stores.create(name="demo")
                 vector_store_id = vector_store.id
                 existing_tools = assistant_obj.tools if assistant_obj.tools else []
+                
+                # Make sure we have both tools
                 if not any(t["type"] == "file_search" for t in existing_tools):
                     existing_tools.append({"type": "file_search"})
                 if not any(t["type"] == "code_interpreter" for t in existing_tools):
                     existing_tools.append({"type": "code_interpreter"})
-                
-                # Get existing code_interpreter file_ids if any
+                    
+                # Get any existing code_interpreter file_ids
                 code_interpreter_resource = getattr(assistant_obj.tool_resources, "code_interpreter", None)
                 if code_interpreter_resource and hasattr(code_interpreter_resource, "file_ids"):
                     code_interpreter_file_ids = code_interpreter_resource.file_ids
                 
+                # Update with the tools and resources
+                tool_resources = {
+                    "file_search": {"vector_store_ids": [vector_store_id]}
+                }
+                
+                if code_interpreter_file_ids:
+                    tool_resources["code_interpreter"] = {"file_ids": code_interpreter_file_ids}
+                    
                 client.beta.assistants.update(
                     assistant_id=assistant_id,
                     tools=existing_tools,
-                    tool_resources={
-                        "file_search": {"vector_store_ids": [vector_store_id]},
-                        "code_interpreter": {"file_ids": code_interpreter_file_ids}
-                    },
+                    tool_resources=tool_resources,
                 )
 
     # Handle file upload if present
     if file:
-        file_content = await file.read()
+        filename = file.filename
         file_path = f"/tmp/{file.filename}"
+        file_content = await file.read()
+        
         with open(file_path, "wb") as ftemp:
             ftemp.write(file_content)
-        
+            
         # Determine file type
-        file_ext = os.path.splitext(file.filename)[1].lower()
+        file_type = get_file_type(filename)
         
-        # Check if it's CSV or Excel
-        is_csv = file_ext == '.csv'
-        is_excel = file_ext in ['.xlsx', '.xls', '.xlsm']
-        is_image = file_ext in ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']
-        
-        if is_csv or is_excel:
+        if file_type in ['csv', 'excel']:
             # Upload to code interpreter
             with open(file_path, "rb") as file_stream:
-                uploaded_file = client.files.create(
+                code_interpreter_file = client.files.create(
                     file=file_stream,
-                    purpose='assistants'
+                    purpose="assistants"
                 )
-            
-            # Get the assistant to update its code_interpreter file_ids
+                code_interpreter_file_ids.append(code_interpreter_file.id)
+                
+            # Retrieve current assistant to get existing file_ids
             assistant_obj = client.beta.assistants.retrieve(assistant_id=assistant_id)
-            code_interpreter_resource = getattr(assistant_obj.tool_resources, "code_interpreter", None)
-            if code_interpreter_resource and hasattr(code_interpreter_resource, "file_ids"):
-                code_interpreter_file_ids = code_interpreter_resource.file_ids
+            existing_tool_resources = assistant_obj.tool_resources if hasattr(assistant_obj, 'tool_resources') else {}
             
-            # Add the new file
-            code_interpreter_file_ids.append(uploaded_file.id)
+            # Prepare tool_resources with code_interpreter file_ids
+            tool_resources = {}
             
-            # Update the assistant
+            # Copy existing file_search if present
+            file_search_resource = getattr(existing_tool_resources, "file_search", None)
+            if file_search_resource and hasattr(file_search_resource, "vector_store_ids"):
+                tool_resources["file_search"] = {"vector_store_ids": file_search_resource.vector_store_ids}
+            elif vector_store_id:
+                tool_resources["file_search"] = {"vector_store_ids": [vector_store_id]}
+                
+            # Update code_interpreter file_ids
+            existing_code_interpreter = getattr(existing_tool_resources, "code_interpreter", None)
+            existing_file_ids = []
+            
+            if existing_code_interpreter and hasattr(existing_code_interpreter, "file_ids"):
+                existing_file_ids = existing_code_interpreter.file_ids
+                
+            # Combine existing and new file_ids
+            all_file_ids = list(set(existing_file_ids + code_interpreter_file_ids))
+            tool_resources["code_interpreter"] = {"file_ids": all_file_ids}
+            
+            # Update assistant with new tool_resources
             client.beta.assistants.update(
                 assistant_id=assistant_id,
-                tool_resources={
-                    "code_interpreter": {"file_ids": code_interpreter_file_ids},
-                    "file_search": {"vector_store_ids": [vector_store_id] if vector_store_id else []}
-                }
+                tool_resources=tool_resources
             )
             
-            # Add file awareness if thread_id exists
+            logging.info(f"{file_type.capitalize()} file '{filename}' uploaded to code interpreter")
+            
+            # If thread exists, add a message about the file
             if thread_id:
-                file_info = {
-                    "type": "csv" if is_csv else "excel",
-                    "name": file.filename,
-                    "id": uploaded_file.id,
-                    "processing_method": "code_interpreter"
-                }
-                await add_file_awareness(client, thread_id, file_info)
-            
-            logging.info(f"Added {file.filename} to code interpreter with file_id: {uploaded_file.id}")
-        elif is_image and thread_id:
-            # Process image and add to thread
-            analysis_text = await image_analysis(client, file_content, file.filename, None)
-            
-            # Add the analysis to the thread
-            client.beta.threads.messages.create(
-                thread_id=thread_id,
-                role="user",
-                content=f"Image Analysis for {file.filename}: {analysis_text}"
-            )
-            
-            # Add file awareness
-            if thread_id:
-                file_info = {
-                    "type": "image",
-                    "name": file.filename,
-                    "processing_method": "thread_message"
-                }
-                await add_file_awareness(client, thread_id, file_info)
-            
-            logging.info(f"Added image analysis for {file.filename} to thread")
+                file_description = f"CSV file" if file_type == 'csv' else f"Excel file with multiple sheets"
+                client.beta.threads.messages.create(
+                    thread_id=thread_id,
+                    role="user",
+                    content=f"I've uploaded a {file_description} named '{filename}'. Please use the code_interpreter tool to analyze it."
+                )
         else:
-            # Upload to vector store for other file types
+            # Upload to vector store (original flow)
             with open(file_path, "rb") as file_stream:
                 client.beta.vector_stores.file_batches.upload_and_poll(
                     vector_store_id=vector_store_id,
                     files=[file_stream]
                 )
-            
-            # Add file awareness if thread_id exists
-            if thread_id:
-                file_info = {
-                    "type": file_ext[1:] if file_ext else "unknown",
-                    "name": file.filename,
-                    "processing_method": "vector_store"
-                }
-                await add_file_awareness(client, thread_id, file_info)
+                
+            # If image and thread exists, analyze and add to thread
+            if file_type == 'image' and thread_id:
+                analysis_text = await image_analysis(client, file_content, filename, None)
+                client.beta.threads.messages.create(
+                    thread_id=thread_id,
+                    role="user",
+                    content=f"Image Analysis for {filename}: {analysis_text}"
+                )
+                logging.info(f"Added image analysis for '{filename}' to thread {thread_id}")
 
     # If context provided and thread exists, update context
     if context and thread_id:
@@ -595,19 +513,27 @@ async def co_pilot(request: Request, **kwargs):
 
 
 @app.post("/upload-file")
-async def upload_file(file: UploadFile = Form(...), assistant: str = Form(...), **kwargs):
+async def upload_file(file: UploadFile = Form(...), assistant: str = Form(...)):
     """
     Uploads a file and associates it with the given assistant.
-    Handles different file types appropriately:
-    - CSV and Excel files are sent to code interpreter
-    - Images are analyzed and added to the thread
-    - Other files are sent to vector store
+    Maintains the same input-output as before, ensures a single vector store per assistant.
+    Adds support for CSV/Excel files to be used with code_interpreter.
     """
     client = create_client()
-    # Get context if provided (in kwargs or form data)
-    context = kwargs.get("context", None)
-    thread_id = kwargs.get("session", None)
-    prompt = kwargs.get("prompt", None)  # Optional prompt for image analysis
+    # Parse form data if present
+    form_data = {}
+    try:
+        # This is a workaround to get form data when file is specified via Form(...)
+        request = file.request if hasattr(file, 'request') else None
+        if request:
+            form_data = await request.form()
+    except Exception as e:
+        logging.error(f"Error getting form data: {e}")
+        
+    # Get context and thread_id if provided
+    context = form_data.get("context", None)
+    thread_id = form_data.get("session", None)
+    prompt = form_data.get("prompt", None)  # Optional prompt for image analysis
 
     try:
         # Save the uploaded file locally and get the data
@@ -617,162 +543,124 @@ async def upload_file(file: UploadFile = Form(...), assistant: str = Form(...), 
             temp_file.write(file_content)
             
         # Determine file type
-        file_ext = os.path.splitext(file.filename.lower())[1]
-        is_csv = file_ext == '.csv'
-        is_excel = file_ext in ['.xlsx', '.xls', '.xlsm']
-        is_image = file_ext in ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'] or (file.content_type and file.content_type.startswith('image/'))
+        file_type = get_file_type(file.filename)
         
         # Retrieve the assistant
         assistant_obj = client.beta.assistants.retrieve(assistant_id=assistant)
         
-        # Check if code_interpreter tool is present
-        has_code_interpreter = any(t["type"] == "code_interpreter" for t in assistant_obj.tools)
+        # Check for code_interpreter tool
+        has_code_interpreter = any(tool.get("type") == "code_interpreter" for tool in assistant_obj.tools)
         
-        # If not present and we need it for CSV/Excel, add it
-        if (is_csv or is_excel) and not has_code_interpreter:
-            existing_tools = assistant_obj.tools if assistant_obj.tools else []
+        # If not present, add it
+        if not has_code_interpreter:
+            existing_tools = assistant_obj.tools if hasattr(assistant_obj, 'tools') else []
             existing_tools.append({"type": "code_interpreter"})
             client.beta.assistants.update(
                 assistant_id=assistant,
                 tools=existing_tools
             )
             logging.info(f"Added code_interpreter tool to assistant {assistant}")
+            
+        # Get existing tool resources
+        existing_tool_resources = assistant_obj.tool_resources if hasattr(assistant_obj, 'tool_resources') else {}
         
-        # Check if there's a file_search resource for vector store files
-        file_search_resource = getattr(assistant_obj.tool_resources, "file_search", None)
+        # Check for file_search resource and vector store
+        file_search_resource = getattr(existing_tool_resources, "file_search", None)
         vector_store_ids = (
             file_search_resource.vector_store_ids
             if (file_search_resource and hasattr(file_search_resource, "vector_store_ids"))
             else []
         )
 
-        if not vector_store_ids:
+        if vector_store_ids:
+            # If a vector store already exists, reuse it
+            vector_store_id = vector_store_ids[0]
+        else:
             # No vector store associated yet, create one
             logging.info("No associated vector store found. Creating a new one.")
             vector_store = client.beta.vector_stores.create(name=f"Assistant_{assistant}_Store")
             vector_store_id = vector_store.id
 
             # Ensure the 'file_search' tool is present in the assistant's tools
-            existing_tools = assistant_obj.tools if assistant_obj.tools else []
-            if not any(t["type"] == "file_search" for t in existing_tools):
+            existing_tools = assistant_obj.tools if hasattr(assistant_obj, 'tools') else []
+            if not any(t.get("type") == "file_search" for t in existing_tools):
                 existing_tools.append({"type": "file_search"})
-
-            # Update the assistant to associate with this new vector store
-            client.beta.assistants.update(
-                assistant_id=assistant,
-                tools=existing_tools,
-                tool_resources={
-                    "file_search": {
-                        "vector_store_ids": [vector_store_id]
-                    }
-                }
-            )
-            vector_store_ids = [vector_store_id]
-        
-        vector_store_id = vector_store_ids[0]
-        
-        # Process the file based on its type
-        if is_csv or is_excel:
-            # Upload to code interpreter
-            with open(file_path, "rb") as file_stream:
-                uploaded_file = client.files.create(
-                    file=file_stream,
-                    purpose='assistants'
+                client.beta.assistants.update(
+                    assistant_id=assistant,
+                    tools=existing_tools
                 )
-            
+
+        # Handle CSV or Excel files with code_interpreter
+        if file_type in ['csv', 'excel']:
+            # Upload to code_interpreter
+            with open(file_path, "rb") as file_stream:
+                code_interpreter_file = client.files.create(
+                    file=file_stream,
+                    purpose="assistants"
+                )
+                
             # Get existing code_interpreter file_ids
-            code_interpreter_resource = getattr(assistant_obj.tool_resources, "code_interpreter", None)
-            code_interpreter_file_ids = []
+            code_interpreter_resource = getattr(existing_tool_resources, "code_interpreter", None)
+            existing_file_ids = []
+            
             if code_interpreter_resource and hasattr(code_interpreter_resource, "file_ids"):
-                code_interpreter_file_ids = code_interpreter_resource.file_ids
+                existing_file_ids = code_interpreter_resource.file_ids
+                
+            # Combine existing and new file_ids
+            all_file_ids = list(set(existing_file_ids + [code_interpreter_file.id]))
             
-            # Add the new file
-            code_interpreter_file_ids.append(uploaded_file.id)
+            # Prepare tool_resources update
+            tool_resources = {}
             
-            # Update the assistant
-            tool_resources = {
-                "file_search": {"vector_store_ids": vector_store_ids},
-                "code_interpreter": {"file_ids": code_interpreter_file_ids}
-            }
+            # Include file_search if we have a vector store
+            if vector_store_id:
+                tool_resources["file_search"] = {"vector_store_ids": [vector_store_id]}
+                
+            # Add code_interpreter file_ids
+            tool_resources["code_interpreter"] = {"file_ids": all_file_ids}
             
+            # Update assistant with new tool_resources
             client.beta.assistants.update(
                 assistant_id=assistant,
                 tool_resources=tool_resources
             )
             
-            # Add file awareness if thread_id exists
+            logging.info(f"{file_type.capitalize()} file '{file.filename}' uploaded to code interpreter")
+            
+            # If thread exists, add a message about the file
             if thread_id:
-                file_info = {
-                    "type": "csv" if is_csv else "excel",
-                    "name": file.filename,
-                    "id": uploaded_file.id,
-                    "processing_method": "code_interpreter"
-                }
-                await add_file_awareness(client, thread_id, file_info)
-            
-            logging.info(f"Added {file.filename} to code interpreter with file_id: {uploaded_file.id}")
-            
-            return JSONResponse(
-                {
-                    "message": "File successfully uploaded to code interpreter.",
-                    "file_id": uploaded_file.id
-                },
-                status_code=200
-            )
-        elif is_image and thread_id:
-            # Process image and add to thread
-            analysis_text = await image_analysis(client, file_content, file.filename, prompt)
-            
-            # Add the analysis to the thread
-            client.beta.threads.messages.create(
-                thread_id=thread_id,
-                role="user",
-                content=f"Image Analysis for {file.filename}: {analysis_text}"
-            )
-            
-            # Add file awareness
-            file_info = {
-                "type": "image",
-                "name": file.filename,
-                "processing_method": "thread_message"
-            }
-            await add_file_awareness(client, thread_id, file_info)
-            
-            logging.info(f"Added image analysis for {file.filename} to thread {thread_id}")
-            
-            return JSONResponse(
-                {
-                    "message": "Image successfully analyzed and added to thread.",
-                    "image_analyzed": True
-                },
-                status_code=200
-            )
+                file_description = f"CSV file" if file_type == 'csv' else f"Excel file with multiple sheets"
+                client.beta.threads.messages.create(
+                    thread_id=thread_id,
+                    role="user",
+                    content=f"I've uploaded a {file_description} named '{file.filename}'. Please use the code_interpreter tool to analyze it."
+                )
+                
+            result_message = f"{file_type.capitalize()} file uploaded to code interpreter."
         else:
-            # Upload to vector store for other file types
+            # For image files, analyze and add to thread if thread_id exists
+            if file_type == 'image' and thread_id:
+                logging.info(f"Analyzing image file: {file.filename}")
+                analysis_text = await image_analysis(client, file_content, file.filename, prompt)
+                
+                # Add the analysis to the thread
+                client.beta.threads.messages.create(
+                    thread_id=thread_id,
+                    role="user",
+                    content=f"Image Analysis for {file.filename}: {analysis_text}"
+                )
+                logging.info(f"Added image analysis to thread {thread_id}")
+                
+            # Upload non-CSV/Excel files to vector store (original flow)
             with open(file_path, "rb") as file_stream:
                 file_batch = client.beta.vector_stores.file_batches.upload_and_poll(
                     vector_store_id=vector_store_id,
                     files=[file_stream]
                 )
+                
+            logging.info(f"File '{file.filename}' uploaded to vector store")
+            result_message = "File successfully uploaded to vector store."
             
-            # Add file awareness if thread_id exists
-            if thread_id:
-                file_info = {
-                    "type": file_ext[1:] if file_ext else "unknown",
-                    "name": file.filename,
-                    "processing_method": "vector_store"
-                }
-                await add_file_awareness(client, thread_id, file_info)
-            
-            logging.info(f"File uploaded to vector store: status={file_batch.status}")
-            
-            return JSONResponse(
-                {
-                    "message": "File successfully uploaded to vector store."
-                },
-                status_code=200
-            )
-
         # If context provided and thread exists, update context
         if context and thread_id:
             try:
@@ -780,6 +668,14 @@ async def upload_file(file: UploadFile = Form(...), assistant: str = Form(...), 
             except Exception as e:
                 logging.error(f"Error updating context in thread: {e}")
                 # Continue even if context update fails
+
+        return JSONResponse(
+            {
+                "message": result_message,
+                "image_analyzed": file_type == 'image' and thread_id is not None
+            },
+            status_code=200
+        )
 
     except Exception as e:
         logging.error(f"Error uploading file: {e}")
@@ -790,13 +686,11 @@ async def conversation(
     session: Optional[str] = None,
     prompt: Optional[str] = None,
     assistant: Optional[str] = None,
-    context: Optional[str] = None,  # New: Optional context parameter
-    **kwargs
+    context: Optional[str] = None,  # Optional context parameter
 ):
     """
     Handles conversation queries. 
     Preserves the original query parameters and output format.
-    Additional parameters are accepted but ignored.
     """
     client = create_client()
 
@@ -807,11 +701,7 @@ async def conversation(
                 name="conversation_assistant",
                 model="gpt-4o-mini",
                 instructions="You are a conversation assistant.",
-                tools=[{"type": "code_interpreter"}, {"type": "file_search"}],
-                tool_resources={
-                    "code_interpreter": {"file_ids": []},
-                    "file_search": {"vector_store_ids": []}
-                }
+                tools=[{"type": "code_interpreter"}, {"type": "file_search"}]
             )
             assistant = assistant_obj.id
 
@@ -858,13 +748,11 @@ async def chat(
     session: Optional[str] = None,
     prompt: Optional[str] = None,
     assistant: Optional[str] = None,
-    context: Optional[str] = None,  # New: Optional context parameter
-    **kwargs
+    context: Optional[str] = None,  # Optional context parameter
 ):
     """
     Handles conversation queries.
     Preserves the original query parameters and output format.
-    Additional parameters are accepted but ignored.
     """
     client = create_client()
 
@@ -875,11 +763,7 @@ async def chat(
                 name="chat_assistant",
                 model="gpt-4o-mini",
                 instructions="You are a conversation assistant.",
-                tools=[{"type": "code_interpreter"}, {"type": "file_search"}],
-                tool_resources={
-                    "code_interpreter": {"file_ids": []},
-                    "file_search": {"vector_store_ids": []}
-                }
+                tools=[{"type": "code_interpreter"}, {"type": "file_search"}]
             )
             assistant = assistant_obj.id
 
@@ -917,7 +801,7 @@ async def chat(
 
 
 @app.post("/trim-thread")
-async def trim_thread(request: Request, assistant_id: str = None, max_age_days: Optional[int] = None, **kwargs):
+async def trim_thread(request: Request, assistant_id: str = None, max_age_days: Optional[int] = None):
     """
     Gets all threads for a given assistant, summarizes them, and removes old threads.
     Uses 48 hours as the threshold for thread cleanup.
@@ -1092,50 +976,41 @@ async def trim_thread(request: Request, assistant_id: str = None, max_age_days: 
 
 
 @app.post("/file-cleanup")
-async def file_cleanup(request: Request, vector_store_id: str = None, assistant_id: str = None, **kwargs):
+async def file_cleanup(request: Request, vector_store_id: str = None):
     """
-    Cleans up files: 
-    - For vector store, removes files older than 48 hours
-    - For code interpreter, unsets file_ids to remove references
-    
+    Lists and deletes files older than 48 hours.
+    Handles both vector store files and code interpreter files.
     Accepts both query parameters and form data.
     """
     # Get parameters from form data if not provided in query
-    form_data = {}
-    if request.headers.get("content-type", "").startswith("multipart/form-data"):
-        form_data = await request.form()
-    
     if not vector_store_id:
+        form_data = await request.form()
         vector_store_id = form_data.get("vector_store_id")
-    
-    if not assistant_id:
         assistant_id = form_data.get("assistant_id")
+    else:
+        assistant_id = None
     
     if not vector_store_id and not assistant_id:
-        raise HTTPException(status_code=400, detail="Either vector_store_id or assistant_id is required")
+        raise HTTPException(status_code=400, detail="vector_store_id or assistant_id is required")
     
     client = create_client()
-    deleted_vector_files = 0
-    cleared_code_interpreter_files = 0
+    deleted_vs_count = 0
+    deleted_ci_count = 0
     skipped_count = 0
     
-    try:
-        # Clean up vector store files if vector_store_id provided
-        if vector_store_id:
-            # Step 1: Get all files in the vector store
+    # Get current time for age comparison
+    now = datetime.datetime.now()
+    
+    # Part 1: Clean up vector store files
+    if vector_store_id:
+        try:
+            # Get all files in the vector store
             file_batches = client.beta.vector_stores.file_batches.list(vector_store_id=vector_store_id)
             
             if not file_batches.data:
-                if not assistant_id:
-                    return JSONResponse({
-                        "status": "No files found in the vector store",
-                        "vector_store_id": vector_store_id
-                    })
+                logging.info(f"No files found in vector store {vector_store_id}")
             else:
-                # Get current time for age comparison
-                now = datetime.datetime.now()
-                
-                # Step 2: Process each file batch to find files older than 48 hours
+                # Process each file batch to find files older than 48 hours
                 for batch in file_batches.data:
                     # Calculate age in hours
                     batch_created = datetime.datetime.fromtimestamp(batch.created_at)
@@ -1159,47 +1034,83 @@ async def file_cleanup(request: Request, vector_store_id: str = None, assistant_
                                 vector_store_id=vector_store_id,
                                 file_id=file.id
                             )
-                            deleted_vector_files += 1
+                            deleted_vs_count += 1
                         except Exception as e:
-                            logging.error(f"Error deleting file {file.id}: {e}")
-        
-        # Clean up code interpreter files if assistant_id provided
-        if assistant_id:
-            try:
-                # Get the assistant
-                assistant_obj = client.beta.assistants.retrieve(assistant_id=assistant_id)
+                            logging.error(f"Error deleting vector store file {file.id}: {e}")
+        except Exception as e:
+            logging.error(f"Error cleaning up vector store files: {e}")
+    
+    # Part 2: Clean up code interpreter files for the assistant
+    if assistant_id:
+        try:
+            # Get the assistant
+            assistant = client.beta.assistants.retrieve(assistant_id=assistant_id)
+            
+            # Check if the assistant has code_interpreter tool resources
+            tool_resources = assistant.tool_resources if hasattr(assistant, 'tool_resources') else None
+            code_interpreter_resource = getattr(tool_resources, "code_interpreter", None)
+            
+            if code_interpreter_resource and hasattr(code_interpreter_resource, "file_ids"):
+                file_ids = code_interpreter_resource.file_ids
                 
-                # Check if code_interpreter tool is present
-                code_interpreter_resource = getattr(assistant_obj.tool_resources, "code_interpreter", None)
-                if code_interpreter_resource and hasattr(code_interpreter_resource, "file_ids"):
-                    file_ids = code_interpreter_resource.file_ids
-                    if file_ids:
-                        # Clear the file_ids
-                        client.beta.assistants.update(
-                            assistant_id=assistant_id,
-                            tool_resources={
-                                "code_interpreter": {"file_ids": []},
-                                # Preserve other tool resources
-                                "file_search": getattr(assistant_obj.tool_resources, "file_search", {})
-                            }
-                        )
-                        cleared_code_interpreter_files = len(file_ids)
-                        logging.info(f"Cleared {cleared_code_interpreter_files} code interpreter files from assistant {assistant_id}")
-            except Exception as e:
-                logging.error(f"Error clearing code interpreter files: {e}")
-        
-        return JSONResponse({
-            "status": "File cleanup completed",
-            "vector_store_id": vector_store_id,
-            "assistant_id": assistant_id,
-            "vector_files_deleted": deleted_vector_files,
-            "code_interpreter_files_cleared": cleared_code_interpreter_files,
-            "batches_skipped": skipped_count
-        })
-        
-    except Exception as e:
-        logging.error(f"Error in file-cleanup: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to clean up files: {str(e)}")
+                # Process each file
+                files_to_keep = []
+                
+                for file_id in file_ids:
+                    try:
+                        # Get file info
+                        file_info = client.files.retrieve(file_id=file_id)
+                        
+                        # Calculate age in hours
+                        file_created = datetime.datetime.fromtimestamp(file_info.created_at)
+                        file_age_hours = (now - file_created).total_seconds() / 3600
+                        
+                        # Keep files newer than 48 hours
+                        if file_age_hours <= 48:
+                            files_to_keep.append(file_id)
+                            skipped_count += 1
+                        else:
+                            # Delete old files
+                            client.files.delete(file_id=file_id)
+                            deleted_ci_count += 1
+                    except Exception as e:
+                        logging.error(f"Error processing code interpreter file {file_id}: {e}")
+                        # Keep files that error out
+                        files_to_keep.append(file_id)
+                
+                # Update the assistant with remaining files
+                if len(files_to_keep) < len(file_ids):
+                    # Create updated tool_resources
+                    updated_tool_resources = {}
+                    
+                    # Copy existing file_search if present
+                    if hasattr(tool_resources, "file_search"):
+                        updated_tool_resources["file_search"] = {
+                            "vector_store_ids": tool_resources.file_search.vector_store_ids
+                        }
+                        
+                    # Update code_interpreter with remaining files
+                    if files_to_keep:
+                        updated_tool_resources["code_interpreter"] = {"file_ids": files_to_keep}
+                    
+                    # Update the assistant
+                    client.beta.assistants.update(
+                        assistant_id=assistant_id,
+                        tool_resources=updated_tool_resources
+                    )
+                    
+                    logging.info(f"Updated assistant {assistant_id} with {len(files_to_keep)} remaining files")
+        except Exception as e:
+            logging.error(f"Error cleaning up code interpreter files: {e}")
+    
+    return JSONResponse({
+        "status": "File cleanup completed",
+        "vector_store_id": vector_store_id,
+        "assistant_id": assistant_id,
+        "vector_store_files_deleted": deleted_vs_count,
+        "code_interpreter_files_deleted": deleted_ci_count,
+        "files_skipped": skipped_count
+    })
 
 
 if __name__ == "__main__":
