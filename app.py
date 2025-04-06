@@ -9,6 +9,13 @@ import datetime
 import time
 import base64
 import mimetypes
+import traceback
+import os
+import asyncio
+import json
+# Simple status updates for long-running operations
+operation_statuses = {}
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -27,7 +34,165 @@ def create_client():
         api_key=AZURE_API_KEY,
         api_version=AZURE_API_VERSION,
     )
+async def validate_resources(client: AzureOpenAI, thread_id: Optional[str], assistant_id: Optional[str]) -> Dict[str, bool]:
+    """
+    Validates that the given thread_id and assistant_id exist and are accessible.
+    
+    Args:
+        client (AzureOpenAI): The Azure OpenAI client instance
+        thread_id (Optional[str]): The thread ID to validate, or None
+        assistant_id (Optional[str]): The assistant ID to validate, or None
+        
+    Returns:
+        Dict[str, bool]: Dictionary with "thread_valid" and "assistant_valid" flags
+    """
+    result = {
+        "thread_valid": False,
+        "assistant_valid": False
+    }
+    
+    # Validate thread if provided
+    if thread_id:
+        try:
+            # Attempt to retrieve thread
+            thread = client.beta.threads.retrieve(thread_id=thread_id)
+            result["thread_valid"] = True
+            logging.info(f"Thread validation: {thread_id} is valid")
+        except Exception as e:
+            result["thread_valid"] = False
+            logging.warning(f"Thread validation: {thread_id} is invalid - {str(e)}")
+    
+    # Validate assistant if provided
+    if assistant_id:
+        try:
+            # Attempt to retrieve assistant
+            assistant = client.beta.assistants.retrieve(assistant_id=assistant_id)
+            result["assistant_valid"] = True
+            logging.info(f"Assistant validation: {assistant_id} is valid")
+        except Exception as e:
+            result["assistant_valid"] = False
+            logging.warning(f"Assistant validation: {assistant_id} is invalid - {str(e)}")
+    
+    return result
+async def pandas_agent(client: AzureOpenAI, thread_id: Optional[str], query: str, files: List[Dict[str, Any]]) -> str:
+    """
+    Enhanced pandas_agent that will be compatible with LangChain integration.
+    Currently returns a placeholder message, but structured for future implementation.
+    """
+    operation_id = f"pandas_agent_{int(time.time())}_{os.urandom(2).hex()}"
+    update_operation_status(operation_id, "started", 0, "Starting data analysis")
+    
+    try:
+        # Update status
+        update_operation_status(operation_id, "processing", 25, "Processing file information")
+        
+        # Extract data from file information
+        dataframes = {}
+        file_descriptions = []
+        
+        for file in files:
+            file_type = file.get("type", "unknown")
+            file_name = file.get("name", "unnamed_file")
+            file_path = file.get("path", None)
+            file_descriptions.append(f"{file_name} ({file_type})")
+            
+            # In future LangChain implementation, we would load the dataframes here
+            # For now, we're not loading but making the code structure ready for that
+            if file_path and os.path.exists(file_path):
+                # This is where we would load dataframes in the future when using LangChain
+                # if file_type == "csv":
+                #     import pandas as pd
+                #     dataframes[file_name] = pd.read_csv(file_path)
+                # elif file_type == "excel":
+                #     import pandas as pd
+                #     dataframes[file_name] = pd.read_excel(file_path)
+                pass
+        
+        file_list = ", ".join(file_descriptions) if file_descriptions else "No files available"
+        
+        # Update status
+        update_operation_status(operation_id, "analyzing", 50, "Analyzing query")
+        
+        # FUTURE: This is where we would call LangChain pandas_agent
+        # This structure is ready for future LangChain implementation
+        """
+        # Future implementation placeholder:
+        if dataframes:
+            from langchain.agents import create_pandas_dataframe_agent
+            from langchain.llms import AzureOpenAI
+            
+            # For a single dataframe
+            if len(dataframes) == 1:
+                df = list(dataframes.values())[0]
+                agent = create_pandas_dataframe_agent(
+                    AzureOpenAI(
+                        deployment_name="gpt-4o-mini", 
+                        model_name="gpt-4o-mini"
+                    ),
+                    df,
+                    verbose=True
+                )
+                result = agent.run(query)
+                # Process result for return
+            
+            # For multiple dataframes
+            else:
+                # Logic for handling multiple dataframes
+                pass
+        """
+        
+        # For now, return placeholder message with specific file references
+        response = f"""CSV/Excel file analysis is not supported yet. This function will be implemented in a future update.
 
+        Query received: "{query}"
+
+        Available files for analysis: {file_list}
+
+        When implemented, this agent will be able to analyze your data files and provide insights based on your query.
+
+        Operation ID: {operation_id}"""
+        
+        # Update status for thread response
+        update_operation_status(operation_id, "responding", 75, "Adding response to thread")
+        
+        # If thread_id is provided, add the response to the thread
+        if thread_id:
+            try:
+                client.beta.threads.messages.create(
+                    thread_id=thread_id,
+                    role="user",
+                    content=f"[PANDAS AGENT RESPONSE]: {response}",
+                    metadata={"type": "pandas_agent_response", "operation_id": operation_id}
+                )
+                logging.info(f"Added pandas_agent response directly to thread {thread_id}")
+            except Exception as e:
+                logging.error(f"Error adding pandas_agent response to thread: {e}")
+                # Continue execution despite error with thread message
+        
+        # Mark operation as completed
+        update_operation_status(operation_id, "completed", 100, "Analysis completed successfully")
+        
+        logging.info(f"Pandas agent processed query: '{query}' with {len(files)} files")
+        return response
+    
+    except Exception as e:
+        error_details = traceback.format_exc()
+        logging.error(f"Critical error in pandas_agent: {str(e)}\n{error_details}")
+        
+        # Update status to reflect error
+        update_operation_status(operation_id, "error", 100, f"Error: {str(e)}")
+        
+        # Provide a graceful failure response
+        error_response = f"""Sorry, I encountered an error while trying to analyze your data files.
+
+        Error details: {str(e)}
+
+        Please try again with a different query or contact support if the issue persists.
+
+        Operation ID: {operation_id}"""
+                
+        return error_response
+    
 async def image_analysis(client: AzureOpenAI, image_data: bytes, filename: str, prompt: Optional[str] = None) -> str:
     """Analyzes an image using Azure OpenAI vision capabilities and returns the analysis text."""
     try:
@@ -122,51 +287,31 @@ async def add_file_awareness(client: AzureOpenAI, thread_id: str, file_info: Dic
         # Create a message that informs the assistant about the file
         file_type = file_info.get("type", "unknown")
         file_name = file_info.get("name", "unnamed_file")
-        # file_id = file_info.get("id", "") # ID might not always be relevant for the awareness message itself
         processing_method = file_info.get("processing_method", "")
 
         awareness_message = f"FILE INFORMATION: A file named '{file_name}' of type '{file_type}' has been uploaded and processed. "
 
-        if processing_method == "code_interpreter":
-            awareness_message += f"This file is available for analysis using the code interpreter."
+        if processing_method == "pandas_agent":
+            awareness_message += f"This file is available for analysis using the pandas agent."
             if file_type == "excel":
                 awareness_message += " This is an Excel file with potentially multiple sheets."
+            elif file_type == "csv":
+                awareness_message += " This is a CSV file."
+            
+            awareness_message += "\n\nWhen you need to analyze this data file, you can ask questions about it in natural language. For example:"
+            awareness_message += "\n- 'Can you summarize the data in the file?'"
+            awareness_message += "\n- 'How many records are in the CSV file?'"
+            awareness_message += "\n- 'What columns are available in the Excel file?'"
+            awareness_message += "\n- 'Find the average value of column X'" 
+            awareness_message += "\n- 'Plot the data from column Y over time'"
+            awareness_message += "\n\nThe pandas agent will process your request and return the results."
+        
         elif processing_method == "thread_message":
             awareness_message += "This image has been analyzed and the descriptive content has been added to this thread."
         elif processing_method == "vector_store":
             awareness_message += "This file has been added to the vector store and its content is available for search."
         else:
             awareness_message += "This file has been processed."
-
-        # Add specific instructions for Excel/CSV handling if using code interpreter
-        if processing_method == "code_interpreter" and file_type in ["csv", "excel"]:
-            awareness_message += "\n\nWhen analyzing this data file, follow these instructions precisely:\n"
-            awareness_message += """
-**File Handling:**
-
-1. If receiving Excel (.xlsx/.xls):
-   - Read ALL sheets using: `df_dict = pd.read_excel(file_path, sheet_name=None)`
-   - Convert each sheet dataframe into a separate CSV for easier handling: `<original_filename>_<sheet_name>.csv` (e.g., "sales.xlsx" with sheets 'Orders', 'Clients' → becomes available conceptually as "sales_Orders.csv", "sales_Clients.csv")
-   - When referencing data, always mention both original file and sheet name (e.g., "from the 'Orders' sheet in sales.xlsx").
-   - Ensure you analyze **all** relevant sheets unless instructed otherwise.
-
-2. If receiving CSV (.csv):
-   - Use the file directly for analysis.
-   - Preserve original filename in references (e.g., "Analyzing sales_data.csv").
-
-**Analysis Requirements:**
-- Start with a data overview: shape (rows/columns), column names and types, count of missing values per column.
-- For Excel files, perform sheet-specific analysis initially.
-- Look for opportunities to compare trends or data across sheets if applicable.
-- Generate visualizations (plots) where appropriate to illustrate findings. Ensure plots are saved as images and you provide the image reference. Include clear titles and labels.
-- Include key code snippets used for analysis, briefly explaining each step.
-
-**Output Formatting:**
-- Begin analysis sections with: "Analyzing `[filename.csv]`" or "Analyzing sheet `[Sheet Name]` from `[filename.xlsx]`".
-- Use markdown tables for summaries (e.g., overview stats, key findings).
-- Place visualizations under clear headings describing what they show.
-- Use horizontal rules (`---`) to separate analysis for different sheets or major sections.
-"""
 
         # Send the message to the thread
         client.beta.threads.messages.create(
@@ -180,13 +325,32 @@ async def add_file_awareness(client: AzureOpenAI, thread_id: str, file_info: Dic
     except Exception as e:
         logging.error(f"Error adding file awareness for '{file_name}' to thread {thread_id}: {e}")
         # Continue the flow even if adding awareness fails
+def update_operation_status(operation_id: str, status: str, progress: float, message: str):
+    """Update the status of a long-running operation."""
+    operation_statuses[operation_id] = {
+        "status": status,
+        "progress": progress,
+        "message": message,
+        "updated_at": time.time()
+    }
+    logging.info(f"Operation {operation_id}: {status} - {progress:.0f}% - {message}")
 
+# Status endpoint
+@app.get("/operation-status/{operation_id}")
+async def check_operation_status(operation_id: str):
+    """Check the status of a long-running operation."""
+    if operation_id not in operation_statuses:
+        return JSONResponse(
+            status_code=404,
+            content={"error": f"No operation found with ID {operation_id}"}
+        )
+    
+    return JSONResponse(content=operation_statuses[operation_id])
 @app.post("/initiate-chat")
 async def initiate_chat(request: Request):
     """
     Initiates a new assistant, session (thread), and vector store.
     Optionally uploads a file and sets user context.
-    Note: This endpoint creates *new* resources each time it's called.
     """
     client = create_client()
     logging.info("Initiating new chat session...")
@@ -208,99 +372,98 @@ async def initiate_chat(request: Request):
         logging.error(f"Failed to create vector store: {e}")
         raise HTTPException(status_code=500, detail="Failed to create vector store")
 
-    # Always include code_interpreter and file_search tools
-    assistant_tools = [{"type": "code_interpreter"}, {"type": "file_search"}]
-    # Initialize empty file_ids list for code_interpreter
-    code_interpreter_file_ids = []
+    # Include file_search and add pandas_agent as a function tool
+    assistant_tools = [
+        {"type": "file_search"},
+        {
+            "type": "function",
+            "function": {
+                "name": "pandas_agent",
+                "description": "Analyzes CSV and Excel files to answer data-related questions and perform data analysis",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "The specific question or analysis task to perform on the data"
+                        },
+                        "filename": {
+                            "type": "string",
+                            "description": "Optional: specific filename to analyze. If not provided, all available files will be considered."
+                        }
+                    },
+                    "required": ["query"]
+                }
+            }
+        }
+    ]
+    
     assistant_tool_resources = {
-        "file_search": {"vector_store_ids": [vector_store.id]},
-        "code_interpreter": {"file_ids": code_interpreter_file_ids}
+        "file_search": {"vector_store_ids": [vector_store.id]}
     }
 
+    # Keep track of CSV/Excel files for the session
+    session_csv_excel_files = []
+
+    # Use the improved system prompt
     system_prompt = '''
-You are a highly skilled Product Management AI Assistant and Co-Pilot. Your primary responsibilities include generating comprehensive Product Requirements Documents (PRDs) and providing insightful answers to a wide range of product-related queries. You seamlessly integrate information from uploaded files and your extensive knowledge base to deliver contextually relevant and actionable insights.
+You are a Product Management AI Co-Pilot that helps create documentation and analyze various file types. Your capabilities vary based on the type of files uploaded.
 
-### **Primary Tasks:**
+### Understanding File Types and Processing Methods:
 
-1. **Generate Product Requirements Documents (PRDs):**
-   - **Trigger:** When the user explicitly requests a PRD.
-   - **Structure:**
-     - **Product Manager:** [Use the user's name if available from context; otherwise, leave blank]
-     - **Product Name:** [Derived from user input or uploaded files]
-     - **Product Vision:** [Extracted from user input or uploaded files]
-     - **Customer Problem:** [Identified from user input or uploaded files]
-     - **Personas:** [Based on user input; generate if not provided]
-     - **Date:** [Current date]
+1. **CSV/Excel Files** - When users upload these files, you should:
+   - Use your built-in pandas_agent tool to analyze them
+   - Call the pandas_agent tool with specific questions about the data
+   - NEVER try to analyze the data yourself - always use the pandas_agent tool
+   - Common use cases: data summarization, statistical analysis, finding trends, answering specific questions about the data
 
-   - **Sections to Include:**
-     - **Executive Summary:** Deliver a concise overview by synthesizing information from the user and your knowledge base.
-     - **Goals & Objectives:** Enumerate 2-4 specific, measurable goals and objectives.
-     - **Key Features:** Highlight key features that align with the goals and executive summary.
-     - **Functional Requirements:** Detail 3-5 functional requirements in clear bullet points.
-     - **Non-Functional Requirements:** Outline 3-5 non-functional requirements in bullet points.
-     - **Use Case Requirements:** Describe 3-5 use cases in bullet points, illustrating how users will interact with the product.
-     - **Milestones:** Define 3-5 key milestones with expected timelines in bullet points.
-     - **Risks:** Identify 3-5 potential risks and mitigation strategies in bullet points.
+2. **Documents (PDF, DOC, TXT, etc.)** - When users upload these files, you should:
+   - Use your file_search capability to extract relevant information
+   - Quote information directly from the documents when answering questions
+   - Always reference the specific filename when sharing information from a document
 
-   - **Guidelines:**
-     - Utilize the file_search tool to extract relevant data from uploaded files.
-     - Ensure all sections are contextually relevant, logically structured, and provide actionable insights.
-     - If certain information is missing, make informed assumptions or prompt the user for clarification.
-     - Incorporate industry best practices and standards where applicable.
+3. **Images** - When users upload images, you should:
+   - Refer to the analysis that was automatically added to the conversation
+   - Use details from the image analysis to answer questions
+   - Acknowledge when information might not be visible in the image
 
-2. **Answer Generic Product Management Questions:**
-   - **Scope:** Respond to a broad range of product management queries, including strategy, market analysis, feature prioritization, user feedback interpretation, and more.
-   - **Methodology:**
-     - Use the file_search tool to find pertinent information within uploaded files.
-     - Leverage your comprehensive knowledge base to provide thorough and insightful answers.
-     - If a question falls outside the scope of the provided files and your expertise, default to a general GPT-4 response without referencing the files.
-     - Maintain a balance between technical detail and accessibility, ensuring responses are understandable yet informative.
+### Using the pandas_agent Tool:
 
-3. **Data Analysis with Code Interpreter:**
-   - When users upload CSV or Excel files, you can analyze them using the code_interpreter tool.
-   - For Excel files, remember to examine all sheets and provide comprehensive analysis as per file awareness instructions.
-   - Generate visualizations and statistics to help users understand their data.
-   - Explain your analysis approach and findings clearly.
+When you need to analyze CSV or Excel files, use the pandas_agent tool. Here's how:
+1. Identify data-related questions (e.g., "What's the average revenue?", "How many customers are in the dataset?")
+2. Formulate a clear, specific query for the pandas_agent
+3. Call the pandas_agent tool with your query
+4. Incorporate the results into your response
 
-### **Behavioral Guidelines:**
+Examples of good pandas_agent queries:
+- "Summarize the data in sales_data.csv"
+- "Calculate the average value in the 'Revenue' column from Q2_results.xlsx"
+- "Find the top 5 customers by purchase amount from customer_data.csv"
+- "Compare sales figures between 2022 and 2023 from the annual_report.xlsx"
 
-- **Contextual Awareness:**
-  - Always consider the context provided by the uploaded files, user persona context messages, and previous interactions.
-  - Adapt your responses based on the specific needs and preferences of the user.
+### PRD Generation:
 
-- **Proactive Insight Generation:**
-  - Go beyond surface-level answers by providing deep insights, trends, and actionable recommendations.
-  - Anticipate potential follow-up questions and address them preemptively where appropriate.
+When asked to create a PRD, include these sections:
+- Product Manager, Product Name, Vision
+- Customer Problem, Personas, Date
+- Executive Summary, Goals & Objectives
+- Key Features, Functional Requirements
+- Non-Functional Requirements, Use Cases
+- Milestones, Risks
 
-- **Professional Tone:**
-  - Maintain a professional, clear, and concise communication style.
-  - Ensure all interactions are respectful, objective, and goal-oriented.
+Always leverage any uploaded files to inform the PRD content.
 
-- **Seamless Mode Switching:**
-  - Efficiently transition between PRD generation and generic question answering based on user prompts.
-  - Recognize when a query is outside the scope of the uploaded files and adjust your response accordingly without prompting the user.
+### Important Guidelines:
 
-- **Continuous Improvement:**
-  - Learn from each interaction to enhance future responses.
-  - Seek feedback when necessary to better align with the user's expectations and requirements.
+- Always reference files by their exact filenames
+- Use tools appropriately based on file type
+- Never attempt to analyze CSV/Excel data without using the pandas_agent tool
+- Acknowledge limitations and be transparent when information is unavailable
+- Ensure responses are concise, relevant, and helpful
 
-### **Important Notes:**
-
-- **Tool Utilization:**
-  - Always evaluate whether the file_search tool (for documents) or code_interpreter tool (for CSV/Excel) can enhance the quality of your response before using them. Follow instructions provided in file awareness messages.
-  - Do not attempt to use code_interpreter on non-CSV/Excel files unless specifically instructed and feasible.
-
-- **Data Privacy:**
-  - Handle all uploaded files and user data with the utmost confidentiality and in compliance with relevant data protection standards. Avoid repeating sensitive information unnecessarily.
-
-- **Assumption Handling:**
-  - Clearly indicate when you are making assumptions due to missing information.
-  - Provide rationales for your assumptions to maintain transparency.
-
-- **Error Handling:**
-  - Gracefully manage any errors or uncertainties by informing the user and seeking clarification when necessary.
+Remember that the pandas_agent has full access to all CSV/Excel files that have been uploaded in the current session.
 '''
-
+    
     # Create the assistant
     try:
         assistant = client.beta.assistants.create(
@@ -367,29 +530,28 @@ You are a highly skilled Product Management AI Assistant and Co-Pilot. Your prim
             file_info = {"name": filename}
 
             if is_csv or is_excel:
-                # Upload to OpenAI files for code interpreter
-                with open(file_path, "rb") as file_stream:
-                    uploaded_file = client.files.create(
-                        file=file_stream,
-                        purpose='assistants'  # Purpose must be 'assistants' for code interpreter/file search
-                    )
-                code_interpreter_file_ids.append(uploaded_file.id)
-
-                # Update the assistant to link the file
-                client.beta.assistants.update(
-                    assistant_id=assistant.id,
-                    tool_resources={
-                        "code_interpreter": {"file_ids": code_interpreter_file_ids},
-                        "file_search": {"vector_store_ids": [vector_store.id]}
-                    }
-                )
+                # Instead of using code_interpreter, we'll track CSV/Excel files for the pandas_agent
+                session_csv_excel_files.append({
+                    "name": filename,
+                    "path": file_path,
+                    "type": "csv" if is_csv else "excel"
+                })
+                
                 file_info.update({
                     "type": "csv" if is_csv else "excel",
-                    "id": uploaded_file.id,
-                    "processing_method": "code_interpreter"
+                    "processing_method": "pandas_agent"
                 })
+                
+                # Keep a copy of the file for the pandas agent to use
+                # (In a real implementation, you might store this in a database or cloud storage)
+                permanent_path = os.path.join('/tmp/', f"pandas_agent_{int(time.time())}_{filename}")
+                with open(permanent_path, 'wb') as f:
+                    with open(file_path, 'rb') as src:
+                        f.write(src.read())
+                
+                # Add file awareness message
                 await add_file_awareness(client, thread.id, file_info)
-                logging.info(f"Added '{filename}' to code interpreter for assistant {assistant.id} with file_id: {uploaded_file.id}")
+                logging.info(f"Added '{filename}' for pandas_agent processing")
 
             elif is_image:
                 # Analyze image and add analysis text to the thread
@@ -434,6 +596,24 @@ You are a highly skilled Product Management AI Assistant and Co-Pilot. Your prim
                 except OSError as e:
                     logging.error(f"Error removing temporary file {file_path}: {e}")
 
+    # Store csv/excel files info in a metadata message if there are any
+    if session_csv_excel_files:
+        try:
+            # Create a special message to store file paths for the pandas agent
+            pandas_files_info = json.dumps(session_csv_excel_files)
+            client.beta.threads.messages.create(
+                thread_id=thread.id,
+                role="user",
+                content="PANDAS_AGENT_FILES_INFO (DO NOT DISPLAY TO USER)",
+                metadata={
+                    "type": "pandas_agent_files",
+                    "files": pandas_files_info
+                }
+            )
+            logging.info(f"Stored pandas agent files info in thread {thread.id}")
+        except Exception as e:
+            logging.error(f"Error storing pandas agent files info: {e}")
+
     res = {
         "message": "Chat initiated successfully.",
         "assistant": assistant.id,
@@ -442,7 +622,6 @@ You are a highly skilled Product Management AI Assistant and Co-Pilot. Your prim
     }
 
     return JSONResponse(res, status_code=200)
-
 @app.post("/co-pilot")
 async def co_pilot(request: Request):
     """
@@ -493,15 +672,37 @@ async def co_pilot(request: Request):
             current_tools.append({"type": "file_search"})
             logging.info(f"Adding file_search tool to assistant {assistant_id}")
         
-        # Check for code_interpreter tool, add if missing
-        if not any(tool.type == "code_interpreter" for tool in current_tools if hasattr(tool, 'type')):
-            current_tools.append({"type": "code_interpreter"})
-            logging.info(f"Adding code_interpreter tool to assistant {assistant_id}")
+        # Check for pandas_agent function tool, add if missing
+        if not any(tool.type == "function" and hasattr(tool, 'function') and 
+                  hasattr(tool.function, 'name') and tool.function.name == "pandas_agent" 
+                  for tool in current_tools if hasattr(tool, 'type')):
+            # Add pandas_agent function tool
+            current_tools.append({
+                "type": "function",
+                "function": {
+                    "name": "pandas_agent",
+                    "description": "Analyzes CSV and Excel files to answer data-related questions and perform data analysis",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {
+                                "type": "string",
+                                "description": "The specific question or analysis task to perform on the data"
+                            },
+                            "filename": {
+                                "type": "string",
+                                "description": "Optional: specific filename to analyze. If not provided, all available files will be considered."
+                            }
+                        },
+                        "required": ["query"]
+                    }
+                }
+            })
+            logging.info(f"Adding pandas_agent function tool to assistant {assistant_id}")
 
         # Prepare tool resources
         tool_resources = {
             "file_search": {"vector_store_ids": [vector_store_id]},
-            "code_interpreter": {"file_ids": []}  # Start with empty list, files can be added later
         }
 
         # Update the assistant with tools and vector store
@@ -541,7 +742,7 @@ async def co_pilot(request: Request):
         raise HTTPException(status_code=500, detail=f"Failed to process co-pilot request: {str(e)}")
 @app.post("/upload-file")
 async def upload_file(
-    request: Request,  # Added missing request parameter
+    request: Request,
     file: UploadFile = Form(...),
     assistant: str = Form(...)
     # Optional params below read from form inside
@@ -549,10 +750,9 @@ async def upload_file(
     """
     Uploads a file and associates it with the given assistant.
     Handles different file types appropriately:
-    - CSV/Excel files -> code interpreter
+    - CSV/Excel files -> pandas_agent
     - Images -> analyzed and added to thread (if session provided)
     - Other documents -> vector store
-    Optionally takes 'session' (thread_id), 'context', 'prompt' (for image) from form data.
     """
     client = create_client()
 
@@ -588,58 +788,153 @@ async def upload_file(
         # Retrieve the assistant
         assistant_obj = client.beta.assistants.retrieve(assistant_id=assistant)
 
-        # Consolidate tools and resources handling
-        current_tools = assistant_obj.tools if assistant_obj.tools else []
-        current_tool_resources = assistant_obj.tool_resources if assistant_obj.tool_resources else {}
-        needs_update = False  # Flag if assistant needs updating
+        # Check if the assistant has the pandas_agent tool
+        has_pandas_agent = False
+        for tool in assistant_obj.tools:
+            if hasattr(tool, 'type') and tool.type == "function" and hasattr(tool, 'function') and hasattr(tool.function, 'name') and tool.function.name == "pandas_agent":
+                has_pandas_agent = True
+                break
+        
+        # Add pandas_agent tool if needed for CSV/Excel
+        if is_csv or is_excel and not has_pandas_agent:
+            # Create a list of current tools
+            current_tools = list(assistant_obj.tools)
+            
+            # Add pandas_agent function tool
+            current_tools.append({
+                "type": "function",
+                "function": {
+                    "name": "pandas_agent",
+                    "description": "Analyzes CSV and Excel files to answer data-related questions and perform data analysis",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {
+                                "type": "string",
+                                "description": "The specific question or analysis task to perform on the data"
+                            },
+                            "filename": {
+                                "type": "string",
+                                "description": "Optional: specific filename to analyze. If not provided, all available files will be considered."
+                            }
+                        },
+                        "required": ["query"]
+                    }
+                }
+            })
+            
+            # Update the assistant with the new tool
+            client.beta.assistants.update(
+                assistant_id=assistant,
+                tools=current_tools
+            )
+            
+            logging.info(f"Added pandas_agent tool to assistant {assistant}")
 
-        # --- Code Interpreter Handling ---
-        if is_csv or is_excel:
-            # Ensure code interpreter tool exists
-            if not any(tool.type == "code_interpreter" for tool in current_tools if hasattr(tool, 'type')):
-                current_tools.append({"type": "code_interpreter"})
-                needs_update = True
-                logging.info(f"Adding code_interpreter tool to assistant {assistant}")
-
-            # Get existing code_interpreter file_ids
-            code_interpreter_file_ids = []
-            ci_resources = getattr(current_tool_resources, "code_interpreter", None)
-            if ci_resources and hasattr(ci_resources, "file_ids"):
-                code_interpreter_file_ids = list(ci_resources.file_ids)
-
-            # Upload to OpenAI files for code interpreter
-            with open(file_path, "rb") as file_stream:
-                uploaded_file = client.files.create(file=file_stream, purpose='assistants')
-
-            if uploaded_file.id not in code_interpreter_file_ids:
-                code_interpreter_file_ids.append(uploaded_file.id)
-                needs_update = True  # Need to update assistant with new file ID
-
-            uploaded_file_details = {
-                "message": "File successfully uploaded and associated with code interpreter.",
-                "file_id": uploaded_file.id,
-                "filename": filename,
-                "processing_method": "code_interpreter"
-            }
-            logging.info(f"Uploaded '{filename}' (ID: {uploaded_file.id}) for code interpreter, assistant {assistant}")
-        else:
-            uploaded_file_details = {
-                "message": "File already associated with code interpreter.",
-                "file_id": "",
-                "filename": filename,
-                "processing_method": "code_interpreter"
-            }
-            logging.info(f"File '{filename}' not recognized as CSV/Excel for code interpreter. Checking other possibilities...")
-
-        # --- Vector Store Handling ---
+        # Check for file_search tool and vector store
+        has_file_search = False
         vector_store_ids = []
+        
+        for tool in assistant_obj.tools:
+            if hasattr(tool, 'type') and tool.type == "file_search":
+                has_file_search = True
+                break
+        
+        current_tool_resources = assistant_obj.tool_resources if hasattr(assistant_obj, 'tool_resources') else {}
         fs_resources = getattr(current_tool_resources, "file_search", None)
         if fs_resources and hasattr(fs_resources, "vector_store_ids"):
             vector_store_ids = list(fs_resources.vector_store_ids)
+        
+        needs_update = False
 
-        if is_document or not (is_csv or is_excel or is_image):
+        # --- CSV/Excel Handling (for pandas_agent) ---
+        if is_csv or is_excel:
+            # Store the file for pandas_agent
+            permanent_path = os.path.join('/tmp/', f"pandas_agent_{int(time.time())}_{filename}")
+            with open(permanent_path, 'wb') as f:
+                with open(file_path, 'rb') as src:
+                    f.write(src.read())
+            
+            # Prepare file info
+            file_info = {
+                "name": filename,
+                "path": permanent_path,
+                "type": "csv" if is_csv else "excel"
+            }
+            
+            # If thread_id provided, add file to pandas_agent files for the thread
+            if thread_id:
+                try:
+                    # Try to retrieve existing pandas files info from thread
+                    messages = client.beta.threads.messages.list(
+                        thread_id=thread_id,
+                        order="desc",
+                        limit=50  # Check recent messages
+                    )
+                    
+                    pandas_files_message_id = None
+                    pandas_files = []
+                    
+                    for msg in messages.data:
+                        if hasattr(msg, 'metadata') and msg.metadata and msg.metadata.get('type') == 'pandas_agent_files':
+                            pandas_files_message_id = msg.id
+                            try:
+                                pandas_files = json.loads(msg.metadata.get('files', '[]'))
+                            except:
+                                pandas_files = []
+                            break
+                    
+                    # Add the new file
+                    pandas_files.append(file_info)
+                    
+                    # Update or create the pandas files message
+                    if pandas_files_message_id:
+                        # Delete the old message (can't update metadata directly)
+                        try:
+                            client.beta.threads.messages.delete(
+                                thread_id=thread_id,
+                                message_id=pandas_files_message_id
+                            )
+                        except Exception as e:
+                            logging.error(f"Error deleting pandas files message: {e}")
+                    
+                    # Create a new message with updated files          
+                    client.beta.threads.messages.create(
+                        thread_id=thread_id,
+                        role="user",
+                        content="PANDAS_AGENT_FILES_INFO (DO NOT DISPLAY TO USER)",
+                        metadata={
+                            "type": "pandas_agent_files",
+                            "files": json.dumps(pandas_files)
+                        }
+                    )
+                    
+                    logging.info(f"Updated pandas agent files info in thread {thread_id}")
+                except Exception as e:
+                    logging.error(f"Error updating pandas agent files for thread {thread_id}: {e}")
+            
+            uploaded_file_details = {
+                "message": "File successfully uploaded for pandas agent processing.",
+                "filename": filename,
+                "type": "csv" if is_csv else "excel",
+                "processing_method": "pandas_agent"
+            }
+            
+            # If thread_id provided, add file awareness message
+            if thread_id:
+                await add_file_awareness(client, thread_id, {
+                    "name": filename,
+                    "type": "csv" if is_csv else "excel",
+                    "processing_method": "pandas_agent"
+                })
+            
+            logging.info(f"Added '{filename}' for pandas_agent processing")
+
+        # --- Document Handling (for vector store) ---
+        elif is_document or not (is_csv or is_excel or is_image):
             # Ensure file search tool exists
-            if not any(tool.type == "file_search" for tool in current_tools if hasattr(tool, 'type')):
+            if not has_file_search:
+                current_tools = list(assistant_obj.tools)
                 current_tools.append({"type": "file_search"})
                 needs_update = True
                 logging.info(f"Adding file_search tool to assistant {assistant}")
@@ -666,62 +961,64 @@ async def upload_file(
                 "processing_method": "vector_store",
                 "batch_status": file_batch.status
             }
+            
+            # If thread_id provided, add file awareness message
+            if thread_id:
+                await add_file_awareness(client, thread_id, {
+                    "name": filename,
+                    "type": file_ext[1:] if file_ext else "document",
+                    "processing_method": "vector_store"
+                })
+                
             logging.info(f"Uploaded '{filename}' to vector store {vector_store_id_to_use} for assistant {assistant}")
 
         # --- Update Assistant if tools or resources changed ---
         if needs_update:
-            update_payload = {"tools": current_tools, "tool_resources": {}}
-            # Preserve/update file search resources
-            update_payload["tool_resources"]["file_search"] = {"vector_store_ids": vector_store_ids}
-            # Preserve/update code interpreter resources
-            update_payload["tool_resources"]["code_interpreter"] = {"file_ids": code_interpreter_file_ids if (is_csv or is_excel) else []}
-
-            client.beta.assistants.update(assistant_id=assistant, **update_payload)
-            logging.info(f"Updated assistant {assistant} with new tool/resource associations.")
-
-        # --- Image Handling (after potential assistant update) ---
-        if is_image:
-            if thread_id:
-                analysis_text = await image_analysis(client, file_content, filename, image_prompt)
-                client.beta.threads.messages.create(
-                    thread_id=thread_id,
-                    role="user",
-                    content=f"Analysis result for uploaded image '{filename}':\n{analysis_text}"
-                )
-                uploaded_file_details = {
-                    "message": "Image successfully analyzed and analysis added to thread.",
-                    "filename": filename,
-                    "thread_id": thread_id,
-                    "processing_method": "thread_message"
+            update_payload = {}
+            
+            if not has_file_search:
+                update_payload["tools"] = current_tools
+            
+            if vector_store_ids:
+                update_payload["tool_resources"] = {
+                    "file_search": {"vector_store_ids": vector_store_ids}
                 }
-                logging.info(f"Analyzed image '{filename}' and added to thread {thread_id}")
-            else:
-                uploaded_file_details = {
-                    "message": "Image uploaded but not analyzed as no session/thread ID was provided.",
-                    "filename": filename,
-                    "processing_method": "skipped_analysis"
-                }
-                logging.warning(f"Image '{filename}' uploaded for assistant {assistant} but no thread ID provided.")
+            
+            if update_payload:
+                client.beta.assistants.update(assistant_id=assistant, **update_payload)
+                logging.info(f"Updated assistant {assistant} with new tool/resource associations.")
 
-        # --- Add File Awareness Message (if thread exists and file was processed) ---
-        if thread_id and uploaded_file_details and uploaded_file_details.get("processing_method") not in ["skipped_analysis", None]:
-            file_info = {
-                "type": file_ext[1:] if file_ext else 'unknown',
-                "name": filename,
-                "id": uploaded_file_details.get("file_id"),  # Only present for code interpreter
-                "processing_method": uploaded_file_details.get("processing_method")
+        # --- Image Handling ---
+        if is_image and thread_id:
+            analysis_text = await image_analysis(client, file_content, filename, image_prompt)
+            client.beta.threads.messages.create(
+                thread_id=thread_id,
+                role="user",
+                content=f"Analysis result for uploaded image '{filename}':\n{analysis_text}"
+            )
+            uploaded_file_details = {
+                "message": "Image successfully analyzed and analysis added to thread.",
+                "filename": filename,
+                "thread_id": thread_id,
+                "processing_method": "thread_message"
             }
-            # Correct file type for awareness message
-            if is_csv:
-                file_info["type"] = "csv"
-            elif is_excel:
-                file_info["type"] = "excel"
-            elif is_image:
-                file_info["type"] = "image"
-            elif is_document:
-                file_info["type"] = file_ext[1:] if file_ext else "document"
-
-            await add_file_awareness(client, thread_id, file_info)
+            
+            # Add file awareness message
+            if thread_id:
+                await add_file_awareness(client, thread_id, {
+                    "name": filename,
+                    "type": "image",
+                    "processing_method": "thread_message"
+                })
+                
+            logging.info(f"Analyzed image '{filename}' and added to thread {thread_id}")
+        elif is_image:
+            uploaded_file_details = {
+                "message": "Image uploaded but not analyzed as no session/thread ID was provided.",
+                "filename": filename,
+                "processing_method": "skipped_analysis"
+            }
+            logging.warning(f"Image '{filename}' uploaded for assistant {assistant} but no thread ID provided.")
 
         # --- Update Context (if provided and thread exists) ---
         if context and thread_id:
@@ -739,7 +1036,6 @@ async def upload_file(
                 os.remove(file_path)
             except OSError as e:
                 logging.error(f"Error removing temporary file {file_path}: {e}")
-
 @app.get("/conversation")
 async def conversation(
     session: Optional[str] = None,
@@ -753,16 +1049,44 @@ async def conversation(
     client = create_client()
 
     try:
-        # If no assistant or session provided, create defaults (log this behavior)
+        # Validate resources if provided 
+        if session or assistant:
+            validation = await validate_resources(client, session, assistant)
+            
+            # Create new thread if invalid
+            if session and not validation["thread_valid"]:
+                logging.warning(f"Invalid thread ID: {session}, creating a new one")
+                try:
+                    thread = client.beta.threads.create()
+                    session = thread.id
+                    logging.info(f"Created recovery thread: {session}")
+                except Exception as e:
+                    logging.error(f"Failed to create recovery thread: {e}")
+                    raise HTTPException(status_code=500, detail="Failed to create a valid conversation thread")
+            
+            # Create new assistant if invalid
+            if assistant and not validation["assistant_valid"]:
+                logging.warning(f"Invalid assistant ID: {assistant}, creating a new one")
+                try:
+                    assistant_obj = client.beta.assistants.create(
+                        name=f"recovery_assistant_{int(time.time())}",
+                        model="gpt-4o-mini",
+                        instructions="You are a helpful assistant recovering from a system error.",
+                    )
+                    assistant = assistant_obj.id
+                    logging.info(f"Created recovery assistant: {assistant}")
+                except Exception as e:
+                    logging.error(f"Failed to create recovery assistant: {e}")
+                    raise HTTPException(status_code=500, detail="Failed to create a valid assistant")
+        
+        # Create defaults if not provided (existing code)
         if not assistant:
             logging.warning("No assistant ID provided for /conversation, creating a default one.")
-            # Create a minimal default assistant
             try:
                 assistant_obj = client.beta.assistants.create(
                     name="default_conversation_assistant",
-                    model="gpt-4o-mini",  # Use a general-purpose model
+                    model="gpt-4o-mini",
                     instructions="You are a helpful conversation assistant.",
-                    # No tools needed for basic conversation unless intended
                 )
                 assistant = assistant_obj.id
             except Exception as e:
@@ -789,7 +1113,7 @@ async def conversation(
             except Exception as e:
                 logging.error(f"Failed to add message to thread {session}: {e}")
                 raise HTTPException(status_code=500, detail="Failed to add message to conversation thread")
-
+        
         # Define the streaming generator function
         def stream_response():
             buffer = []
@@ -798,7 +1122,6 @@ async def conversation(
                 with client.beta.threads.runs.stream(
                     thread_id=session,
                     assistant_id=assistant,
-                    # Add event handlers if needed later for tool calls etc.
                 ) as stream:
                     for event in stream:
                         # Check specifically for text deltas
@@ -814,13 +1137,123 @@ async def conversation(
                                             if len(buffer) >= 5:  # Adjust buffer size as needed
                                                 yield ''.join(buffer)
                                                 buffer = []
+                        
+                        # Handle tool calls (including pandas_agent)
+                        elif event.event == "thread.run.requires_action":
+                            if event.data.required_action.type == "submit_tool_outputs":
+                                tool_calls = event.data.required_action.submit_tool_outputs.tool_calls
+                                tool_outputs = []
+                                
+                                yield "\n[Processing data analysis request...]\n"
+                                
+                                for tool_call in tool_calls:
+                                    if tool_call.function.name == "pandas_agent":
+                                        try:
+                                            args = json.loads(tool_call.function.arguments)
+                                            query = args.get("query", "")
+                                            filename = args.get("filename", None)
+                                            
+                                            # Get pandas files for this thread with retries
+                                            pandas_files = []
+                                            retry_count = 0
+                                            max_retries = 3
+                                            
+                                            while retry_count < max_retries:
+                                                try:
+                                                    messages = client.beta.threads.messages.list(
+                                                        thread_id=session,
+                                                        order="desc",
+                                                        limit=50
+                                                    )
+                                                    
+                                                    for msg in messages.data:
+                                                        if hasattr(msg, 'metadata') and msg.metadata and msg.metadata.get('type') == 'pandas_agent_files':
+                                                            try:
+                                                                pandas_files = json.loads(msg.metadata.get('files', '[]'))
+                                                            except Exception as parse_e:
+                                                                logging.error(f"Error parsing pandas files metadata: {parse_e}")
+                                                            break
+                                                    break  # Success, exit retry loop
+                                                except Exception as list_e:
+                                                    retry_count += 1
+                                                    logging.error(f"Error retrieving pandas files (attempt {retry_count}): {list_e}")
+                                                    if retry_count >= max_retries:
+                                                        yield "\n[Warning: Could not retrieve file information]\n"
+                                                    time.sleep(1)  # FIXED: Using time.sleep instead of await
+                                            
+                                            # Filter by filename if specified
+                                            if filename:
+                                                pandas_files = [f for f in pandas_files if f.get("name") == filename]
+                                            
+                                            # Execute the pandas agent - we'll run this directly from here
+                                            pandas_agent_operation_id = f"pandas_agent_{int(time.time())}_{os.urandom(2).hex()}"
+                                            update_operation_status(pandas_agent_operation_id, "started", 0, "Starting data analysis")
+                                            
+                                            # Process files and build response
+                                            file_descriptions = []
+                                            for file in pandas_files:
+                                                file_type = file.get("type", "unknown")
+                                                file_name = file.get("name", "unnamed_file")
+                                                file_descriptions.append(f"{file_name} ({file_type})")
+                                            
+                                            file_list = ", ".join(file_descriptions) if file_descriptions else "No files available"
+                                            
+                                            # Build placeholder response
+                                            response = f"""CSV/Excel file analysis is not supported yet. This function will be implemented in a future update.
+
+Query received: "{query}"
+
+Available files for analysis: {file_list}
+
+When implemented, this agent will be able to analyze your data files and provide insights based on your query.
+
+Operation ID: {pandas_agent_operation_id}"""
+                                            
+                                            update_operation_status(pandas_agent_operation_id, "completed", 100, "Analysis completed successfully")
+                                            
+                                            # Add to tool outputs
+                                            tool_outputs.append({
+                                                "tool_call_id": tool_call.id,
+                                                "output": response
+                                            })
+                                            
+                                        except Exception as e:
+                                            error_details = traceback.format_exc()
+                                            logging.error(f"Error processing pandas_agent tool call: {e}\n{error_details}")
+                                            tool_outputs.append({
+                                                "tool_call_id": tool_call.id,
+                                                "output": f"Error processing pandas_agent request: {str(e)}"
+                                            })
+                                            yield f"\n[Error processing data request: {str(e)}]\n"
+                                
+                                # Submit tool outputs with retry logic
+                                if tool_outputs:
+                                    retry_count = 0
+                                    max_retries = 3
+                                    submit_success = False
+                                    
+                                    while retry_count < max_retries and not submit_success:
+                                        try:
+                                            client.beta.threads.runs.submit_tool_outputs(
+                                                thread_id=session,
+                                                run_id=event.data.id,
+                                                tool_outputs=tool_outputs
+                                            )
+                                            submit_success = True
+                                        except Exception as submit_e:
+                                            retry_count += 1
+                                            logging.error(f"Error submitting tool outputs (attempt {retry_count}): {submit_e}")
+                                            if retry_count >= max_retries:
+                                                yield "\n[Error: Failed to submit analysis results. Please try again.]\n"
+                                            time.sleep(1)  # FIXED: Using time.sleep instead of await
+                
                 # Yield any remaining text in the buffer
                 if buffer:
                     yield ''.join(buffer)
+            
             except Exception as e:
                 logging.error(f"Streaming error during run for thread {session}: {e}")
                 yield "\n[ERROR] An error occurred while generating the response. Please try again."
-                # Consider raising HTTPException here too, but yielding error message is user-friendly
 
         # Return the streaming response
         return StreamingResponse(stream_response(), media_type="text/event-stream")
@@ -828,7 +1261,6 @@ async def conversation(
     except Exception as e:
         logging.error(f"Error in /conversation endpoint setup: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to process conversation request: {str(e)}")
-
 @app.get("/chat")
 async def chat(
     session: Optional[str] = None,
@@ -837,71 +1269,345 @@ async def chat(
 ):
     """
     Handles conversation queries and returns the full response as JSON.
-    Uses existing session/assistant if provided, otherwise creates defaults (logs this).
+    Enhanced with robust error handling and operational tracking.
     """
     client = create_client()
+    operation_id = f"chat_{int(time.time())}_{os.urandom(2).hex()}"
+    update_operation_status(operation_id, "started", 0, "Starting chat request")
 
     try:
-        # Fallback logic similar to /conversation
+        # Validate resources with improved error handling
+        if session or assistant:
+            update_operation_status(operation_id, "validating", 10, "Validating resources")
+            validation = await validate_resources(client, session, assistant)
+            
+            # Create new thread if invalid
+            if session and not validation["thread_valid"]:
+                logging.warning(f"Invalid thread ID: {session}, creating a new one")
+                update_operation_status(operation_id, "recovery", 15, "Creating recovery thread")
+                try:
+                    thread = client.beta.threads.create()
+                    session = thread.id
+                    logging.info(f"Created recovery thread: {session}")
+                except Exception as e:
+                    logging.error(f"Failed to create recovery thread: {e}")
+                    update_operation_status(operation_id, "error", 100, f"Thread recovery failed: {str(e)}")
+                    raise HTTPException(status_code=500, detail="Failed to create a valid conversation thread")
+            
+            # Create new assistant if invalid
+            if assistant and not validation["assistant_valid"]:
+                logging.warning(f"Invalid assistant ID: {assistant}, creating a new one")
+                update_operation_status(operation_id, "recovery", 20, "Creating recovery assistant")
+                try:
+                    assistant_obj = client.beta.assistants.create(
+                        name=f"recovery_assistant_{int(time.time())}",
+                        model="gpt-4o-mini",
+                        instructions="You are a helpful assistant recovering from a system error.",
+                    )
+                    assistant = assistant_obj.id
+                    logging.info(f"Created recovery assistant: {assistant}")
+                except Exception as e:
+                    logging.error(f"Failed to create recovery assistant: {e}")
+                    update_operation_status(operation_id, "error", 100, f"Assistant recovery failed: {str(e)}")
+                    raise HTTPException(status_code=500, detail="Failed to create a valid assistant")
+        
+        # Create defaults if not provided
         if not assistant:
             logging.warning("No assistant ID provided for /chat, creating a default one.")
+            update_operation_status(operation_id, "setup", 25, "Creating default assistant")
             try:
                 assistant_obj = client.beta.assistants.create(
-                    name="default_chat_assistant", model="gpt-4o-mini",
-                    instructions="You are a helpful chat assistant."
+                    name="default_chat_assistant",
+                    model="gpt-4o-mini",
+                    instructions="You are a helpful chat assistant.",
                 )
                 assistant = assistant_obj.id
             except Exception as e:
                 logging.error(f"Failed to create default assistant: {e}")
+                update_operation_status(operation_id, "error", 100, f"Default assistant creation failed: {str(e)}")
                 raise HTTPException(status_code=500, detail="Failed to create default assistant")
 
         if not session:
             logging.warning("No session (thread) ID provided for /chat, creating a new one.")
+            update_operation_status(operation_id, "setup", 30, "Creating default thread")
             try:
                 thread = client.beta.threads.create()
                 session = thread.id
             except Exception as e:
                 logging.error(f"Failed to create default thread: {e}")
+                update_operation_status(operation_id, "error", 100, f"Default thread creation failed: {str(e)}")
                 raise HTTPException(status_code=500, detail="Failed to create default thread")
 
         # Add user message if prompt is given
         if prompt:
+            update_operation_status(operation_id, "message", 35, "Adding user message to thread")
             try:
                 client.beta.threads.messages.create(
                     thread_id=session, role="user", content=prompt
                 )
             except Exception as e:
                 logging.error(f"Failed to add message to thread {session}: {e}")
+                update_operation_status(operation_id, "error", 100, f"Message creation failed: {str(e)}")
                 raise HTTPException(status_code=500, detail="Failed to add message to chat thread")
 
-        # Run the assistant and collect the full response
-        response_text_parts = []
+        # Run the assistant with enhanced tool call handling
         try:
-            # Use stream to collect deltas - often more reliable than run+retrieve+list messages
-            with client.beta.threads.runs.stream(thread_id=session, assistant_id=assistant) as stream:
-                for event in stream:
-                    if event.event == "thread.message.delta":
-                        delta = event.data.delta
-                        if delta.content:
-                            for content_part in delta.content:
-                                if content_part.type == 'text' and content_part.text:
-                                    text_value = content_part.text.value
-                                    if text_value:
-                                        response_text_parts.append(text_value)
-            # Alternative: Use run = client.beta.threads.runs.create_and_poll(...) then list messages
-            # This stream approach captures the final message content as it's generated.
+            # Create a run
+            update_operation_status(operation_id, "run_starting", 40, "Starting assistant run")
+            run = client.beta.threads.runs.create(
+                thread_id=session,
+                assistant_id=assistant
+            )
+            run_id = run.id
+            
+            # Poll until run completes or requires action
+            poll_count = 0
+            max_poll_time = 180  # Maximum time to wait (3 minutes)
+            start_time = time.time()
+            
+            while time.time() - start_time < max_poll_time:
+                poll_count += 1
+                
+                # Update status periodically
+                if poll_count % 5 == 0:  # Every 5 polls
+                    elapsed = time.time() - start_time
+                    progress = min(40 + int(elapsed / max_poll_time * 50), 90)  # Cap at 90%
+                    update_operation_status(operation_id, "running", progress, f"Processing run (elapsed: {elapsed:.1f}s)")
+                
+                # Get run status with retry logic
+                retry_count = 0
+                max_retries = 3
+                run_status = None
+                
+                while retry_count < max_retries and not run_status:
+                    try:
+                        run_status = client.beta.threads.runs.retrieve(
+                            thread_id=session,
+                            run_id=run_id
+                        )
+                        break
+                    except Exception as e:
+                        retry_count += 1
+                        logging.error(f"Error retrieving run status (attempt {retry_count}): {e}")
+                        if retry_count >= max_retries:
+                            raise  # Re-raise if all retries fail
+                        time.sleep(1)  # FIXED: Using time.sleep instead of await
+                
+                if run_status.status == "requires_action":
+                    # Handle tool calls
+                    if run_status.required_action.type == "submit_tool_outputs":
+                        update_operation_status(operation_id, "tool_processing", 70, "Processing tool calls")
+                        tool_calls = run_status.required_action.submit_tool_outputs.tool_calls
+                        tool_outputs = []
+                        
+                        for tool_call in tool_calls:
+                            if tool_call.function.name == "pandas_agent":
+                                try:
+                                    # Extract arguments with error handling
+                                    args = json.loads(tool_call.function.arguments)
+                                    query = args.get("query", "")
+                                    filename = args.get("filename", None)
+                                    
+                                    update_operation_status(operation_id, "data_retrieval", 75, f"Retrieving data files for query: {query[:30]}...")
+                                    
+                                    # Get pandas files for this thread with retry logic
+                                    pandas_files = []
+                                    retry_count = 0
+                                    max_retries = 3
+                                    
+                                    while retry_count < max_retries:
+                                        try:
+                                            messages = client.beta.threads.messages.list(
+                                                thread_id=session,
+                                                order="desc",
+                                                limit=50
+                                            )
+                                            
+                                            for msg in messages.data:
+                                                if hasattr(msg, 'metadata') and msg.metadata and msg.metadata.get('type') == 'pandas_agent_files':
+                                                    try:
+                                                        pandas_files = json.loads(msg.metadata.get('files', '[]'))
+                                                    except Exception as parse_e:
+                                                        logging.error(f"Error parsing pandas files metadata: {parse_e}")
+                                                    break
+                                            break  # Success, exit retry loop
+                                        except Exception as list_e:
+                                            retry_count += 1
+                                            logging.error(f"Error retrieving pandas files (attempt {retry_count}): {list_e}")
+                                            if retry_count >= max_retries:
+                                                update_operation_status(operation_id, "warning", 76, "Could not retrieve file information")
+                                            time.sleep(1)  # FIXED: Using time.sleep instead of await
+                                    
+                                    # Filter by filename if specified
+                                    if filename:
+                                        pandas_files = [f for f in pandas_files if f.get("name") == filename]
+                                    
+                                    update_operation_status(operation_id, "data_analysis", 80, f"Analyzing data with pandas_agent")
+                                    
+                                    # Process files and build response
+                                    pandas_agent_operation_id = f"pandas_agent_{int(time.time())}_{os.urandom(2).hex()}"
+                                    update_operation_status(pandas_agent_operation_id, "started", 0, "Starting data analysis")
+                                    
+                                    # Extract data from file information 
+                                    file_descriptions = []
+                                    for file in pandas_files:
+                                        file_type = file.get("type", "unknown")
+                                        file_name = file.get("name", "unnamed_file")
+                                        file_descriptions.append(f"{file_name} ({file_type})")
+                                    
+                                    file_list = ", ".join(file_descriptions) if file_descriptions else "No files available"
+                                    
+                                    # Build placeholder response
+                                    response = f"""CSV/Excel file analysis is not supported yet. This function will be implemented in a future update.
+
+Query received: "{query}"
+
+Available files for analysis: {file_list}
+
+When implemented, this agent will be able to analyze your data files and provide insights based on your query.
+
+Operation ID: {pandas_agent_operation_id}"""
+                                    
+                                    update_operation_status(pandas_agent_operation_id, "completed", 100, "Analysis completed successfully")
+                                    
+                                    # Add to tool outputs
+                                    tool_outputs.append({
+                                        "tool_call_id": tool_call.id,
+                                        "output": response
+                                    })
+                                    
+                                except Exception as e:
+                                    error_details = traceback.format_exc()
+                                    logging.error(f"Error processing pandas_agent tool call: {e}\n{error_details}")
+                                    update_operation_status(operation_id, "error", 80, f"Tool processing error: {str(e)}")
+                                    tool_outputs.append({
+                                        "tool_call_id": tool_call.id,
+                                        "output": f"Error processing pandas_agent request: {str(e)}"
+                                    })
+                        
+                        # Submit tool outputs with retry logic
+                        if tool_outputs:
+                            update_operation_status(operation_id, "submitting_results", 85, "Submitting tool results")
+                            retry_count = 0
+                            max_retries = 3
+                            submit_success = False
+                            
+                            while retry_count < max_retries and not submit_success:
+                                try:
+                                    client.beta.threads.runs.submit_tool_outputs(
+                                        thread_id=session,
+                                        run_id=run_id,
+                                        tool_outputs=tool_outputs
+                                    )
+                                    submit_success = True
+                                except Exception as submit_e:
+                                    retry_count += 1
+                                    logging.error(f"Error submitting tool outputs (attempt {retry_count}): {submit_e}")
+                                    if retry_count >= max_retries:
+                                        update_operation_status(operation_id, "error", 85, f"Tool submission failed: {str(submit_e)}")
+                                        # If we can't submit tool outputs, cancel the run
+                                        try:
+                                            client.beta.threads.runs.cancel(
+                                                thread_id=session,
+                                                run_id=run_id
+                                            )
+                                        except:
+                                            pass  # Ignore errors during cancellation
+                                        break
+                                    time.sleep(1)  # FIXED: Using time.sleep instead of await
+                        else:
+                            # If we couldn't generate any outputs, cancel the run
+                            update_operation_status(operation_id, "warning", 85, "No tool outputs generated")
+                            try:
+                                client.beta.threads.runs.cancel(
+                                    thread_id=session,
+                                    run_id=run_id
+                                )
+                            except:
+                                pass  # Ignore errors during cancellation
+                            break
+                    else:
+                        # Unknown action required
+                        update_operation_status(operation_id, "warning", 85, f"Unknown required action: {run_status.required_action.type}")
+                        try:
+                            client.beta.threads.runs.cancel(
+                                thread_id=session,
+                                run_id=run_id
+                            )
+                        except:
+                            pass  # Ignore errors during cancellation
+                        break
+                    
+                elif run_status.status in ["completed", "failed", "cancelled"]:
+                    update_operation_status(
+                        operation_id, 
+                        "finished" if run_status.status == "completed" else "error", 
+                        90, 
+                        f"Run {run_status.status}")
+                    break
+                
+                # Adaptive wait before polling again
+                poll_interval = min(1 + (poll_count * 0.1), 3)  # Start with 1s, increase slowly, cap at 3s
+                time.sleep(poll_interval)  # FIXED: Using time.sleep instead of await
+            
+            # Handle timeout case
+            if time.time() - start_time >= max_poll_time:
+                update_operation_status(operation_id, "timeout", 90, f"Run timed out after {max_poll_time}s")
+                logging.warning(f"Run {run_id} timed out after {max_poll_time} seconds")
+                try:
+                    client.beta.threads.runs.cancel(thread_id=session, run_id=run_id)
+                except:
+                    pass  # Ignore errors during cancellation
+            
+            # Get the final messages with retry
+            update_operation_status(operation_id, "retrieving_response", 95, "Retrieving final response")
+            retry_count = 0
+            max_retries = 3
+            messages = None
+            
+            while retry_count < max_retries and not messages:
+                try:
+                    messages = client.beta.threads.messages.list(
+                        thread_id=session,
+                        order="desc",
+                        limit=1  # Just get the latest message
+                    )
+                    break
+                except Exception as e:
+                    retry_count += 1
+                    logging.error(f"Error retrieving final message (attempt {retry_count}): {e}")
+                    if retry_count >= max_retries:
+                        update_operation_status(operation_id, "error", 95, f"Failed to retrieve final message: {str(e)}")
+                        raise  # Re-raise if all retries fail
+                    time.sleep(1)  # FIXED: Using time.sleep instead of await
+            
+            response_content = ""
+            if messages and messages.data:
+                latest_message = messages.data[0]
+                for content_part in latest_message.content:
+                    if content_part.type == 'text':
+                        response_content += content_part.text.value
+            
+            update_operation_status(operation_id, "completed", 100, "Chat request completed successfully")
+            # return JSONResponse(content={
+            #     "response": response_content,
+            #     "operation_id": operation_id,
+            #     "thread_id": session,
+            #     "assistant_id": assistant
+            # })
+            return JSONResponse(content={"response": response_content})
 
         except Exception as e:
-            logging.error(f"Error during run/stream for thread {session}: {e}")
+            error_details = traceback.format_exc()
+            logging.error(f"Error during run processing for thread {session}: {e}\n{error_details}")
+            update_operation_status(operation_id, "error", 100, f"Run processing error: {str(e)}")
             raise HTTPException(status_code=500, detail="Error generating response. Please try again.")
 
-        full_response = ''.join(response_text_parts)
-        return JSONResponse(content={"response": full_response})
-
     except Exception as e:
-        logging.error(f"Error in /chat endpoint setup: {e}")
+        error_details = traceback.format_exc()
+        logging.error(f"Error in /chat endpoint setup: {e}\n{error_details}")
+        update_operation_status(operation_id, "error", 100, f"Chat request failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to process chat request: {str(e)}")
-
 if __name__ == "__main__":
     import uvicorn
     print("Starting FastAPI server on http://0.0.0.0:8000")
