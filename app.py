@@ -788,57 +788,67 @@ async def upload_file(
         # Retrieve the assistant
         assistant_obj = client.beta.assistants.retrieve(assistant_id=assistant)
 
-        # Get current tools and check for pandas_agent and file_search
-        current_tools = list(assistant_obj.tools) if assistant_obj.tools else []
-        has_file_search = False
+        # Check if the assistant has the pandas_agent tool
         has_pandas_agent = False
+        for tool in assistant_obj.tools:
+            if hasattr(tool, 'type') and tool.type == "function" and hasattr(tool, 'function') and hasattr(tool.function, 'name') and tool.function.name == "pandas_agent":
+                has_pandas_agent = True
+                break
         
-        # Check existing tools
-        for tool in current_tools:
-            if hasattr(tool, 'type'):
-                if tool.type == "file_search":
-                    has_file_search = True
-                elif tool.type == "function" and hasattr(tool, 'function') and hasattr(tool.function, 'name') and tool.function.name == "pandas_agent":
-                    has_pandas_agent = True
-        
-        needs_update = False
-        
-        # Get vector store IDs
+        # Add pandas_agent tool if needed for CSV/Excel
+        if is_csv or is_excel and not has_pandas_agent:
+            # Create a list of current tools
+            current_tools = list(assistant_obj.tools)
+            
+            # Add pandas_agent function tool
+            current_tools.append({
+                "type": "function",
+                "function": {
+                    "name": "pandas_agent",
+                    "description": "Analyzes CSV and Excel files to answer data-related questions and perform data analysis",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {
+                                "type": "string",
+                                "description": "The specific question or analysis task to perform on the data"
+                            },
+                            "filename": {
+                                "type": "string",
+                                "description": "Optional: specific filename to analyze. If not provided, all available files will be considered."
+                            }
+                        },
+                        "required": ["query"]
+                    }
+                }
+            })
+            
+            # Update the assistant with the new tool
+            client.beta.assistants.update(
+                assistant_id=assistant,
+                tools=current_tools
+            )
+            
+            logging.info(f"Added pandas_agent tool to assistant {assistant}")
+
+        # Check for file_search tool and vector store
+        has_file_search = False
         vector_store_ids = []
+        
+        for tool in assistant_obj.tools:
+            if hasattr(tool, 'type') and tool.type == "file_search":
+                has_file_search = True
+                break
+        
         current_tool_resources = assistant_obj.tool_resources if hasattr(assistant_obj, 'tool_resources') else {}
         fs_resources = getattr(current_tool_resources, "file_search", None)
         if fs_resources and hasattr(fs_resources, "vector_store_ids"):
             vector_store_ids = list(fs_resources.vector_store_ids)
         
+        needs_update = False
+
         # --- CSV/Excel Handling (for pandas_agent) ---
         if is_csv or is_excel:
-            # Add pandas_agent tool if needed
-            if not has_pandas_agent:
-                pandas_agent_tool = {
-                    "type": "function",
-                    "function": {
-                        "name": "pandas_agent",
-                        "description": "Analyzes CSV and Excel files to answer data-related questions and perform data analysis",
-                        "parameters": {
-                            "type": "object",
-                            "properties": {
-                                "query": {
-                                    "type": "string",
-                                    "description": "The specific question or analysis task to perform on the data"
-                                },
-                                "filename": {
-                                    "type": "string",
-                                    "description": "Optional: specific filename to analyze. If not provided, all available files will be considered."
-                                }
-                            },
-                            "required": ["query"]
-                        }
-                    }
-                }
-                current_tools.append(pandas_agent_tool)
-                needs_update = True
-                logging.info(f"Adding pandas_agent tool to assistant {assistant}")
-            
             # Store the file for pandas_agent
             permanent_path = os.path.join('/tmp/', f"pandas_agent_{int(time.time())}_{filename}")
             with open(permanent_path, 'wb') as f:
@@ -869,7 +879,6 @@ async def upload_file(
                         if hasattr(msg, 'metadata') and msg.metadata and msg.metadata.get('type') == 'pandas_agent_files':
                             pandas_files_message_id = msg.id
                             try:
-                                import json
                                 pandas_files = json.loads(msg.metadata.get('files', '[]'))
                             except:
                                 pandas_files = []
@@ -889,8 +898,7 @@ async def upload_file(
                         except Exception as e:
                             logging.error(f"Error deleting pandas files message: {e}")
                     
-                    # Create a new message with updated files
-                    import json
+                    # Create a new message with updated files          
                     client.beta.threads.messages.create(
                         thread_id=thread_id,
                         role="user",
@@ -926,6 +934,7 @@ async def upload_file(
         elif is_document or not (is_csv or is_excel or is_image):
             # Ensure file search tool exists
             if not has_file_search:
+                current_tools = list(assistant_obj.tools)
                 current_tools.append({"type": "file_search"})
                 needs_update = True
                 logging.info(f"Adding file_search tool to assistant {assistant}")
@@ -967,7 +976,7 @@ async def upload_file(
         if needs_update:
             update_payload = {}
             
-            if needs_update:
+            if not has_file_search:
                 update_payload["tools"] = current_tools
             
             if vector_store_ids:
@@ -1108,6 +1117,9 @@ async def conversation(
         # Define the streaming generator function
         def stream_response():
             buffer = []
+            completed = False
+            tool_call_results = []
+            
             try:
                 # Create run and stream the response
                 with client.beta.threads.runs.stream(
@@ -1115,7 +1127,11 @@ async def conversation(
                     assistant_id=assistant,
                 ) as stream:
                     for event in stream:
-                        # Check specifically for text deltas
+                        # Check for message creation and completion
+                        if event.event == "thread.message.created":
+                            logging.info(f"New message created: {event.data.id}")
+                            
+                        # Handle text deltas
                         if event.event == "thread.message.delta":
                             delta = event.data.delta
                             if delta.content:
@@ -1125,10 +1141,15 @@ async def conversation(
                                         if text_value:
                                             buffer.append(text_value)
                                             # Yield chunks frequently for better streaming feel
-                                            if len(buffer) >= 5:  # Adjust buffer size as needed
+                                            if len(buffer) >= 3:  # Smaller buffer for more frequent updates
                                                 yield ''.join(buffer)
                                                 buffer = []
                         
+                        # Explicitly handle run completion event
+                        if event.event == "thread.run.completed":
+                            logging.info(f"Run completed: {event.data.id}")
+                            completed = True
+                            
                         # Handle tool calls (including pandas_agent)
                         elif event.event == "thread.run.requires_action":
                             if event.data.required_action.type == "submit_tool_outputs":
@@ -1140,11 +1161,13 @@ async def conversation(
                                 for tool_call in tool_calls:
                                     if tool_call.function.name == "pandas_agent":
                                         try:
+                                            # Extract arguments
+                                            import json
                                             args = json.loads(tool_call.function.arguments)
                                             query = args.get("query", "")
                                             filename = args.get("filename", None)
                                             
-                                            # Get pandas files for this thread with retries
+                                            # Get pandas files for this thread
                                             pandas_files = []
                                             retry_count = 0
                                             max_retries = 3
@@ -1170,13 +1193,13 @@ async def conversation(
                                                     logging.error(f"Error retrieving pandas files (attempt {retry_count}): {list_e}")
                                                     if retry_count >= max_retries:
                                                         yield "\n[Warning: Could not retrieve file information]\n"
-                                                    time.sleep(1)  # FIXED: Using time.sleep instead of await
+                                                    time.sleep(1)
                                             
                                             # Filter by filename if specified
                                             if filename:
                                                 pandas_files = [f for f in pandas_files if f.get("name") == filename]
                                             
-                                            # Execute the pandas agent - we'll run this directly from here
+                                            # Execute the pandas agent
                                             pandas_agent_operation_id = f"pandas_agent_{int(time.time())}_{os.urandom(2).hex()}"
                                             update_operation_status(pandas_agent_operation_id, "started", 0, "Starting data analysis")
                                             
@@ -1192,13 +1215,13 @@ async def conversation(
                                             # Build placeholder response
                                             response = f"""CSV/Excel file analysis is not supported yet. This function will be implemented in a future update.
 
-Query received: "{query}"
+        Query received: "{query}"
 
-Available files for analysis: {file_list}
+        Available files for analysis: {file_list}
 
-When implemented, this agent will be able to analyze your data files and provide insights based on your query.
+        When implemented, this agent will be able to analyze your data files and provide insights based on your query.
 
-Operation ID: {pandas_agent_operation_id}"""
+        Operation ID: {pandas_agent_operation_id}"""
                                             
                                             update_operation_status(pandas_agent_operation_id, "completed", 100, "Analysis completed successfully")
                                             
@@ -1207,6 +1230,9 @@ Operation ID: {pandas_agent_operation_id}"""
                                                 "tool_call_id": tool_call.id,
                                                 "output": response
                                             })
+                                            
+                                            # Save for potential fallback
+                                            tool_call_results.append(response)
                                             
                                         except Exception as e:
                                             error_details = traceback.format_exc()
@@ -1217,11 +1243,13 @@ Operation ID: {pandas_agent_operation_id}"""
                                             })
                                             yield f"\n[Error processing data request: {str(e)}]\n"
                                 
-                                # Submit tool outputs with retry logic
+                                # Submit tool outputs
                                 if tool_outputs:
                                     retry_count = 0
                                     max_retries = 3
                                     submit_success = False
+                                    
+                                    yield "\n[Data analysis complete. Generating response...]\n"
                                     
                                     while retry_count < max_retries and not submit_success:
                                         try:
@@ -1231,20 +1259,52 @@ Operation ID: {pandas_agent_operation_id}"""
                                                 tool_outputs=tool_outputs
                                             )
                                             submit_success = True
+                                            logging.info(f"Successfully submitted tool outputs for run {event.data.id}")
                                         except Exception as submit_e:
                                             retry_count += 1
                                             logging.error(f"Error submitting tool outputs (attempt {retry_count}): {submit_e}")
                                             if retry_count >= max_retries:
                                                 yield "\n[Error: Failed to submit analysis results. Please try again.]\n"
-                                            time.sleep(1)  # FIXED: Using time.sleep instead of await
+                                            time.sleep(1)
+                    
+                    # Yield any remaining text in the buffer
+                    if buffer:
+                        yield ''.join(buffer)
+                        
+                    # Ensure we have a response
+                    if not completed and tool_call_results:
+                        # If the run didn't complete normally but we have tool results,
+                        # show them directly to avoid leaving the user without a response
+                        yield "\n\n[Note: Here are the preliminary analysis results:]\n\n"
+                        for result in tool_call_results:
+                            yield result
+                        
+                # Additional fallback - fetch the most recent message if streaming didn't work
+                if not buffer and not tool_call_results:
+                    try:
+                        logging.info("Attempting to retrieve final response through direct message fetch")
+                        messages = client.beta.threads.messages.list(
+                            thread_id=session,
+                            order="desc",
+                            limit=1
+                        )
+                        if messages and messages.data:
+                            latest_message = messages.data[0]
+                            response_content = ""
+                            for content_part in latest_message.content:
+                                if content_part.type == 'text':
+                                    response_content += content_part.text.value
+                            if response_content:
+                                yield "\n\n[Response retrieved:]\n\n"
+                                yield response_content
+                    except Exception as fetch_e:
+                        logging.error(f"Failed to fetch final message: {fetch_e}")
+                        # Last resort
+                        yield "\n\n[Unable to retrieve complete response. Please try again.]\n"
                 
-                # Yield any remaining text in the buffer
-                if buffer:
-                    yield ''.join(buffer)
-            
             except Exception as e:
                 logging.error(f"Streaming error during run for thread {session}: {e}")
-                yield "\n[ERROR] An error occurred while generating the response. Please try again."
+                yield "\n[ERROR] An error occurred while generating the response. Please try again.\n"
 
         # Return the streaming response
         return StreamingResponse(stream_response(), media_type="text/event-stream")
