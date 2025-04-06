@@ -788,67 +788,57 @@ async def upload_file(
         # Retrieve the assistant
         assistant_obj = client.beta.assistants.retrieve(assistant_id=assistant)
 
-        # Check if the assistant has the pandas_agent tool
-        has_pandas_agent = False
-        for tool in assistant_obj.tools:
-            if hasattr(tool, 'type') and tool.type == "function" and hasattr(tool, 'function') and hasattr(tool.function, 'name') and tool.function.name == "pandas_agent":
-                has_pandas_agent = True
-                break
-        
-        # Add pandas_agent tool if needed for CSV/Excel
-        if is_csv or is_excel and not has_pandas_agent:
-            # Create a list of current tools
-            current_tools = list(assistant_obj.tools)
-            
-            # Add pandas_agent function tool
-            current_tools.append({
-                "type": "function",
-                "function": {
-                    "name": "pandas_agent",
-                    "description": "Analyzes CSV and Excel files to answer data-related questions and perform data analysis",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "query": {
-                                "type": "string",
-                                "description": "The specific question or analysis task to perform on the data"
-                            },
-                            "filename": {
-                                "type": "string",
-                                "description": "Optional: specific filename to analyze. If not provided, all available files will be considered."
-                            }
-                        },
-                        "required": ["query"]
-                    }
-                }
-            })
-            
-            # Update the assistant with the new tool
-            client.beta.assistants.update(
-                assistant_id=assistant,
-                tools=current_tools
-            )
-            
-            logging.info(f"Added pandas_agent tool to assistant {assistant}")
-
-        # Check for file_search tool and vector store
+        # Get current tools and check for pandas_agent and file_search
+        current_tools = list(assistant_obj.tools) if assistant_obj.tools else []
         has_file_search = False
+        has_pandas_agent = False
+        
+        # Check existing tools
+        for tool in current_tools:
+            if hasattr(tool, 'type'):
+                if tool.type == "file_search":
+                    has_file_search = True
+                elif tool.type == "function" and hasattr(tool, 'function') and hasattr(tool.function, 'name') and tool.function.name == "pandas_agent":
+                    has_pandas_agent = True
+        
+        needs_update = False
+        
+        # Get vector store IDs
         vector_store_ids = []
-        
-        for tool in assistant_obj.tools:
-            if hasattr(tool, 'type') and tool.type == "file_search":
-                has_file_search = True
-                break
-        
         current_tool_resources = assistant_obj.tool_resources if hasattr(assistant_obj, 'tool_resources') else {}
         fs_resources = getattr(current_tool_resources, "file_search", None)
         if fs_resources and hasattr(fs_resources, "vector_store_ids"):
             vector_store_ids = list(fs_resources.vector_store_ids)
         
-        needs_update = False
-
         # --- CSV/Excel Handling (for pandas_agent) ---
         if is_csv or is_excel:
+            # Add pandas_agent tool if needed
+            if not has_pandas_agent:
+                pandas_agent_tool = {
+                    "type": "function",
+                    "function": {
+                        "name": "pandas_agent",
+                        "description": "Analyzes CSV and Excel files to answer data-related questions and perform data analysis",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "query": {
+                                    "type": "string",
+                                    "description": "The specific question or analysis task to perform on the data"
+                                },
+                                "filename": {
+                                    "type": "string",
+                                    "description": "Optional: specific filename to analyze. If not provided, all available files will be considered."
+                                }
+                            },
+                            "required": ["query"]
+                        }
+                    }
+                }
+                current_tools.append(pandas_agent_tool)
+                needs_update = True
+                logging.info(f"Adding pandas_agent tool to assistant {assistant}")
+            
             # Store the file for pandas_agent
             permanent_path = os.path.join('/tmp/', f"pandas_agent_{int(time.time())}_{filename}")
             with open(permanent_path, 'wb') as f:
@@ -879,6 +869,7 @@ async def upload_file(
                         if hasattr(msg, 'metadata') and msg.metadata and msg.metadata.get('type') == 'pandas_agent_files':
                             pandas_files_message_id = msg.id
                             try:
+                                import json
                                 pandas_files = json.loads(msg.metadata.get('files', '[]'))
                             except:
                                 pandas_files = []
@@ -898,7 +889,8 @@ async def upload_file(
                         except Exception as e:
                             logging.error(f"Error deleting pandas files message: {e}")
                     
-                    # Create a new message with updated files          
+                    # Create a new message with updated files
+                    import json
                     client.beta.threads.messages.create(
                         thread_id=thread_id,
                         role="user",
@@ -934,7 +926,6 @@ async def upload_file(
         elif is_document or not (is_csv or is_excel or is_image):
             # Ensure file search tool exists
             if not has_file_search:
-                current_tools = list(assistant_obj.tools)
                 current_tools.append({"type": "file_search"})
                 needs_update = True
                 logging.info(f"Adding file_search tool to assistant {assistant}")
@@ -976,7 +967,7 @@ async def upload_file(
         if needs_update:
             update_payload = {}
             
-            if not has_file_search:
+            if needs_update:
                 update_payload["tools"] = current_tools
             
             if vector_store_ids:
