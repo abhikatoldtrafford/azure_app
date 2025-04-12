@@ -1891,7 +1891,7 @@ async def conversation(
                                             # Use the PandasAgentManager to execute the query
                                             try:
                                                 # Execute the pandas_agent using the new class-based implementation
-                                                analysis_result = await pandas_agent(
+                                                analysis_result = asyncio.run(pandas_agent(
                                                     client=client,
                                                     thread_id=session,
                                                     query=query,
