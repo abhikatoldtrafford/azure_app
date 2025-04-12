@@ -9,3 +9,4 @@ pandas
 langchain_openai
 langchain
 langchain_experimental
+tabulate
