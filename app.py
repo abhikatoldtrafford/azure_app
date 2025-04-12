@@ -3,7 +3,7 @@ import threading
 from fastapi import FastAPI, Request, UploadFile, Form, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
 from openai import AzureOpenAI
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 import os
 import datetime
 import time
