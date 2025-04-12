@@ -1878,40 +1878,51 @@ async def conversation(
                                             if filename:
                                                 pandas_files = [f for f in pandas_files if f.get("name") == filename]
                                             
-                                            # Execute the pandas agent
+                                            # Stream progress updates
+                                            yield "\n[Loading data files...]\n"
+                                            
+                                            # Generate operation ID for status tracking
                                             pandas_agent_operation_id = f"pandas_agent_{int(time.time())}_{os.urandom(2).hex()}"
                                             update_operation_status(pandas_agent_operation_id, "started", 0, "Starting data analysis")
                                             
-                                            # Process files and build response
-                                            file_descriptions = []
-                                            for file in pandas_files:
-                                                file_type = file.get("type", "unknown")
-                                                file_name = file.get("name", "unnamed_file")
-                                                file_descriptions.append(f"{file_name} ({file_type})")
+                                            # Stream initial status
+                                            yield "\n[Analyzing your data...]\n"
                                             
-                                            file_list = ", ".join(file_descriptions) if file_descriptions else "No files available"
-                                            
-                                            # Build placeholder response
-                                            response = f"""CSV/Excel file analysis is not supported yet. This function will be implemented in a future update.
-
-                                                        Query received: "{query}"
-
-                                                        Available files for analysis: {file_list}
-
-                                                        When implemented, this agent will be able to analyze your data files and provide insights based on your query.
-
-                                                        Operation ID: {pandas_agent_operation_id}"""
-                                            
-                                            update_operation_status(pandas_agent_operation_id, "completed", 100, "Analysis completed successfully")
-                                            
-                                            # Add to tool outputs
-                                            tool_outputs.append({
-                                                "tool_call_id": tool_call.id,
-                                                "output": response
-                                            })
-                                            
-                                            # Save for potential fallback
-                                            tool_call_results.append(response)
+                                            # Use the PandasAgentManager to execute the query
+                                            try:
+                                                # Execute the pandas_agent using the new class-based implementation
+                                                analysis_result = await pandas_agent(
+                                                    client=client,
+                                                    thread_id=session,
+                                                    query=query,
+                                                    files=pandas_files
+                                                )
+                                                
+                                                # Add to tool outputs
+                                                tool_outputs.append({
+                                                    "tool_call_id": tool_call.id,
+                                                    "output": analysis_result
+                                                })
+                                                
+                                                # Save for potential fallback
+                                                tool_call_results.append(analysis_result)
+                                                
+                                                # Stream status indicating completion
+                                                yield "\n[Data analysis complete]\n"
+                                                
+                                            except Exception as e:
+                                                error_details = traceback.format_exc()
+                                                logging.error(f"Error executing pandas_agent: {e}\n{error_details}")
+                                                error_msg = f"Error analyzing data: {str(e)}"
+                                                
+                                                # Add error to tool outputs
+                                                tool_outputs.append({
+                                                    "tool_call_id": tool_call.id,
+                                                    "output": error_msg
+                                                })
+                                                
+                                                # Stream error
+                                                yield f"\n[Error: {str(e)}]\n"
                                             
                                         except Exception as e:
                                             error_details = traceback.format_exc()
@@ -1928,7 +1939,7 @@ async def conversation(
                                     max_retries = 3
                                     submit_success = False
                                     
-                                    yield "\n[Data analysis complete. Generating response...]\n"
+                                    yield "\n[Generating response based on analysis...]\n"
                                     
                                     while retry_count < max_retries and not submit_success:
                                         try:
