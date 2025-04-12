@@ -2057,12 +2057,12 @@ async def conversation(
                                             yield "\n[Analyzing your data...]\n"
                                             
                                             # Execute the pandas_agent using the class-based implementation
-                                            analysis_result = await pandas_agent(
+                                            analysis_result = asyncio.run(pandas_agent(
                                                 client=client,
                                                 thread_id=session,
                                                 query=query,
                                                 files=pandas_files
-                                            )
+                                            ))
                                             
                                             # Stream status indicating completion
                                             yield "\n[Data analysis complete]\n"
