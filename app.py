@@ -1896,7 +1896,7 @@ async def conversation(
                                                     thread_id=session,
                                                     query=query,
                                                     files=pandas_files
-                                                )
+                                                ))
                                                 
                                                 # Add to tool outputs
                                                 tool_outputs.append({
