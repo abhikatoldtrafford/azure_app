@@ -605,7 +605,7 @@ async def validate_resources(client: AzureOpenAI, thread_id: Optional[str], assi
 async def pandas_agent(client: AzureOpenAI, thread_id: Optional[str], query: str, files: List[Dict[str, Any]]) -> str:
     """
     Enhanced pandas_agent that uses LangChain to analyze CSV and Excel files.
-    Uses a globally cached agent for each thread to maintain state and access to all files.
+    Uses a class-based implementation to maintain isolation between threads.
     
     Args:
         client (AzureOpenAI): The Azure OpenAI client instance
@@ -616,9 +616,6 @@ async def pandas_agent(client: AzureOpenAI, thread_id: Optional[str], query: str
     Returns:
         str: The analysis result
     """
-    import sys
-    from io import StringIO
-    
     # Create a unique operation ID for tracking
     operation_id = f"pandas_agent_{int(time.time())}_{os.urandom(2).hex()}"
     update_operation_status(operation_id, "started", 0, "Starting data analysis")
@@ -652,116 +649,52 @@ async def pandas_agent(client: AzureOpenAI, thread_id: Optional[str], query: str
         logging.info(f"Processing data analysis for thread {thread_id} with files: {file_list_str}")
         update_operation_status(operation_id, "files", 20, f"Processing files: {file_list_str}")
         
-        # Extract filename mentions in the query
-        mentioned_files = []
-        for file in files:
-            file_name = file.get("name", "")
-            if file_name and file_name.lower() in query.lower():
-                mentioned_files.append(file_name)
-                
-        if mentioned_files:
-            logging.info(f"Query mentions files: {', '.join(mentioned_files)}")
-            update_operation_status(operation_id, "file_detection", 25, f"Detected file mentions: {', '.join(mentioned_files)}")
+        # Get the PandasAgentManager instance
+        manager = PandasAgentManager.get_instance()
         
-        # Get or create the pandas agent for this thread
-        update_operation_status(operation_id, "agent_setup", 30, f"Setting up pandas agent for thread {thread_id}")
-        agent, dataframes, agent_errors = get_or_create_pandas_agent(thread_id, files)
-        
-        if not agent:
-            error_msg = f"Failed to create pandas agent: {'; '.join(agent_errors)}"
-            update_operation_status(operation_id, "error", 100, error_msg)
-            return f"Error: {error_msg}"
-        
-        if not dataframes:
-            error_msg = "No dataframes available for analysis"
-            update_operation_status(operation_id, "error", 100, error_msg)
-            return error_msg
-        
-        # Prepare status update information
-        df_count = len(dataframes)
-        total_rows = sum(len(df) for df in dataframes.values())
-        update_operation_status(operation_id, "data_stats", 35, 
-                               f"Analyzing {df_count} dataframe(s) with {total_rows} total rows")
-        
-        # Process the query - don't modify it too much to ensure compatibility with OpenAI assistant
-        # Just add minimal context if needed
-        update_operation_status(operation_id, "query_processing", 40, "Processing query")
-        
-        # If no specific file is mentioned but we have multiple files, provide minimal guidance
-        if len(dataframes) > 1 and not mentioned_files:
-            # Create a concise list of available files
-            file_list = ", ".join(f"'{name}'" for name in dataframes.keys())
-            
-            # Add a gentle hint about available files
-            query_prefix = f"Available files: {file_list}. "
-            enhanced_query = query_prefix + query
-            logging.info(f"Enhanced query with file list: {enhanced_query}")
-        else:
-            # Use the query as-is
-            enhanced_query = query
-        
-        # Run the pandas dataframe agent
+        # Process the query
         update_operation_status(operation_id, "analyzing", 50, f"Analyzing data with query: {query}")
         
-        # Capture stdout to get verbose output
-        original_stdout = sys.stdout
-        captured_output = StringIO()
-        sys.stdout = captured_output
-        
-        try:
-            # Invoke the agent with the query
-            update_operation_status(operation_id, "executing", 65, "Executing agent")
-            
-            # Stream status updates during execution
-            def send_progress_updates():
-                progress = 65
-                while progress < 85:
-                    time.sleep(1.5)  # Update every 1.5 seconds
-                    progress += 2
-                    update_operation_status(operation_id, "executing", min(progress, 85), 
-                                           "Analysis in progress...")
-                    
-            # Start progress update in background
-            update_thread = None
-            try:
-                update_thread = threading.Thread(target=send_progress_updates)
-                update_thread.daemon = True
-                update_thread.start()
-            except:
-                # Don't fail if we can't spawn thread
-                pass
+        # Stream status updates during execution
+        def send_progress_updates():
+            progress = 50
+            while progress < 85:
+                time.sleep(1.5)  # Update every 1.5 seconds
+                progress += 2
+                update_operation_status(operation_id, "executing", min(progress, 85), 
+                                       "Analysis in progress...")
                 
-            # Actual agent execution
-            agent_result = agent.invoke({"input": enhanced_query})
-            agent_output = agent_result.get("output", "")
+        # Start progress update in background
+        update_thread = None
+        try:
+            update_thread = threading.Thread(target=send_progress_updates)
+            update_thread.daemon = True
+            update_thread.start()
+        except:
+            # Don't fail if we can't spawn thread
+            pass
+        
+        # Run the analysis using the PandasAgentManager
+        result, error, removed_files = manager.analyze(thread_id, query, files)
+        
+        # Prepare the response
+        update_operation_status(operation_id, "formatting", 90, "Formatting response")
+        
+        if error:
+            update_operation_status(operation_id, "error", 95, f"Error: {error}")
+            final_response = f"Error: {error}"
             
-            # Get the captured verbose output
-            verbose_output = captured_output.getvalue()
-            logging.info(f"Agent verbose output for operation {operation_id}:\n{verbose_output}")
+            # If files were removed via FIFO, add a note about it
+            if removed_files:
+                removed_files_str = ", ".join(f"'{f}'" for f in removed_files)
+                final_response += f"\n\nNote: The following file(s) were removed due to the 3-file limit: {removed_files_str}"
+        else:
+            final_response = result
             
-            # Format the final response
-            update_operation_status(operation_id, "formatting", 90, "Formatting response")
-            
-            # Create a clean response without appending too much context
-            # This makes it more compatible with how the OpenAI assistant expects to use the output
-            final_response = agent_output.strip()
-            
-        except Exception as e:
-            error_detail = str(e)
-            tb = traceback.format_exc()
-            logging.error(f"Agent execution error: {error_detail}\n{tb}")
-            
-            # Include the error and relevant verbose output
-            verbose_output = captured_output.getvalue()
-            final_response = f"Error analyzing data: {error_detail}"
-            
-            # Add debugging information to logs but keep user-facing message clean
-            logging.info(f"Agent debugging output before error:\n{verbose_output}")
-            
-            update_operation_status(operation_id, "error", 90, f"Agent execution error: {str(e)}")
-        finally:
-            # Restore stdout
-            sys.stdout = original_stdout
+            # If files were removed via FIFO, add a note about it
+            if removed_files:
+                removed_files_str = ", ".join(f"'{f}'" for f in removed_files)
+                final_response += f"\n\nNote: The following file(s) were removed due to the 3-file limit: {removed_files_str}"
         
         # Add response to thread if provided
         if thread_id:
