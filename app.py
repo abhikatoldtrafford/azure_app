@@ -10,10 +10,10 @@ import time
 import base64
 import mimetypes
 import traceback
-import os
 import asyncio
 import json
 from io import StringIO
+import sys
 # Simple status updates for long-running operations
 operation_statuses = {}
 
@@ -35,6 +35,8 @@ def create_client():
         api_key=AZURE_API_KEY,
         api_version=AZURE_API_VERSION,
     )
+
+
 class PandasAgentManager:
     """
     Class to manage pandas agents and dataframes for different threads.
@@ -71,7 +73,56 @@ class PandasAgentManager:
         # Initialize LangChain LLM
         self.langchain_llm = None
         
+        # Check for required dependencies
+        self._check_dependencies()
+        
         logging.info("PandasAgentManager initialized")
+    
+    def _check_dependencies(self):
+        """Check if required dependencies are available"""
+        missing_deps = []
+        
+        try:
+            import pandas as pd
+        except ImportError:
+            missing_deps.append("pandas")
+        
+        try:
+            import numpy as np
+        except ImportError:
+            missing_deps.append("numpy")
+        
+        try:
+            import tabulate
+        except ImportError:
+            try:
+                # Try to install tabulate automatically
+                import subprocess
+                logging.info("Installing missing tabulate dependency...")
+                subprocess.check_call(["pip", "install", "tabulate"])
+                logging.info("Successfully installed tabulate")
+            except Exception as e:
+                missing_deps.append("tabulate")
+                logging.warning(f"Could not install tabulate: {str(e)}")
+        
+        try:
+            # Try to import LangChain's create_pandas_dataframe_agent function
+            try:
+                from langchain_experimental.agents import create_pandas_dataframe_agent
+            except ImportError:
+                try:
+                    from langchain.agents import create_pandas_dataframe_agent
+                except ImportError:
+                    missing_deps.append("langchain[experimental]")
+        except Exception as e:
+            missing_deps.append("langchain components")
+            logging.error(f"Error checking for LangChain: {str(e)}")
+        
+        if missing_deps:
+            logging.warning(f"Missing dependencies: {', '.join(missing_deps)}")
+            logging.warning("Install them with: pip install " + " ".join(missing_deps))
+        
+        return len(missing_deps) == 0
     
     def get_llm(self):
         """Get or initialize the LangChain LLM"""
@@ -79,11 +130,16 @@ class PandasAgentManager:
             try:
                 from langchain_openai import AzureChatOpenAI
                 
+                # Get Azure configuration from environment
+                azure_endpoint = os.environ.get("AZURE_ENDPOINT", "https://kb-stellar.openai.azure.com/")
+                azure_api_key = os.environ.get("AZURE_API_KEY", "bc0ba854d3644d7998a5034af62d03ce")
+                azure_api_version = os.environ.get("AZURE_API_VERSION", "2024-05-01-preview")
+                
                 # Use the existing client configuration
                 self.langchain_llm = AzureChatOpenAI(
-                    azure_endpoint=AZURE_ENDPOINT,
-                    api_key=AZURE_API_KEY,
-                    api_version=AZURE_API_VERSION,
+                    azure_endpoint=azure_endpoint,
+                    api_key=azure_api_key,
+                    api_version=azure_api_version,
                     deployment_name="gpt-4o-mini",
                     temperature=0
                 )
@@ -94,8 +150,8 @@ class PandasAgentManager:
         
         return self.langchain_llm
     
-    def initialize_thread(self, thread_id):
-        """Initialize storage for a new thread"""
+    def initialize_thread(self, thread_id: str):
+        """Initialize storage for a thread if it doesn't exist yet"""
         if thread_id not in self.dataframes_cache:
             self.dataframes_cache[thread_id] = {}
         
@@ -105,8 +161,16 @@ class PandasAgentManager:
         if thread_id not in self.file_paths_cache:
             self.file_paths_cache[thread_id] = []
     
-    def remove_oldest_file(self, thread_id):
-        """Remove the oldest file for a thread when max files is reached"""
+    def remove_oldest_file(self, thread_id: str) -> Optional[str]:
+        """
+        Remove the oldest file for a thread when max files is reached
+        
+        Args:
+            thread_id (str): Thread ID
+            
+        Returns:
+            Optional[str]: Name of removed file or None
+        """
         if thread_id not in self.file_info_cache or len(self.file_info_cache[thread_id]) <= self.max_files_per_thread:
             return None
         
@@ -149,7 +213,7 @@ class PandasAgentManager:
             
         return oldest_file_name
     
-    def add_file(self, thread_id, file_info):
+    def add_file(self, thread_id: str, file_info: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]], Optional[str], Optional[str]]:
         """
         Add a file to the thread, implementing FIFO if needed.
         
@@ -235,9 +299,9 @@ class PandasAgentManager:
         else:
             return None, f"Failed to load any dataframes from file '{file_name}'", removed_file
     
-    def load_dataframe_from_file(self, file_info):
+    def load_dataframe_from_file(self, file_info: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
         """
-        Load a dataframe from file information with robust error handling.
+        Load dataframe(s) from file information with robust error handling.
         
         Args:
             file_info (dict): Dictionary containing file metadata
@@ -343,7 +407,7 @@ class PandasAgentManager:
             logging.error(f"{error_msg}\n{traceback.format_exc()}")
             return None, error_msg
     
-    def get_or_create_agent(self, thread_id):
+    def get_or_create_agent(self, thread_id: str) -> Tuple[Any, Dict[str, Any], List[str]]:
         """
         Get or create a pandas agent for a thread.
         
@@ -356,33 +420,12 @@ class PandasAgentManager:
         # Initialize thread storage if needed
         self.initialize_thread(thread_id)
         
-        # Ensure dependencies are available
-        if not self._ensure_dependencies():
-            return None, None, ["Required dependencies not available. Please check server logs."]
-        
-        # Check if tabulate is missing and try to install it
-        if not self.has_tabulate:
-            try:
-                import subprocess
-                logging.info("Attempting to install missing tabulate dependency...")
-                subprocess.check_call(["pip", "install", "tabulate"])
-                self.has_tabulate = True
-                logging.info("Successfully installed tabulate")
-            except Exception as e:
-                logging.warning(f"Could not install tabulate: {str(e)}")
-                # We'll continue without tabulate, using pandas' built-in string representation
-                
-        # Initialize imports
+        # Conditionally import based on what's available
         try:
-            # Conditionally import based on what's available
             try:
                 from langchain_experimental.agents import create_pandas_dataframe_agent
             except ImportError:
-                # Fall back to older langchain import path if experimental not available
-                try:
-                    from langchain.agents import create_pandas_dataframe_agent
-                except ImportError:
-                    return None, None, ["LangChain pandas agent module not available"]
+                from langchain.agents import create_pandas_dataframe_agent
                 
             import pandas as pd
         except ImportError as e:
@@ -403,59 +446,43 @@ class PandasAgentManager:
             try:
                 # Get all dataframes and file names
                 dfs = self.dataframes_cache[thread_id]
-                df_list = []  # Will contain the actual DataFrame objects
-                df_names = []  # Will track the names for reference
                 
-                # Prepare the list of dataframes and track names
-                for name, df in dfs.items():
-                    df_list.append(df)
-                    df_names.append(name)
-                
-                # Create custom prefix that lists all dataframes with their names
-                if len(df_list) == 1:
-                    # For a single dataframe case
-                    df_name = df_names[0]
-                    df = df_list[0]
+                # Following the exact pattern from the documentation example
+                if len(dfs) == 1:
+                    # For a single dataframe, pass directly
+                    df_name = list(dfs.keys())[0]
+                    df = dfs[df_name]
+                    
+                    # Create a detailed prefix that explains the dataframe
                     prefix = f"""You are analyzing a pandas DataFrame from file '{df_name}'.
 The DataFrame has {len(df)} rows and {len(df.columns)} columns.
 Columns: {', '.join(df.columns.tolist())}
 
-Provide clear, accurate responses with specific numbers and insights.
 Always refer to the dataframe by its original filename: '{df_name}'
+Provide clear, accurate responses with specific numbers and insights.
 """
-                    # Single dataframe - pass directly
-                    try:
-                        logging.info(f"Creating agent for single dataframe: {df_name}")
-                        self.agents_cache[thread_id] = create_pandas_dataframe_agent(
-                            llm,
-                            df,  # Pass the single dataframe directly
-                            agent_type="tool-calling",
-                            verbose=True,
-                            handle_parsing_errors=True,
-                            prefix=prefix,
-                            allow_dangerous_code=True
-                        )
-                    except Exception as inner_e:
-                        # If getting an error about tabulate, try with more conservative parameters
-                        if "tabulate" in str(inner_e):
-                            logging.warning(f"Error with tabulate, trying alternative approach: {str(inner_e)}")
-                            self.agents_cache[thread_id] = create_pandas_dataframe_agent(
-                                llm,
-                                df,
-                                agent_type="openai-tools",
-                                verbose=True,
-                                prefix=prefix
-                            )
-                        else:
-                            raise  # Re-raise if it's not a tabulate issue
-                else:
-                    # Multiple dataframes - prepare a list of dataframes as expected by LangChain
                     
-                    # Create a detailed prefix that explains all available dataframes
+                    logging.info(f"Creating agent for single dataframe: {df_name}")
+                    self.agents_cache[thread_id] = create_pandas_dataframe_agent(
+                        llm,
+                        df,  # Pass the single dataframe directly
+                        agent_type="tool-calling",  # Use recommended agent type
+                        verbose=True,
+                        handle_parsing_errors=True,
+                        allow_dangerous_code=True,  # Required for code execution
+                        prefix=prefix
+                    )
+                
+                else:
+                    # For multiple dataframes, pass as list
+                    df_list = list(dfs.values())
+                    df_names = list(dfs.keys())
+                    
+                    # Create a detailed prefix that explains available dataframes
                     dataframe_descriptions = []
                     for i, (name, df) in enumerate(zip(df_names, df_list)):
                         # For each dataframe, create a detailed description
-                        desc = f"df[{i}]: '{name}' - {len(df)} rows, {len(df.columns)} columns. "
+                        desc = f"dfs[{i}]: '{name}' - {len(df)} rows, {len(df.columns)} columns. "
                         desc += f"Columns: {', '.join(df.columns.tolist()[:5])}"
                         if len(df.columns) > 5:
                             desc += f", ... and {len(df.columns) - 5} more"
@@ -477,57 +504,16 @@ When presenting results, clearly indicate which file/dataframe the data comes fr
 Provide clear, accurate responses with specific numbers and insights.
 """
                     
-                    try:
-                        logging.info(f"Creating agent for multiple dataframes: {df_names}")
-                        # Use list of dataframes for multiple dataframes
-                        self.agents_cache[thread_id] = create_pandas_dataframe_agent(
-                            llm,
-                            df_list,  # Pass the list of dataframes
-                            agent_type="tool-calling",
-                            verbose=True,
-                            handle_parsing_errors=True,
-                            prefix=prefix,
-                            allow_dangerous_code=True
-                        )
-                    except Exception as inner_e:
-                        # If getting an error about tabulate, try with more conservative parameters
-                        if "tabulate" in str(inner_e):
-                            logging.warning(f"Error with tabulate, trying alternative approach: {str(inner_e)}")
-                            self.agents_cache[thread_id] = create_pandas_dataframe_agent(
-                                llm,
-                                df_list,  # Still pass the list of dataframes
-                                agent_type="openai-tools",
-                                verbose=True,
-                                prefix=prefix,
-                                allow_dangerous_code=True
-                            )
-                        else:
-                            # If there's another issue, try with just the first dataframe as fallback
-                            logging.warning(f"Error creating multi-dataframe agent, falling back to first dataframe: {str(inner_e)}")
-                            df_name = df_names[0]
-                            df = df_list[0]
-                            
-                            fallback_prefix = f"""You are analyzing a pandas DataFrame from file '{df_name}'.
-WARNING: There were {len(df_list)} dataframes available, but due to technical limitations, only this one is being used.
-The DataFrame has {len(df)} rows and {len(df.columns)} columns.
-Columns: {', '.join(df.columns.tolist())}
-
-ALWAYS refer to the dataframe by its original filename: '{df_name}'
-Provide clear, accurate responses with specific numbers and insights.
-"""
-                            
-                            try:
-                                self.agents_cache[thread_id] = create_pandas_dataframe_agent(
-                                    llm,
-                                    df,
-                                    agent_type="openai-tools",  # Use more stable type for fallback
-                                    verbose=True,
-                                    prefix=fallback_prefix,
-                                    allow_dangerous_code=True
-                                )
-                            except Exception as final_e:
-                                logging.error(f"Final fallback failed: {str(final_e)}")
-                                return None, dfs, [f"Could not create pandas agent after multiple attempts: {str(final_e)}"]
+                    logging.info(f"Creating agent for multiple dataframes: {df_names}")
+                    self.agents_cache[thread_id] = create_pandas_dataframe_agent(
+                        llm,
+                        df_list,  # Pass list of dataframes as documented
+                        agent_type="tool-calling",  # Use recommended agent type
+                        verbose=True,
+                        handle_parsing_errors=True,
+                        allow_dangerous_code=True,  # Required for code execution
+                        prefix=prefix
+                    )
                 
             except Exception as e:
                 error_msg = f"Failed to create pandas agent: {str(e)}"
@@ -536,7 +522,7 @@ Provide clear, accurate responses with specific numbers and insights.
         
         return self.agents_cache[thread_id], self.dataframes_cache[thread_id], []
     
-    def check_file_availability(self, thread_id, query):
+    def check_file_availability(self, thread_id: str, query: str) -> Tuple[bool, Optional[str]]:
         """
         Check if a file mentioned in the query is available in the dataframes cache.
         If not, identify which file is missing to inform the user.
@@ -568,7 +554,8 @@ Provide clear, accurate responses with specific numbers and insights.
         
         # First check active files
         for file_name in available_files:
-            if file_name.lower() in query_lower:
+            base_name = file_name.split(" [Sheet:")[0].lower()  # Handle Excel sheet names
+            if base_name in query_lower:
                 # Found a match in active files
                 return True, None
                 
@@ -581,7 +568,7 @@ Provide clear, accurate responses with specific numbers and insights.
         # No file mentioned or all mentioned files are available
         return True, None
     
-    def analyze(self, thread_id, query, files):
+    def analyze(self, thread_id: str, query: str, files: List[Dict[str, Any]]) -> Tuple[Optional[str], Optional[str], List[str]]:
         """
         Analyze data with pandas agent.
         
@@ -621,7 +608,8 @@ Provide clear, accurate responses with specific numbers and insights.
         # Extract filename mentions in the query
         mentioned_files = []
         for df_name in dataframes.keys():
-            if df_name.lower() in query.lower():
+            base_name = df_name.split(" [Sheet:")[0].lower()  # Handle Excel sheet names
+            if base_name in query.lower():
                 mentioned_files.append(df_name)
                 
         # Process the query
@@ -736,18 +724,7 @@ async def pandas_agent(client: AzureOpenAI, thread_id: Optional[str], query: str
     update_operation_status(operation_id, "started", 0, "Starting data analysis")
     
     try:
-        # Verify required dependencies
-        update_operation_status(operation_id, "setup", 10, "Checking dependencies")
-        try:
-            import pandas as pd
-            import numpy as np
-            from langchain_experimental.agents import create_pandas_dataframe_agent
-        except ImportError as e:
-            error_msg = f"Required libraries not available: {str(e)}"
-            update_operation_status(operation_id, "error", 100, error_msg)
-            return f"Error: {error_msg}. Please ensure all required libraries are installed."
-        
-        # Ensure we have a thread_id for the agent caching
+        # Verify thread_id is provided
         if not thread_id:
             error_msg = "Thread ID is required for pandas agent"
             update_operation_status(operation_id, "error", 100, error_msg)
@@ -785,9 +762,9 @@ async def pandas_agent(client: AzureOpenAI, thread_id: Optional[str], query: str
             update_thread = threading.Thread(target=send_progress_updates)
             update_thread.daemon = True
             update_thread.start()
-        except:
+        except Exception as e:
             # Don't fail if we can't spawn thread
-            pass
+            logging.warning(f"Could not start progress update thread: {str(e)}")
         
         # Run the analysis using the PandasAgentManager
         result, error, removed_files = manager.analyze(thread_id, query, files)
@@ -804,7 +781,7 @@ async def pandas_agent(client: AzureOpenAI, thread_id: Optional[str], query: str
                 removed_files_str = ", ".join(f"'{f}'" for f in removed_files)
                 final_response += f"\n\nNote: The following file(s) were removed due to the 3-file limit: {removed_files_str}"
         else:
-            final_response = result
+            final_response = result if result else "No results were returned from the analysis. Try reformulating your query."
             
             # If files were removed via FIFO, add a note about it
             if removed_files:
@@ -851,7 +828,7 @@ Please try again with a different query or contact support if the issue persists
 Operation ID: {operation_id}"""
                 
         return error_response
-    
+        
 async def image_analysis(client: AzureOpenAI, image_data: bytes, filename: str, prompt: Optional[str] = None) -> str:
     """Analyzes an image using Azure OpenAI vision capabilities and returns the analysis text."""
     try:
