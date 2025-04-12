@@ -378,43 +378,106 @@ class PandasAgentManager:
             try:
                 logging.info(f"Creating pandas agent for thread {thread_id} with {len(self.dataframes_cache[thread_id])} dataframes")
                 
-                # Build a prefix that helps the agent understand file context
+                # Get all dataframes and file names
                 dfs = self.dataframes_cache[thread_id]
-                file_descriptions = []
                 
-                for name, df in dfs.items():
-                    col_str = ", ".join(df.columns[:10].tolist())
-                    if len(df.columns) > 10:
-                        col_str += ", ..."
-                    file_descriptions.append(f"'{name}': DataFrame with {len(df)} rows and {len(df.columns)} columns. Columns: {col_str}")
+                # Convert dict of dataframes to a single combined dataframe if there's only one
+                if len(dfs) == 1:
+                    # For a single dataframe, just use that directly
+                    df_name = list(dfs.keys())[0]
+                    df = dfs[df_name]
+                    prefix = f"""You are analyzing a pandas DataFrame from file '{df_name}'.
+    The DataFrame has {len(df)} rows and {len(df.columns)} columns.
+    Columns: {', '.join(df.columns.tolist())}
+    
+    Provide clear, accurate responses with specific numbers and insights.
+    """
+                    self.agents_cache[thread_id] = create_pandas_dataframe_agent(
+                        llm,
+                        df,  # Pass the single dataframe directly
+                        agent_type="tool-calling",
+                        verbose=True,
+                        handle_parsing_errors=True,
+                        prefix=prefix,
+                        allow_dangerous_code=True
+                    )
+                else:
+                    # For multiple dataframes, we'll combine them into a dictionary of variables in the agent's context
+                    import importlib
+                    if importlib.util.find_spec("langchain_experimental"):
+                        # Create a combined dataframe with a 'source' column
+                        combined_df = pd.DataFrame()
+                        
+                        for idx, (name, df) in enumerate(dfs.items()):
+                            # Make a copy of the dataframe and add a source column
+                            temp_df = df.copy()
+                            # Create a unique prefix for column names to avoid collisions
+                            prefix = f"df{idx}_"
+                            # Rename columns with the prefix
+                            temp_df = temp_df.add_prefix(prefix)
+                            # Add a source column
+                            temp_df['source'] = name
+                            
+                            # Add to the combined dataframe
+                            if combined_df.empty:
+                                combined_df = temp_df
+                            else:
+                                # Use concat to avoid issues with different column names
+                                combined_df = pd.concat([combined_df, temp_df], ignore_index=True)
+                        
+                        # Create a prefix that explains how to use the combined dataframe
+                        file_descriptions = []
+                        for idx, (name, df) in enumerate(dfs.items()):
+                            prefix = f"df{idx}_"
+                            cols = [f"{prefix}{col}" for col in df.columns]
+                            file_descriptions.append(f"'{name}': Columns prefixed with '{prefix}', e.g., {', '.join(cols[:3])}" + ("..." if len(cols) > 3 else ""))
+                        
+                        prefix = f"""You are analyzing a combined DataFrame with data from multiple files.
+    The DataFrame has a 'source' column that tells you which file each row comes from.
+    Source files:
+    {chr(10).join(file_descriptions)}
+    
+    To filter rows from a specific file, use: df[df['source'] == 'filename']
+    All columns (except 'source') are prefixed with 'dfX_' where X is the index of the source file.
+    
+    Provide clear, accurate responses with specific numbers and insights.
+    """
+                        self.agents_cache[thread_id] = create_pandas_dataframe_agent(
+                            llm,
+                            combined_df,
+                            agent_type="tool-calling",
+                            verbose=True,
+                            handle_parsing_errors=True,
+                            prefix=prefix,
+                            allow_dangerous_code=True
+                        )
+                    else:
+                        # If langchain_experimental is not available or we can't do the above approach,
+                        # just use the first dataframe
+                        df_name = list(dfs.keys())[0]
+                        df = dfs[df_name]
+                        logging.warning(f"Using only the first dataframe ({df_name}) due to limitations in handling multiple dataframes")
+                        
+                        prefix = f"""You are analyzing a pandas DataFrame from file '{df_name}'.
+    WARNING: There are {len(dfs)} dataframes available, but due to limitations, only this one is being used.
+    The DataFrame has {len(df)} rows and {len(df.columns)} columns.
+    Columns: {', '.join(df.columns.tolist())}
+    
+    Provide clear, accurate responses with specific numbers and insights.
+    """
+                        self.agents_cache[thread_id] = create_pandas_dataframe_agent(
+                            llm,
+                            df,
+                            agent_type="tool-calling",
+                            verbose=True,
+                            handle_parsing_errors=True,
+                            prefix=prefix,
+                            allow_dangerous_code=True
+                        )
                 
-                file_context = "\n".join(file_descriptions)
+                # Store the dataframes directly in the agent for reference
+                self.agents_cache[thread_id].dataframes = dfs
                 
-                prefix = f"""You are a data analysis assistant working with pandas DataFrames.
-                
-The following dataframes are available (referred to by their exact filenames):
-{file_context}
-
-When analyzing data, always:
-1. Use the exact filenames as mentioned in the query
-2. If no specific filename is mentioned, try to determine the most relevant dataframe
-3. For Excel files with multiple sheets, the format is "filename.xlsx [Sheet: sheet_name]"
-4. Handle missing data appropriately
-5. Provide clear, accurate responses with specific numbers and insights
-6. Include visualizations code when appropriate (using matplotlib/seaborn)
-
-Execute the user's request step by step and explain your approach.
-"""
-                # Create a new agent with all dataframes for this thread
-                self.agents_cache[thread_id] = create_pandas_dataframe_agent(
-                    llm,
-                    self.dataframes_cache[thread_id],
-                    agent_type="tool-calling",  # Required specific agent type
-                    verbose=True,               # Enable verbose mode for debugging
-                    handle_parsing_errors=True, # More robust error handling
-                    prefix=prefix,              # Use our custom prefix
-                    allow_dangerous_code=True
-                )
             except Exception as e:
                 error_msg = f"Failed to create pandas agent: {str(e)}"
                 logging.error(f"{error_msg}\n{traceback.format_exc()}")
