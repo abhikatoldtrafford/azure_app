@@ -412,7 +412,8 @@ Execute the user's request step by step and explain your approach.
                     agent_type="tool-calling",  # Required specific agent type
                     verbose=True,               # Enable verbose mode for debugging
                     handle_parsing_errors=True, # More robust error handling
-                    prefix=prefix               # Use our custom prefix
+                    prefix=prefix,              # Use our custom prefix
+                    allow_dangerous_code=True
                 )
             except Exception as e:
                 error_msg = f"Failed to create pandas agent: {str(e)}"
