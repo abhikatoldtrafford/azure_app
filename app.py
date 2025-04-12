@@ -1,5 +1,5 @@
 import logging
-
+import threading
 from fastapi import FastAPI, Request, UploadFile, Form, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
 from openai import AzureOpenAI
@@ -13,6 +13,7 @@ import traceback
 import os
 import asyncio
 import json
+from io import StringIO
 # Simple status updates for long-running operations
 operation_statuses = {}
 
@@ -34,6 +35,533 @@ def create_client():
         api_key=AZURE_API_KEY,
         api_version=AZURE_API_VERSION,
     )
+class PandasAgentManager:
+    """
+    Class to manage pandas agents and dataframes for different threads.
+    Provides thread isolation, FIFO file storage, and prevents duplicate agent creation.
+    """
+    
+    # Class-level singleton instance
+    _instance = None
+    
+    @classmethod
+    def get_instance(cls):
+        """Get or create the singleton instance"""
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
+    
+    def __init__(self):
+        """Initialize the manager"""
+        # Cache for pandas agents by thread_id
+        self.agents_cache = {}
+        
+        # Cache for dataframes by thread_id
+        self.dataframes_cache = {}
+        
+        # Cache for file info by thread_id
+        self.file_info_cache = {}
+        
+        # Cache for filepaths by thread_id
+        self.file_paths_cache = {}
+        
+        # Maximum files per thread
+        self.max_files_per_thread = 3
+        
+        # Initialize LangChain LLM
+        self.langchain_llm = None
+        
+        logging.info("PandasAgentManager initialized")
+    
+    def get_llm(self):
+        """Get or initialize the LangChain LLM"""
+        if self.langchain_llm is None:
+            try:
+                from langchain_openai import AzureChatOpenAI
+                
+                # Use the existing client configuration
+                self.langchain_llm = AzureChatOpenAI(
+                    azure_endpoint=AZURE_ENDPOINT,
+                    api_key=AZURE_API_KEY,
+                    api_version=AZURE_API_VERSION,
+                    deployment_name="gpt-4o-mini",
+                    temperature=0
+                )
+                logging.info("Initialized LangChain LLM for pandas agents")
+            except Exception as e:
+                logging.error(f"Failed to initialize LangChain LLM: {e}")
+                raise
+        
+        return self.langchain_llm
+    
+    def initialize_thread(self, thread_id):
+        """Initialize storage for a new thread"""
+        if thread_id not in self.dataframes_cache:
+            self.dataframes_cache[thread_id] = {}
+        
+        if thread_id not in self.file_info_cache:
+            self.file_info_cache[thread_id] = []
+            
+        if thread_id not in self.file_paths_cache:
+            self.file_paths_cache[thread_id] = []
+    
+    def remove_oldest_file(self, thread_id):
+        """Remove the oldest file for a thread when max files is reached"""
+        if thread_id not in self.file_info_cache or len(self.file_info_cache[thread_id]) <= self.max_files_per_thread:
+            return None
+        
+        # Get the oldest file info
+        oldest_file_info = self.file_info_cache[thread_id][0]
+        oldest_file_name = oldest_file_info.get("name", "")
+        
+        # Remove the file info
+        self.file_info_cache[thread_id].pop(0)
+        
+        # Remove the file path and delete file from disk
+        if thread_id in self.file_paths_cache and len(self.file_paths_cache[thread_id]) > 0:
+            oldest_path = self.file_paths_cache[thread_id].pop(0)
+            # Delete the file from disk
+            if os.path.exists(oldest_path):
+                try:
+                    os.remove(oldest_path)
+                    logging.info(f"Deleted oldest file: {oldest_path} for thread {thread_id}")
+                except Exception as e:
+                    logging.error(f"Error deleting file {oldest_path}: {e}")
+        
+        # Remove any dataframes associated with this file
+        if thread_id in self.dataframes_cache:
+            # For exact filename match
+            if oldest_file_name in self.dataframes_cache[thread_id]:
+                del self.dataframes_cache[thread_id][oldest_file_name]
+                
+            # For Excel sheets with this filename
+            keys_to_remove = []
+            for key in self.dataframes_cache[thread_id].keys():
+                if key.startswith(oldest_file_name + " [Sheet:"):
+                    keys_to_remove.append(key)
+            
+            for key in keys_to_remove:
+                del self.dataframes_cache[thread_id][key]
+        
+        # Invalidate the agent for this thread since dataframes changed
+        if thread_id in self.agents_cache:
+            self.agents_cache[thread_id] = None
+            
+        return oldest_file_name
+    
+    def add_file(self, thread_id, file_info):
+        """
+        Add a file to the thread, implementing FIFO if needed.
+        
+        Args:
+            thread_id (str): The thread ID
+            file_info (dict): File information dictionary
+            
+        Returns:
+            tuple: (dict of dataframes or None, error message or None, removed_file or None)
+        """
+        # Initialize thread storage if needed
+        self.initialize_thread(thread_id)
+        
+        file_name = file_info.get("name", "unnamed_file")
+        file_path = file_info.get("path", None)
+        
+        # Check if we already have this file (same name)
+        existing_file_names = [f.get("name", "") for f in self.file_info_cache[thread_id]]
+        if file_name in existing_file_names:
+            # File already exists - we'll treat this as an update
+            logging.info(f"File '{file_name}' already exists for thread {thread_id} - updating")
+            
+            # Remove existing file with same name
+            for i, info in enumerate(self.file_info_cache[thread_id]):
+                if info.get("name") == file_name:
+                    self.file_info_cache[thread_id].pop(i)
+                    old_path = self.file_paths_cache[thread_id].pop(i) if i < len(self.file_paths_cache[thread_id]) else None
+                    
+                    # Delete old file from disk
+                    if old_path and os.path.exists(old_path):
+                        try:
+                            os.remove(old_path)
+                        except Exception as e:
+                            logging.error(f"Error deleting old file {old_path}: {e}")
+                    
+                    # Remove old dataframes
+                    if file_name in self.dataframes_cache[thread_id]:
+                        del self.dataframes_cache[thread_id][file_name]
+                    
+                    # Remove Excel sheets with this filename
+                    keys_to_remove = []
+                    for key in self.dataframes_cache[thread_id].keys():
+                        if key.startswith(file_name + " [Sheet:"):
+                            keys_to_remove.append(key)
+                    
+                    for key in keys_to_remove:
+                        del self.dataframes_cache[thread_id][key]
+                    
+                    break
+        
+        # Track removed file (if any due to FIFO)
+        removed_file = None
+        
+        # Apply FIFO if we exceed max files
+        if len(self.file_info_cache[thread_id]) >= self.max_files_per_thread:
+            removed_file = self.remove_oldest_file(thread_id)
+            if removed_file:
+                logging.info(f"Removed oldest file '{removed_file}' for thread {thread_id} to maintain FIFO limit")
+        
+        # Load the dataframe(s)
+        dfs_dict, error = self.load_dataframe_from_file(file_info)
+        
+        if error:
+            return None, error, removed_file
+            
+        if dfs_dict:
+            # Add dataframes to cache
+            self.dataframes_cache[thread_id].update(dfs_dict)
+            
+            # Add file info to cache (append to end for FIFO ordering)
+            self.file_info_cache[thread_id].append(file_info)
+            
+            # Add file path to cache
+            if file_path:
+                self.file_paths_cache[thread_id].append(file_path)
+            
+            # Reset agent to ensure it's recreated with new dataframes
+            if thread_id in self.agents_cache:
+                self.agents_cache[thread_id] = None
+                
+            logging.info(f"Added dataframe(s) for file '{file_name}' to thread {thread_id}")
+            return dfs_dict, None, removed_file
+        else:
+            return None, f"Failed to load any dataframes from file '{file_name}'", removed_file
+    
+    def load_dataframe_from_file(self, file_info):
+        """
+        Load a dataframe from file information with robust error handling.
+        
+        Args:
+            file_info (dict): Dictionary containing file metadata
+            
+        Returns:
+            tuple: (dict of dataframes, error message)
+        """
+        try:
+            import pandas as pd
+            import numpy as np
+        except ImportError:
+            logging.error("Pandas library not available")
+            return None, "Pandas library not available"
+        
+        file_type = file_info.get("type", "unknown")
+        file_name = file_info.get("name", "unnamed_file")
+        file_path = file_info.get("path", None)
+        
+        logging.info(f"Loading dataframe from file: {file_name} ({file_type}) from path: {file_path}")
+        
+        if not file_path or not os.path.exists(file_path):
+            return None, f"File path for '{file_name}' is invalid or does not exist"
+        
+        try:
+            if file_type == "csv":
+                # Try with different encodings and delimiters for robustness
+                encodings = ['utf-8', 'latin-1', 'iso-8859-1']
+                delimiters = [',', ';', '\t', '|']
+                
+                df = None
+                error_msgs = []
+                
+                # Try each encoding
+                for encoding in encodings:
+                    if df is not None:
+                        break
+                    
+                    for delimiter in delimiters:
+                        try:
+                            df = pd.read_csv(file_path, encoding=encoding, sep=delimiter)
+                            if len(df.columns) > 1:  # Successfully parsed with >1 column
+                                logging.info(f"Successfully loaded CSV with encoding {encoding} and delimiter '{delimiter}'")
+                                break
+                        except Exception as e:
+                            error_msgs.append(f"Failed with {encoding}/{delimiter}: {str(e)}")
+                            continue
+                
+                if df is None:
+                    return None, f"Failed to load CSV file with any encoding/delimiter combination"
+                
+                # Clean up column names
+                df.columns = df.columns.str.strip()
+                
+                # Replace NaN values with None for better handling
+                df = df.replace({np.nan: None})
+                
+                # Return with original filename as key
+                return {file_name: df}, None
+                
+            elif file_type == "excel":
+                result_dfs = {}
+                
+                # Check for Excel file access errors
+                try:
+                    xls = pd.ExcelFile(file_path)
+                    sheet_names = xls.sheet_names
+                except Exception as e:
+                    return None, f"Error accessing Excel file: {str(e)}"
+                
+                if len(sheet_names) == 1:
+                    # Single sheet - load directly with the filename as key
+                    try:
+                        df = pd.read_excel(file_path)
+                        df.columns = df.columns.str.strip()
+                        df = df.replace({np.nan: None})
+                        result_dfs[file_name] = df
+                    except Exception as e:
+                        return None, f"Error reading Excel sheet: {str(e)}"
+                else:
+                    # Multiple sheets - load each sheet with a compound key
+                    for sheet in sheet_names:
+                        try:
+                            df = pd.read_excel(file_path, sheet_name=sheet)
+                            df.columns = df.columns.str.strip()
+                            df = df.replace({np.nan: None})
+                            
+                            # Create a key that includes the sheet name
+                            sheet_key = f"{file_name} [Sheet: {sheet}]"
+                            result_dfs[sheet_key] = df
+                        except Exception as e:
+                            logging.error(f"Error reading sheet '{sheet}' in {file_name}: {str(e)}")
+                            # Continue with other sheets even if one fails
+                
+                if result_dfs:
+                    return result_dfs, None
+                else:
+                    return None, "Failed to load any sheets from Excel file"
+            else:
+                return None, f"Unsupported file type: {file_type}"
+                
+        except Exception as e:
+            error_msg = f"Error loading '{file_name}': {str(e)}"
+            logging.error(f"{error_msg}\n{traceback.format_exc()}")
+            return None, error_msg
+    
+    def get_or_create_agent(self, thread_id):
+        """
+        Get or create a pandas agent for a thread.
+        
+        Args:
+            thread_id (str): Thread ID
+            
+        Returns:
+            tuple: (agent, dataframes, errors)
+        """
+        # Initialize thread storage if needed
+        self.initialize_thread(thread_id)
+        
+        # Initialize imports
+        try:
+            from langchain_experimental.agents import create_pandas_dataframe_agent
+            import pandas as pd
+        except ImportError as e:
+            return None, None, [f"Required libraries not available: {str(e)}"]
+        
+        # Initialize the LLM
+        try:
+            llm = self.get_llm()
+        except Exception as e:
+            return None, None, [f"Failed to initialize LLM: {str(e)}"]
+        
+        # Check if we have any dataframes
+        if not self.dataframes_cache[thread_id]:
+            return None, None, ["No dataframes available for analysis"]
+        
+        # Create or update the agent if needed
+        if thread_id not in self.agents_cache or self.agents_cache[thread_id] is None:
+            try:
+                logging.info(f"Creating pandas agent for thread {thread_id} with {len(self.dataframes_cache[thread_id])} dataframes")
+                
+                # Build a prefix that helps the agent understand file context
+                dfs = self.dataframes_cache[thread_id]
+                file_descriptions = []
+                
+                for name, df in dfs.items():
+                    col_str = ", ".join(df.columns[:10].tolist())
+                    if len(df.columns) > 10:
+                        col_str += ", ..."
+                    file_descriptions.append(f"'{name}': DataFrame with {len(df)} rows and {len(df.columns)} columns. Columns: {col_str}")
+                
+                file_context = "\n".join(file_descriptions)
+                
+                prefix = f"""You are a data analysis assistant working with pandas DataFrames.
+                
+The following dataframes are available (referred to by their exact filenames):
+{file_context}
+
+When analyzing data, always:
+1. Use the exact filenames as mentioned in the query
+2. If no specific filename is mentioned, try to determine the most relevant dataframe
+3. For Excel files with multiple sheets, the format is "filename.xlsx [Sheet: sheet_name]"
+4. Handle missing data appropriately
+5. Provide clear, accurate responses with specific numbers and insights
+6. Include visualizations code when appropriate (using matplotlib/seaborn)
+
+Execute the user's request step by step and explain your approach.
+"""
+                # Create a new agent with all dataframes for this thread
+                self.agents_cache[thread_id] = create_pandas_dataframe_agent(
+                    llm,
+                    self.dataframes_cache[thread_id],
+                    agent_type="tool-calling",  # Required specific agent type
+                    verbose=True,               # Enable verbose mode for debugging
+                    handle_parsing_errors=True, # More robust error handling
+                    prefix=prefix               # Use our custom prefix
+                )
+            except Exception as e:
+                error_msg = f"Failed to create pandas agent: {str(e)}"
+                logging.error(f"{error_msg}\n{traceback.format_exc()}")
+                return None, self.dataframes_cache[thread_id], [error_msg]
+        
+        return self.agents_cache[thread_id], self.dataframes_cache[thread_id], []
+    
+    def check_file_availability(self, thread_id, query):
+        """
+        Check if a file mentioned in the query is available in the dataframes cache.
+        If not, identify which file is missing to inform the user.
+        
+        Args:
+            thread_id (str): Thread ID
+            query (str): The query string to check
+            
+        Returns:
+            tuple: (bool, missing_file_name)
+        """
+        if thread_id not in self.dataframes_cache:
+            return False, None
+            
+        # Get all dataframe names for this thread
+        available_files = set(self.dataframes_cache[thread_id].keys())
+        
+        # Get all file information for this thread (for historical checks)
+        all_files_ever_uploaded = set()
+        
+        # First add files that are currently in the cache
+        for file_info in self.file_info_cache.get(thread_id, []):
+            file_name = file_info.get("name", "")
+            if file_name:
+                all_files_ever_uploaded.add(file_name.lower())
+        
+        # Look for any file name in the query
+        query_lower = query.lower()
+        
+        # First check active files
+        for file_name in available_files:
+            if file_name.lower() in query_lower:
+                # Found a match in active files
+                return True, None
+                
+        # Check if any file is mentioned but not available (may have been removed by FIFO)
+        for file_name in all_files_ever_uploaded:
+            if file_name in query_lower and not any(file_name in af.lower() for af in available_files):
+                # Found a match in previously uploaded files, but not currently available
+                return False, file_name
+                
+        # No file mentioned or all mentioned files are available
+        return True, None
+    
+    def analyze(self, thread_id, query, files):
+        """
+        Analyze data with pandas agent.
+        
+        Args:
+            thread_id (str): Thread ID
+            query (str): The query string
+            files (list): List of file info dictionaries
+            
+        Returns:
+            tuple: (result, error, removed_files)
+        """
+        # Initialize thread storage if needed
+        self.initialize_thread(thread_id)
+        
+        # Process any new files
+        removed_files = []
+        for file_info in files:
+            _, error, removed_file = self.add_file(thread_id, file_info)
+            if removed_file and removed_file not in removed_files:
+                removed_files.append(removed_file)
+                
+        # Check if files mentioned in the query are available
+        files_available, missing_file = self.check_file_availability(thread_id, query)
+        if not files_available and missing_file:
+            return None, f"The file '{missing_file}' was mentioned in your query but is no longer available. Please re-upload the file as it may have been removed due to the 3-file limit per conversation.", removed_files
+        
+        # Get or create the agent
+        agent, dataframes, agent_errors = self.get_or_create_agent(thread_id)
+        
+        if not agent:
+            error_msg = f"Failed to create pandas agent: {'; '.join(agent_errors)}"
+            return None, error_msg, removed_files
+        
+        if not dataframes:
+            return None, "No dataframes available for analysis", removed_files
+            
+        # Extract filename mentions in the query
+        mentioned_files = []
+        for df_name in dataframes.keys():
+            if df_name.lower() in query.lower():
+                mentioned_files.append(df_name)
+                
+        # Process the query
+        enhanced_query = query
+        
+        # If no specific file is mentioned but we have multiple files, provide minimal guidance
+        if len(dataframes) > 1 and not mentioned_files:
+            # Create a concise list of available files
+            file_list = ", ".join(f"'{name}'" for name in dataframes.keys())
+            
+            # Add a gentle hint about available files
+            query_prefix = f"Available files: {file_list}. "
+            enhanced_query = query_prefix + query
+        
+        try:
+            # Invoke the agent with the query
+            import sys
+            from io import StringIO
+            
+            # Capture stdout to get verbose output
+            original_stdout = sys.stdout
+            captured_output = StringIO()
+            sys.stdout = captured_output
+            
+            try:
+                # Actual agent execution
+                agent_result = agent.invoke({"input": enhanced_query})
+                agent_output = agent_result.get("output", "")
+                
+                # Get the captured verbose output
+                verbose_output = captured_output.getvalue()
+                logging.info(f"Agent verbose output:\n{verbose_output}")
+                
+                # Final response
+                return agent_output, None, removed_files
+                
+            except Exception as e:
+                error_detail = str(e)
+                tb = traceback.format_exc()
+                logging.error(f"Agent execution error: {error_detail}\n{tb}")
+                
+                # Get verbose output for debugging
+                verbose_output = captured_output.getvalue()
+                logging.info(f"Agent debugging output before error:\n{verbose_output}")
+                
+                return None, f"Error analyzing data: {error_detail}", removed_files
+                
+            finally:
+                # Restore stdout
+                sys.stdout = original_stdout
+                
+        except Exception as e:
+            error_details = traceback.format_exc()
+            logging.error(f"Critical error in analyze method: {str(e)}\n{error_details}")
+            return None, f"Critical error in analysis: {str(e)}", removed_files
 async def validate_resources(client: AzureOpenAI, thread_id: Optional[str], assistant_id: Optional[str]) -> Dict[str, bool]:
     """
     Validates that the given thread_id and assistant_id exist and are accessible.
@@ -76,95 +604,176 @@ async def validate_resources(client: AzureOpenAI, thread_id: Optional[str], assi
     return result
 async def pandas_agent(client: AzureOpenAI, thread_id: Optional[str], query: str, files: List[Dict[str, Any]]) -> str:
     """
-    Enhanced pandas_agent that will be compatible with LangChain integration.
-    Currently returns a placeholder message, but structured for future implementation.
+    Enhanced pandas_agent that uses LangChain to analyze CSV and Excel files.
+    Uses a globally cached agent for each thread to maintain state and access to all files.
+    
+    Args:
+        client (AzureOpenAI): The Azure OpenAI client instance
+        thread_id (Optional[str]): The thread ID to add the response to
+        query (str): The query or question about the data
+        files (List[Dict[str, Any]]): List of file information dictionaries
+        
+    Returns:
+        str: The analysis result
     """
+    import sys
+    from io import StringIO
+    
+    # Create a unique operation ID for tracking
     operation_id = f"pandas_agent_{int(time.time())}_{os.urandom(2).hex()}"
     update_operation_status(operation_id, "started", 0, "Starting data analysis")
     
     try:
-        # Update status
-        update_operation_status(operation_id, "processing", 25, "Processing file information")
+        # Verify required dependencies
+        update_operation_status(operation_id, "setup", 10, "Checking dependencies")
+        try:
+            import pandas as pd
+            import numpy as np
+            from langchain_experimental.agents import create_pandas_dataframe_agent
+        except ImportError as e:
+            error_msg = f"Required libraries not available: {str(e)}"
+            update_operation_status(operation_id, "error", 100, error_msg)
+            return f"Error: {error_msg}. Please ensure all required libraries are installed."
         
-        # Extract data from file information
-        dataframes = {}
+        # Ensure we have a thread_id for the agent caching
+        if not thread_id:
+            error_msg = "Thread ID is required for pandas agent"
+            update_operation_status(operation_id, "error", 100, error_msg)
+            return f"Error: {error_msg}"
+        
+        # Log files being processed
         file_descriptions = []
-        
         for file in files:
             file_type = file.get("type", "unknown")
             file_name = file.get("name", "unnamed_file")
-            file_path = file.get("path", None)
             file_descriptions.append(f"{file_name} ({file_type})")
+        
+        file_list_str = ", ".join(file_descriptions) if file_descriptions else "No files provided"
+        logging.info(f"Processing data analysis for thread {thread_id} with files: {file_list_str}")
+        update_operation_status(operation_id, "files", 20, f"Processing files: {file_list_str}")
+        
+        # Extract filename mentions in the query
+        mentioned_files = []
+        for file in files:
+            file_name = file.get("name", "")
+            if file_name and file_name.lower() in query.lower():
+                mentioned_files.append(file_name)
+                
+        if mentioned_files:
+            logging.info(f"Query mentions files: {', '.join(mentioned_files)}")
+            update_operation_status(operation_id, "file_detection", 25, f"Detected file mentions: {', '.join(mentioned_files)}")
+        
+        # Get or create the pandas agent for this thread
+        update_operation_status(operation_id, "agent_setup", 30, f"Setting up pandas agent for thread {thread_id}")
+        agent, dataframes, agent_errors = get_or_create_pandas_agent(thread_id, files)
+        
+        if not agent:
+            error_msg = f"Failed to create pandas agent: {'; '.join(agent_errors)}"
+            update_operation_status(operation_id, "error", 100, error_msg)
+            return f"Error: {error_msg}"
+        
+        if not dataframes:
+            error_msg = "No dataframes available for analysis"
+            update_operation_status(operation_id, "error", 100, error_msg)
+            return error_msg
+        
+        # Prepare status update information
+        df_count = len(dataframes)
+        total_rows = sum(len(df) for df in dataframes.values())
+        update_operation_status(operation_id, "data_stats", 35, 
+                               f"Analyzing {df_count} dataframe(s) with {total_rows} total rows")
+        
+        # Process the query - don't modify it too much to ensure compatibility with OpenAI assistant
+        # Just add minimal context if needed
+        update_operation_status(operation_id, "query_processing", 40, "Processing query")
+        
+        # If no specific file is mentioned but we have multiple files, provide minimal guidance
+        if len(dataframes) > 1 and not mentioned_files:
+            # Create a concise list of available files
+            file_list = ", ".join(f"'{name}'" for name in dataframes.keys())
             
-            # In future LangChain implementation, we would load the dataframes here
-            # For now, we're not loading but making the code structure ready for that
-            if file_path and os.path.exists(file_path):
-                # This is where we would load dataframes in the future when using LangChain
-                # if file_type == "csv":
-                #     import pandas as pd
-                #     dataframes[file_name] = pd.read_csv(file_path)
-                # elif file_type == "excel":
-                #     import pandas as pd
-                #     dataframes[file_name] = pd.read_excel(file_path)
+            # Add a gentle hint about available files
+            query_prefix = f"Available files: {file_list}. "
+            enhanced_query = query_prefix + query
+            logging.info(f"Enhanced query with file list: {enhanced_query}")
+        else:
+            # Use the query as-is
+            enhanced_query = query
+        
+        # Run the pandas dataframe agent
+        update_operation_status(operation_id, "analyzing", 50, f"Analyzing data with query: {query}")
+        
+        # Capture stdout to get verbose output
+        original_stdout = sys.stdout
+        captured_output = StringIO()
+        sys.stdout = captured_output
+        
+        try:
+            # Invoke the agent with the query
+            update_operation_status(operation_id, "executing", 65, "Executing agent")
+            
+            # Stream status updates during execution
+            def send_progress_updates():
+                progress = 65
+                while progress < 85:
+                    time.sleep(1.5)  # Update every 1.5 seconds
+                    progress += 2
+                    update_operation_status(operation_id, "executing", min(progress, 85), 
+                                           "Analysis in progress...")
+                    
+            # Start progress update in background
+            update_thread = None
+            try:
+                update_thread = threading.Thread(target=send_progress_updates)
+                update_thread.daemon = True
+                update_thread.start()
+            except:
+                # Don't fail if we can't spawn thread
                 pass
-        
-        file_list = ", ".join(file_descriptions) if file_descriptions else "No files available"
-        
-        # Update status
-        update_operation_status(operation_id, "analyzing", 50, "Analyzing query")
-        
-        # FUTURE: This is where we would call LangChain pandas_agent
-        # This structure is ready for future LangChain implementation
-        """
-        # Future implementation placeholder:
-        if dataframes:
-            from langchain.agents import create_pandas_dataframe_agent
-            from langchain.llms import AzureOpenAI
+                
+            # Actual agent execution
+            agent_result = agent.invoke({"input": enhanced_query})
+            agent_output = agent_result.get("output", "")
             
-            # For a single dataframe
-            if len(dataframes) == 1:
-                df = list(dataframes.values())[0]
-                agent = create_pandas_dataframe_agent(
-                    AzureOpenAI(
-                        deployment_name="gpt-4o-mini", 
-                        model_name="gpt-4o-mini"
-                    ),
-                    df,
-                    verbose=True
-                )
-                result = agent.run(query)
-                # Process result for return
+            # Get the captured verbose output
+            verbose_output = captured_output.getvalue()
+            logging.info(f"Agent verbose output for operation {operation_id}:\n{verbose_output}")
             
-            # For multiple dataframes
-            else:
-                # Logic for handling multiple dataframes
-                pass
-        """
+            # Format the final response
+            update_operation_status(operation_id, "formatting", 90, "Formatting response")
+            
+            # Create a clean response without appending too much context
+            # This makes it more compatible with how the OpenAI assistant expects to use the output
+            final_response = agent_output.strip()
+            
+        except Exception as e:
+            error_detail = str(e)
+            tb = traceback.format_exc()
+            logging.error(f"Agent execution error: {error_detail}\n{tb}")
+            
+            # Include the error and relevant verbose output
+            verbose_output = captured_output.getvalue()
+            final_response = f"Error analyzing data: {error_detail}"
+            
+            # Add debugging information to logs but keep user-facing message clean
+            logging.info(f"Agent debugging output before error:\n{verbose_output}")
+            
+            update_operation_status(operation_id, "error", 90, f"Agent execution error: {str(e)}")
+        finally:
+            # Restore stdout
+            sys.stdout = original_stdout
         
-        # For now, return placeholder message with specific file references
-        response = f"""CSV/Excel file analysis is not supported yet. This function will be implemented in a future update.
-
-        Query received: "{query}"
-
-        Available files for analysis: {file_list}
-
-        When implemented, this agent will be able to analyze your data files and provide insights based on your query.
-
-        Operation ID: {operation_id}"""
-        
-        # Update status for thread response
-        update_operation_status(operation_id, "responding", 75, "Adding response to thread")
-        
-        # If thread_id is provided, add the response to the thread
+        # Add response to thread if provided
         if thread_id:
+            update_operation_status(operation_id, "responding", 95, "Adding response to thread")
             try:
                 client.beta.threads.messages.create(
                     thread_id=thread_id,
                     role="user",
-                    content=f"[PANDAS AGENT RESPONSE]: {response}",
+                    content=f"[PANDAS AGENT RESPONSE]: {final_response}",
                     metadata={"type": "pandas_agent_response", "operation_id": operation_id}
                 )
-                logging.info(f"Added pandas_agent response directly to thread {thread_id}")
+                logging.info(f"Added pandas_agent response to thread {thread_id}")
             except Exception as e:
                 logging.error(f"Error adding pandas_agent response to thread: {e}")
                 # Continue execution despite error with thread message
@@ -172,8 +781,10 @@ async def pandas_agent(client: AzureOpenAI, thread_id: Optional[str], query: str
         # Mark operation as completed
         update_operation_status(operation_id, "completed", 100, "Analysis completed successfully")
         
-        logging.info(f"Pandas agent processed query: '{query}' with {len(files)} files")
-        return response
+        # Log completion
+        logging.info(f"Pandas agent completed query: '{query}' for thread {thread_id}")
+        
+        return final_response
     
     except Exception as e:
         error_details = traceback.format_exc()
@@ -185,11 +796,11 @@ async def pandas_agent(client: AzureOpenAI, thread_id: Optional[str], query: str
         # Provide a graceful failure response
         error_response = f"""Sorry, I encountered an error while trying to analyze your data files.
 
-        Error details: {str(e)}
+Error details: {str(e)}
 
-        Please try again with a different query or contact support if the issue persists.
+Please try again with a different query or contact support if the issue persists.
 
-        Operation ID: {operation_id}"""
+Operation ID: {operation_id}"""
                 
         return error_response
     
