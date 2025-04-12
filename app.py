@@ -37,10 +37,9 @@ def create_client():
         api_version=AZURE_API_VERSION,
     )
 
-
 class PandasAgentManager:
     """
-    Class to manage pandas agents and dataframes for different threads.
+    Enhanced class to manage pandas agents and dataframes for different threads.
     Provides thread isolation, FIFO file storage, and prevents duplicate agent creation.
     """
     
@@ -85,16 +84,19 @@ class PandasAgentManager:
         
         try:
             import pandas as pd
+            logging.info("Pandas version: %s", pd.__version__)
         except ImportError:
             missing_deps.append("pandas")
         
         try:
             import numpy as np
+            logging.info("NumPy version: %s", np.__version__)
         except ImportError:
             missing_deps.append("numpy")
         
         try:
             import tabulate
+            logging.info("Tabulate version: %s", tabulate.__version__)
         except ImportError:
             try:
                 # Try to install tabulate automatically
@@ -110,9 +112,11 @@ class PandasAgentManager:
             # Try to import LangChain's create_pandas_dataframe_agent function
             try:
                 from langchain_experimental.agents import create_pandas_dataframe_agent
+                logging.info("Using langchain_experimental for pandas agent")
             except ImportError:
                 try:
                     from langchain.agents import create_pandas_dataframe_agent
+                    logging.info("Using langchain for pandas agent")
                 except ImportError:
                     missing_deps.append("langchain[experimental]")
         except Exception as e:
@@ -316,9 +320,9 @@ class PandasAgentManager:
         try:
             import pandas as pd
             import numpy as np
-        except ImportError:
-            logging.error("Pandas library not available")
-            return None, "Pandas library not available"
+        except ImportError as e:
+            logging.error(f"Required library not available: {e}")
+            return None, f"Required library not available: {e}"
         
         file_type = file_info.get("type", "unknown")
         file_name = file_info.get("name", "unnamed_file")
@@ -332,6 +336,12 @@ class PandasAgentManager:
             return None, error_msg
         
         try:
+            # Capture file size and first few bytes for debugging
+            file_size = os.path.getsize(file_path)
+            with open(file_path, 'rb') as f_check:
+                first_bytes = f_check.read(20)
+            logging.info(f"File '{file_name}' exists, size: {file_size} bytes, first bytes: {first_bytes}")
+            
             if file_type == "csv":
                 # Try with different encodings and delimiters for robustness
                 encodings = ['utf-8', 'latin-1', 'iso-8859-1']
@@ -339,6 +349,8 @@ class PandasAgentManager:
                 
                 df = None
                 error_msgs = []
+                successful_encoding = None
+                successful_delimiter = None
                 
                 # Try each encoding
                 for encoding in encodings:
@@ -353,10 +365,13 @@ class PandasAgentManager:
                                 dst.write(src.read())
                             
                             # Try to read from the copied file
-                            df = pd.read_csv(temp_path, encoding=encoding, sep=delimiter)
+                            df = pd.read_csv(temp_path, encoding=encoding, sep=delimiter, low_memory=False)
                             
                             if len(df.columns) > 1:  # Successfully parsed with >1 column
                                 logging.info(f"Successfully loaded CSV with encoding {encoding} and delimiter '{delimiter}'")
+                                # Keep track of successful parameters for debug info
+                                successful_encoding = encoding
+                                successful_delimiter = delimiter
                                 # Update file_path to use the copy we just made
                                 file_info["path"] = temp_path
                                 break
@@ -379,6 +394,10 @@ class PandasAgentManager:
                 # Replace NaN values with None for better handling
                 df = df.replace({np.nan: None})
                 
+                # Log dataframe info for debugging
+                logging.info(f"CSV loaded successfully. Shape: {df.shape}, Columns: {list(df.columns)}")
+                logging.info(f"Used encoding: {successful_encoding}, delimiter: '{successful_delimiter}'")
+                
                 # Return with original filename as key
                 return {file_name: df}, None
                 
@@ -387,31 +406,47 @@ class PandasAgentManager:
                 
                 # Check for Excel file access errors
                 try:
+                    # Make a copy of the file to ensure access
+                    temp_path = f"/tmp/temp_{int(time.time())}_{os.urandom(2).hex()}_{file_name}"
+                    with open(file_path, 'rb') as src, open(temp_path, 'wb') as dst:
+                        dst.write(src.read())
+                        
+                    # Update file path to use the copy
+                    file_info["path"] = temp_path
+                    file_path = temp_path
+                    
                     xls = pd.ExcelFile(file_path)
                     sheet_names = xls.sheet_names
+                    logging.info(f"Excel file contains {len(sheet_names)} sheets: {sheet_names}")
                 except Exception as e:
                     return None, f"Error accessing Excel file: {str(e)}"
                 
                 if len(sheet_names) == 1:
                     # Single sheet - load directly with the filename as key
                     try:
-                        df = pd.read_excel(file_path)
+                        df = pd.read_excel(file_path, engine='openpyxl')
                         df.columns = df.columns.str.strip()
                         df = df.replace({np.nan: None})
                         result_dfs[file_name] = df
+                        
+                        # Log dataframe info for debugging
+                        logging.info(f"Excel sheet loaded successfully. Shape: {df.shape}, Columns: {list(df.columns)}")
                     except Exception as e:
                         return None, f"Error reading Excel sheet: {str(e)}"
                 else:
                     # Multiple sheets - load each sheet with a compound key
                     for sheet in sheet_names:
                         try:
-                            df = pd.read_excel(file_path, sheet_name=sheet)
+                            df = pd.read_excel(file_path, sheet_name=sheet, engine='openpyxl')
                             df.columns = df.columns.str.strip()
                             df = df.replace({np.nan: None})
                             
                             # Create a key that includes the sheet name
                             sheet_key = f"{file_name} [Sheet: {sheet}]"
                             result_dfs[sheet_key] = df
+                            
+                            # Log dataframe info for debugging
+                            logging.info(f"Excel sheet '{sheet}' loaded successfully. Shape: {df.shape}, Columns: {list(df.columns)}")
                         except Exception as e:
                             logging.error(f"Error reading sheet '{sheet}' in {file_name}: {str(e)}")
                             # Continue with other sheets even if one fails
@@ -441,14 +476,21 @@ class PandasAgentManager:
         # Initialize thread storage if needed
         self.initialize_thread(thread_id)
         
-        # Conditionally import based on what's available
+        # Import required modules
         try:
+            # Try langchain.agents first (more stable)
             try:
-                from langchain_experimental.agents import create_pandas_dataframe_agent
-            except ImportError:
                 from langchain.agents import create_pandas_dataframe_agent
+                from langchain.agents import AgentType
+                agent_module = "langchain.agents"
+            except ImportError:
+                # Fall back to experimental if needed
+                from langchain_experimental.agents import create_pandas_dataframe_agent
+                from langchain.agents import AgentType
+                agent_module = "langchain_experimental.agents"
                 
             import pandas as pd
+            logging.info(f"Using {agent_module} module for pandas agent creation")
         except ImportError as e:
             return None, None, [f"Required libraries not available: {str(e)}"]
         
@@ -472,124 +514,72 @@ class PandasAgentManager:
                 df_names = list(dfs.keys())
                 logging.info(f"Creating pandas agent for thread {thread_id} with dataframes: {df_names}")
                 
-                # Following the LangChain documentation pattern
+                # Based on the documentation example, use ZERO_SHOT_REACT_DESCRIPTION agent type
                 if len(dfs) == 1:
-                    # For a single dataframe, pass directly
+                    # For a single dataframe, use a simpler approach
                     df_name = list(dfs.keys())[0]
                     df = dfs[df_name]
                     
-                    # Create sanitized variable name from filename
-                    safe_var_name = df_name.replace(' ', '_').replace('.', '_').replace('-', '_')
-                    safe_var_name = re.sub(r'[^a-zA-Z0-9_]', '', safe_var_name)
-                    if not safe_var_name[0].isalpha() and safe_var_name[0] != '_':
-                        safe_var_name = 'df_' + safe_var_name
+                    # Log dataframe info for debugging
+                    logging.info(f"Creating single dataframe agent for '{df_name}', shape: {df.shape}")
                     
-                    logging.info(f"Creating single dataframe agent for '{df_name}', using variable name '{safe_var_name}'")
-                    
-                    # Create a detailed prefix that explains the dataframe with explicit variable name
-                    prefix = f"""You are analyzing a pandas DataFrame called '{safe_var_name}' from file '{df_name}'.
-    The DataFrame has {len(df)} rows and {len(df.columns)} columns.
-    Columns: {', '.join(df.columns.tolist())}
-    
-    IMPORTANT INSTRUCTIONS FOR CODE GENERATION:
-    1. In the code you execute, the dataframe is already loaded and available as '{safe_var_name}'.
-    2. DO NOT use code like 'df = pd.read_csv()'. The dataframe is ALREADY loaded as '{safe_var_name}'.
-    3. ALWAYS reference the dataframe using the variable name '{safe_var_name}' in your code.
-    4. In your explanations, refer to the dataframe by its original filename: '{df_name}'.
-    
-    Example of correct code:
-    ```python
-    # Get basic info about the dataframe
-    {safe_var_name}.info()
-    
-    # Summary statistics
-    {safe_var_name}.describe()
-    
-    # Access specific columns
-    {safe_var_name}['{df.columns[0] if len(df.columns) > 0 else "column_name"}']
-    ```
-    
-    Provide clear, accurate responses with specific numbers and insights.
-    """
-                    
-                    # Rename the dataframe to match the instruction
-                    renamed_df = df.copy()
-                    
-                    self.agents_cache[thread_id] = create_pandas_dataframe_agent(
-                        llm,
-                        renamed_df,  # Pass the single dataframe directly
-                        agent_type="tool-calling",  # Use recommended agent type
-                        verbose=True,
-                        handle_parsing_errors=True,
-                        allow_dangerous_code=True,  # Required for code execution
-                        prefix=prefix
-                    )
+                    try:
+                        # First try safe approach - no variable renaming
+                        self.agents_cache[thread_id] = create_pandas_dataframe_agent(
+                            llm,
+                            df,  # Pass the dataframe directly
+                            verbose=True,
+                            agent_type=AgentType.ZERO_SHOT_REACT_DESCRIPTION,  # Use standard agent type
+                            handle_parsing_errors=True
+                        )
+                        logging.info(f"Successfully created pandas agent for thread {thread_id} using standard approach")
+                    except Exception as e1:
+                        logging.warning(f"Error creating agent with standard approach: {e1}, trying alternative approach")
+                        # Try alternative approach with tool-calling agent type
+                        try:
+                            self.agents_cache[thread_id] = create_pandas_dataframe_agent(
+                                llm,
+                                df,  # Pass the dataframe directly
+                                verbose=True,
+                                agent_type="tool-calling",  # Try alternative agent type
+                                handle_parsing_errors=True
+                            )
+                            logging.info(f"Successfully created pandas agent for thread {thread_id} using tool-calling approach")
+                        except Exception as e2:
+                            logging.error(f"Both agent creation approaches failed. Second error: {e2}")
+                            raise Exception(f"Failed to create agent: {e1}; Alternative approach also failed: {e2}")
                 
                 else:
-                    # For multiple dataframes, pass as list
+                    # For multiple dataframes
                     df_list = list(dfs.values())
-                    df_names = list(dfs.keys())
                     
-                    logging.info(f"Creating multi-dataframe agent with {len(df_list)} dataframes: {df_names}")
+                    logging.info(f"Creating multi-dataframe agent with {len(df_list)} dataframes")
                     
-                    # Create sanitized variable names for each dataframe
-                    safe_var_names = []
-                    for name in df_names:
-                        safe_name = name.replace(' ', '_').replace('.', '_').replace('-', '_')
-                        safe_name = re.sub(r'[^a-zA-Z0-9_]', '', safe_name)
-                        if not safe_name[0].isalpha() and safe_name[0] != '_':
-                            safe_name = 'df_' + safe_name
-                        safe_var_names.append(safe_name)
-                    
-                    # Create a detailed prefix that explains available dataframes
-                    dataframe_descriptions = []
-                    for i, (name, safe_name, df) in enumerate(zip(df_names, safe_var_names, df_list)):
-                        # For each dataframe, create a description
-                        desc = f"dfs[{i}]: Variable name '{safe_name}' from file '{name}' - {len(df)} rows, {len(df.columns)} columns. "
-                        if len(df.columns) > 0:
-                            desc += f"Columns: {', '.join(df.columns.tolist()[:5])}"
-                            if len(df.columns) > 5:
-                                desc += f", ... and {len(df.columns) - 5} more"
-                        dataframe_descriptions.append(desc)
-                    
-                    prefix = f"""You are analyzing multiple dataframes from different files.
-    The following dataframes are available:
-    {chr(10).join(dataframe_descriptions)}
-    
-    IMPORTANT INSTRUCTIONS FOR CODE GENERATION:
-    1. Access each dataframe using its index in the 'dfs' list.
-    2. DO NOT try to read files with pd.read_csv() or similar. The dataframes are ALREADY loaded in the 'dfs' list.
-    3. Use this format to access dataframes:
-       - dfs[0] for the first dataframe ('{df_names[0]}')
-       - dfs[1] for the second dataframe ('{df_names[1]}')
-       {f"- dfs[2] for the third dataframe ('{df_names[2]}')" if len(df_names) > 2 else ""}
-    
-    4. In your explanations, ALWAYS refer to dataframes by their original filenames.
-    
-    Example of correct code:
-    ```python
-    # Get basic info about the first dataframe
-    dfs[0].info()
-    
-    # Compare multiple dataframes
-    print(f"Dataframe 1 has {len(dfs[0])} rows, Dataframe 2 has {len(dfs[1])} rows")
-    
-    # Join data if needed
-    merged_df = pd.merge(dfs[0], dfs[1], on='common_column', how='inner')
-    ```
-    
-    Provide clear, accurate responses with specific numbers and insights.
-    """
-                    
-                    self.agents_cache[thread_id] = create_pandas_dataframe_agent(
-                        llm,
-                        df_list,  # Pass list of dataframes as documented
-                        agent_type="tool-calling",  # Use recommended agent type
-                        verbose=True,
-                        handle_parsing_errors=True,
-                        allow_dangerous_code=True,  # Required for code execution
-                        prefix=prefix
-                    )
+                    try:
+                        # First try standard approach
+                        self.agents_cache[thread_id] = create_pandas_dataframe_agent(
+                            llm,
+                            df_list,  # Pass list of dataframes 
+                            verbose=True,
+                            agent_type=AgentType.ZERO_SHOT_REACT_DESCRIPTION,  # Use standard agent type
+                            handle_parsing_errors=True
+                        )
+                        logging.info(f"Successfully created multi-df pandas agent using standard approach")
+                    except Exception as e1:
+                        logging.warning(f"Error creating multi-df agent with standard approach: {e1}, trying alternative")
+                        # Try alternative approach
+                        try:
+                            self.agents_cache[thread_id] = create_pandas_dataframe_agent(
+                                llm,
+                                df_list,  # Pass list of dataframes
+                                verbose=True,
+                                agent_type="tool-calling",  # Try alternative agent type
+                                handle_parsing_errors=True
+                            )
+                            logging.info(f"Successfully created multi-df pandas agent using tool-calling approach")
+                        except Exception as e2:
+                            logging.error(f"Both agent creation approaches failed. Second error: {e2}")
+                            raise Exception(f"Failed to create agent: {e1}; Alternative approach also failed: {e2}")
                 
             except Exception as e:
                 error_msg = f"Failed to create pandas agent: {str(e)}"
@@ -729,16 +719,38 @@ class PandasAgentManager:
             import sys
             from io import StringIO
             
-            # Capture stdout to get verbose output
+            # Capture stdout to get verbose output for debugging
             original_stdout = sys.stdout
             captured_output = StringIO()
             sys.stdout = captured_output
             
             try:
-                # Actual agent execution
-                logging.info(f"Executing agent with query: {enhanced_query}")
-                agent_result = agent.invoke({"input": enhanced_query})
-                agent_output = agent_result.get("output", "")
+                # Prepare dataframe details for error cases
+                df_details = []
+                for name, df in dataframes.items():
+                    df_details.append(f"DataFrame '{name}': {df.shape[0]} rows, {df.columns.shape[0]} columns")
+                    df_details.append(f"Columns: {', '.join(df.columns.tolist())}")
+                    # Add first few rows for debugging
+                    try:
+                        df_details.append(f"First 3 rows sample:\n{df.head(3)}")
+                    except:
+                        pass
+                
+                # First try using run method (per documentation)
+                try:
+                    logging.info(f"Executing agent with run method: {enhanced_query}")
+                    agent_output = agent.run(enhanced_query)
+                    logging.info(f"Agent completed successfully with run() method: {agent_output[:100]}...")
+                except Exception as run_error:
+                    # Fall back to invoke if run fails
+                    logging.warning(f"Agent run() method failed: {str(run_error)}, trying invoke() method")
+                    try:
+                        agent_result = agent.invoke({"input": enhanced_query})
+                        agent_output = agent_result.get("output", "")
+                        logging.info(f"Agent completed successfully with invoke() method: {agent_output[:100]}...")
+                    except Exception as invoke_error:
+                        # Both methods failed
+                        raise Exception(f"Agent run() failed: {str(run_error)}; invoke() also failed: {str(invoke_error)}")
                 
                 # Get the captured verbose output
                 verbose_output = captured_output.getvalue()
@@ -747,36 +759,13 @@ class PandasAgentManager:
                 # Check if output seems empty or error-like
                 if not agent_output or "I don't have access to" in agent_output:
                     logging.warning(f"Agent response appears problematic: {agent_output}")
-                    # Look for useful information in the verbose output that might help
-                    if "I don't have access to" in agent_output and verbose_output:
-                        # Try to extract column information from verbose output
-                        try:
-                            import re
-                            import pandas as pd
-                            df_desc = []
-                            # Get the first dataframe for basic info
-                            if dataframes:
-                                first_df_name = list(dataframes.keys())[0]
-                                first_df = dataframes[first_df_name]
-                                df_desc.append(f"File '{first_df_name}' has {len(first_df)} rows and {len(first_df.columns)} columns.")
-                                df_desc.append(f"Columns: {', '.join(first_df.columns.tolist())}")
-                                # Try to extract a sample
-                                try:
-                                    sample = first_df.head(5).to_string()
-                                    df_desc.append(f"Sample data (first 5 rows):\n{sample}")
-                                except:
-                                    pass
-                            
-                            # Add to agent output
-                            fallback_output = f"I analyzed your data and found:\n\n" + "\n".join(df_desc)
-                            logging.info(f"Providing fallback output with basic dataframe info")
-                            return fallback_output, None, removed_files
-                        except:
-                            # Couldn't extract info, return original with warning
-                            return agent_output + "\n\nNote: There might have been an issue accessing your file. Please verify your question and try again.", None, removed_files
+                    
+                    # Provide detailed dataframe information as fallback
+                    fallback_output = "I analyzed your data and found:\n\n" + "\n".join(df_details[:10])
+                    logging.info(f"Providing fallback output with basic dataframe info")
+                    return fallback_output, None, removed_files
                 
-                # Final response
-                logging.info(f"Agent completed successfully with output: {agent_output[:100]}...")
+                # Final response - successful case
                 return agent_output, None, removed_files
                 
             except Exception as e:
@@ -790,14 +779,9 @@ class PandasAgentManager:
                 
                 # Provide a more helpful error message with basic file info
                 error_msg = f"Error analyzing data: {error_detail}"
-                if dataframes:
-                    # Add basic info about the files we have
-                    file_info = []
-                    for name, df in dataframes.items():
-                        file_info.append(f"- File '{name}': {len(df)} rows, {len(df.columns)} columns")
-                    error_msg += "\n\nAvailable files:\n" + "\n".join(file_info)
                 
-                return None, error_msg, removed_files
+                # Include dataframe details in error message for better diagnosis
+                return None, f"{error_msg}\n\nDataFrame Information:\n" + "\n".join(df_details[:8]), removed_files
                 
             finally:
                 # Restore stdout
@@ -807,7 +791,6 @@ class PandasAgentManager:
             error_details = traceback.format_exc()
             logging.error(f"Critical error in analyze method: {str(e)}\n{error_details}")
             return None, f"Critical error in analysis: {str(e)}", removed_files
-            
 async def validate_resources(client: AzureOpenAI, thread_id: Optional[str], assistant_id: Optional[str]) -> Dict[str, bool]:
     """
     Validates that the given thread_id and assistant_id exist and are accessible.
@@ -878,7 +861,28 @@ async def pandas_agent(client: AzureOpenAI, thread_id: Optional[str], query: str
         for file in files:
             file_type = file.get("type", "unknown")
             file_name = file.get("name", "unnamed_file")
+            file_path = file.get("path", "unknown_path")
             file_descriptions.append(f"{file_name} ({file_type})")
+            # Verify file existence
+            if file_path and os.path.exists(file_path):
+                try:
+                    file_size = os.path.getsize(file_path)
+                    with open(file_path, 'rb') as f:
+                        first_bytes = f.read(10)
+                    logging.info(f"File {file_name} exists, size: {file_size} bytes, first bytes: {first_bytes}")
+                except Exception as e:
+                    logging.warning(f"File exists but cannot read: {str(e)}")
+            else:
+                logging.warning(f"File {file_name} does not exist at path: {file_path}")
+                # Try to fix path if possible (some files might be in /tmp with prefixes)
+                possible_paths = [
+                    path for path in os.listdir('/tmp') 
+                    if file_name in path and os.path.isfile(os.path.join('/tmp', path))
+                ]
+                if possible_paths:
+                    corrected_path = os.path.join('/tmp', possible_paths[0])
+                    logging.info(f"Found possible alternative path for {file_name}: {corrected_path}")
+                    file["path"] = corrected_path
         
         file_list_str = ", ".join(file_descriptions) if file_descriptions else "No files provided"
         logging.info(f"Processing data analysis for thread {thread_id} with files: {file_list_str}")
@@ -897,7 +901,7 @@ async def pandas_agent(client: AzureOpenAI, thread_id: Optional[str], query: str
                 time.sleep(1.5)  # Update every 1.5 seconds
                 progress += 2
                 update_operation_status(operation_id, "executing", min(progress, 85), 
-                                       "Analysis in progress...")
+                                        "Analysis in progress...")
                 
         # Start progress update in background
         update_thread = None
@@ -917,7 +921,44 @@ async def pandas_agent(client: AzureOpenAI, thread_id: Optional[str], query: str
         
         if error:
             update_operation_status(operation_id, "error", 95, f"Error: {error}")
-            final_response = f"Error: {error}"
+            
+            # Detect if the error appears to be a file access issue
+            if "access" in error.lower() or "find" in error.lower() or "read" in error.lower():
+                # Try to get basic dataframe info as a fallback
+                try:
+                    df_info = []
+                    dfs = manager.dataframes_cache.get(thread_id, {})
+                    
+                    if dfs:
+                        for df_name, df in dfs.items():
+                            df_info.append(f"- {df_name}: {df.shape[0]} rows, {len(df.columns)} columns")
+                            df_info.append(f"  Columns: {', '.join(df.columns[:10].tolist())}")
+                            
+                            # Add sample data (first 3 rows) if we can
+                            try:
+                                sample = df.head(3).to_string()
+                                df_info.append(f"  Sample data:\n{sample}")
+                            except:
+                                pass
+                            
+                        fallback_response = (
+                            f"I encountered an issue while analyzing your data files but can provide "
+                            f"basic information about them:\n\n{chr(10).join(df_info)}\n\n"
+                            f"Error details: {error}"
+                        )
+                        
+                        # If files were removed via FIFO, add a note about it
+                        if removed_files:
+                            removed_files_str = ", ".join(f"'{f}'" for f in removed_files)
+                            fallback_response += f"\n\nNote: The following file(s) were removed due to the 3-file limit: {removed_files_str}"
+                            
+                        return fallback_response
+                except Exception as fallback_e:
+                    # If fallback fails, return original error
+                    logging.error(f"Fallback info generation failed: {fallback_e}")
+            
+            # Standard error response
+            final_response = f"Error analyzing data: {error}"
             
             # If files were removed via FIFO, add a note about it
             if removed_files:
@@ -961,17 +1002,36 @@ async def pandas_agent(client: AzureOpenAI, thread_id: Optional[str], query: str
         # Update status to reflect error
         update_operation_status(operation_id, "error", 100, f"Error: {str(e)}")
         
-        # Provide a graceful failure response
+        # Try to provide some helpful debugging information
+        debug_info = []
+        try:
+            # Check if files exist
+            for file in files:
+                file_name = file.get("name", "unnamed")
+                file_path = file.get("path", "unknown")
+                if file_path and os.path.exists(file_path):
+                    debug_info.append(f"File '{file_name}' exists at path: {file_path}")
+                    file_size = os.path.getsize(file_path)
+                    debug_info.append(f" - Size: {file_size} bytes")
+                else:
+                    debug_info.append(f"File '{file_name}' does not exist at path: {file_path}")
+        except:
+            pass
+        
+        # Provide a graceful failure response with debug info
+        debug_str = "\n".join(debug_info) if debug_info else "No additional debug information available."
         error_response = f"""Sorry, I encountered an error while trying to analyze your data files.
 
 Error details: {str(e)}
+
+Additional debugging information:
+{debug_str}
 
 Please try again with a different query or contact support if the issue persists.
 
 Operation ID: {operation_id}"""
                 
         return error_response
-        
 async def image_analysis(client: AzureOpenAI, image_data: bytes, filename: str, prompt: Optional[str] = None) -> str:
     """Analyzes an image using Azure OpenAI vision capabilities and returns the analysis text."""
     try:
