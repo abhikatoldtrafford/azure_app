@@ -6,3 +6,5 @@ azure-ai-ml
 azureml-inference-server-http
 python-multipart
 pandas
+langchain_openai
+langchain
