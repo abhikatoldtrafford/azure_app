@@ -130,16 +130,11 @@ class PandasAgentManager:
             try:
                 from langchain_openai import AzureChatOpenAI
                 
-                # Get Azure configuration from environment
-                azure_endpoint = os.environ.get("AZURE_ENDPOINT", "https://kb-stellar.openai.azure.com/")
-                azure_api_key = os.environ.get("AZURE_API_KEY", "bc0ba854d3644d7998a5034af62d03ce")
-                azure_api_version = os.environ.get("AZURE_API_VERSION", "2024-05-01-preview")
-                
                 # Use the existing client configuration
                 self.langchain_llm = AzureChatOpenAI(
-                    azure_endpoint=azure_endpoint,
-                    api_key=azure_api_key,
-                    api_version=azure_api_version,
+                    azure_endpoint=AZURE_ENDPOINT,
+                    api_key=AZURE_API_KEY,
+                    api_version=AZURE_API_VERSION,
                     deployment_name="gpt-4o-mini",
                     temperature=0
                 )
@@ -161,7 +156,7 @@ class PandasAgentManager:
         if thread_id not in self.file_paths_cache:
             self.file_paths_cache[thread_id] = []
     
-    def remove_oldest_file(self, thread_id: str) -> Optional[str]:
+    def remove_oldest_file(self, thread_id: str):
         """
         Remove the oldest file for a thread when max files is reached
         
@@ -169,7 +164,7 @@ class PandasAgentManager:
             thread_id (str): Thread ID
             
         Returns:
-            Optional[str]: Name of removed file or None
+            str or None: Name of removed file or None
         """
         if thread_id not in self.file_info_cache or len(self.file_info_cache[thread_id]) <= self.max_files_per_thread:
             return None
@@ -213,7 +208,7 @@ class PandasAgentManager:
             
         return oldest_file_name
     
-    def add_file(self, thread_id: str, file_info: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]], Optional[str], Optional[str]]:
+    def add_file(self, thread_id, file_info):
         """
         Add a file to the thread, implementing FIFO if needed.
         
@@ -229,6 +224,14 @@ class PandasAgentManager:
         
         file_name = file_info.get("name", "unnamed_file")
         file_path = file_info.get("path", None)
+        
+        logging.info(f"Adding file '{file_name}' from path {file_path} to thread {thread_id}")
+        
+        # Verify file exists
+        if not file_path or not os.path.exists(file_path):
+            error_msg = f"File path for '{file_name}' is invalid or does not exist (path: {file_path})"
+            logging.error(error_msg)
+            return None, error_msg, None
         
         # Check if we already have this file (same name)
         existing_file_names = [f.get("name", "") for f in self.file_info_cache[thread_id]]
@@ -299,7 +302,7 @@ class PandasAgentManager:
         else:
             return None, f"Failed to load any dataframes from file '{file_name}'", removed_file
     
-    def load_dataframe_from_file(self, file_info: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    def load_dataframe_from_file(self, file_info):
         """
         Load dataframe(s) from file information with robust error handling.
         
@@ -323,7 +326,9 @@ class PandasAgentManager:
         logging.info(f"Loading dataframe from file: {file_name} ({file_type}) from path: {file_path}")
         
         if not file_path or not os.path.exists(file_path):
-            return None, f"File path for '{file_name}' is invalid or does not exist"
+            error_msg = f"File path for '{file_name}' is invalid or does not exist (path: {file_path})"
+            logging.error(error_msg)
+            return None, error_msg
         
         try:
             if file_type == "csv":
@@ -341,16 +346,31 @@ class PandasAgentManager:
                     
                     for delimiter in delimiters:
                         try:
-                            df = pd.read_csv(file_path, encoding=encoding, sep=delimiter)
+                            # Make a copy of the file to ensure access
+                            temp_path = f"/tmp/temp_{int(time.time())}_{os.urandom(2).hex()}_{file_name}"
+                            with open(file_path, 'rb') as src, open(temp_path, 'wb') as dst:
+                                dst.write(src.read())
+                            
+                            # Try to read from the copied file
+                            df = pd.read_csv(temp_path, encoding=encoding, sep=delimiter)
+                            
                             if len(df.columns) > 1:  # Successfully parsed with >1 column
                                 logging.info(f"Successfully loaded CSV with encoding {encoding} and delimiter '{delimiter}'")
+                                # Update file_path to use the copy we just made
+                                file_info["path"] = temp_path
                                 break
                         except Exception as e:
+                            if os.path.exists(temp_path):
+                                try:
+                                    os.remove(temp_path)
+                                except:
+                                    pass
                             error_msgs.append(f"Failed with {encoding}/{delimiter}: {str(e)}")
                             continue
                 
                 if df is None:
-                    return None, f"Failed to load CSV file with any encoding/delimiter combination"
+                    detailed_error = " | ".join(error_msgs[:5])
+                    return None, f"Failed to load CSV file with any encoding/delimiter combination. Errors: {detailed_error}"
                 
                 # Clean up column names
                 df.columns = df.columns.str.strip()
@@ -407,7 +427,7 @@ class PandasAgentManager:
             logging.error(f"{error_msg}\n{traceback.format_exc()}")
             return None, error_msg
     
-    def get_or_create_agent(self, thread_id: str) -> Tuple[Any, Dict[str, Any], List[str]]:
+    def get_or_create_agent(self, thread_id):
         """
         Get or create a pandas agent for a thread.
         
@@ -447,22 +467,27 @@ class PandasAgentManager:
                 # Get all dataframes and file names
                 dfs = self.dataframes_cache[thread_id]
                 
-                # Following the exact pattern from the documentation example
+                # Log the dataframes we're dealing with
+                df_names = list(dfs.keys())
+                logging.info(f"Creating pandas agent for thread {thread_id} with dataframes: {df_names}")
+                
+                # Following the LangChain documentation pattern
                 if len(dfs) == 1:
                     # For a single dataframe, pass directly
                     df_name = list(dfs.keys())[0]
                     df = dfs[df_name]
+                    
+                    logging.info(f"Creating single dataframe agent for '{df_name}', {len(df)} rows, {len(df.columns)} columns")
                     
                     # Create a detailed prefix that explains the dataframe
                     prefix = f"""You are analyzing a pandas DataFrame from file '{df_name}'.
 The DataFrame has {len(df)} rows and {len(df.columns)} columns.
 Columns: {', '.join(df.columns.tolist())}
 
-Always refer to the dataframe by its original filename: '{df_name}'
+IMPORTANT: Always refer to the dataframe by its original filename: '{df_name}'
 Provide clear, accurate responses with specific numbers and insights.
 """
                     
-                    logging.info(f"Creating agent for single dataframe: {df_name}")
                     self.agents_cache[thread_id] = create_pandas_dataframe_agent(
                         llm,
                         df,  # Pass the single dataframe directly
@@ -478,14 +503,17 @@ Provide clear, accurate responses with specific numbers and insights.
                     df_list = list(dfs.values())
                     df_names = list(dfs.keys())
                     
+                    logging.info(f"Creating multi-dataframe agent with {len(df_list)} dataframes: {df_names}")
+                    
                     # Create a detailed prefix that explains available dataframes
                     dataframe_descriptions = []
                     for i, (name, df) in enumerate(zip(df_names, df_list)):
-                        # For each dataframe, create a detailed description
+                        # For each dataframe, create a description
                         desc = f"dfs[{i}]: '{name}' - {len(df)} rows, {len(df.columns)} columns. "
-                        desc += f"Columns: {', '.join(df.columns.tolist()[:5])}"
-                        if len(df.columns) > 5:
-                            desc += f", ... and {len(df.columns) - 5} more"
+                        if len(df.columns) > 0:
+                            desc += f"Columns: {', '.join(df.columns.tolist()[:5])}"
+                            if len(df.columns) > 5:
+                                desc += f", ... and {len(df.columns) - 5} more"
                         dataframe_descriptions.append(desc)
                     
                     prefix = f"""You are analyzing multiple dataframes from different files.
@@ -504,7 +532,6 @@ When presenting results, clearly indicate which file/dataframe the data comes fr
 Provide clear, accurate responses with specific numbers and insights.
 """
                     
-                    logging.info(f"Creating agent for multiple dataframes: {df_names}")
                     self.agents_cache[thread_id] = create_pandas_dataframe_agent(
                         llm,
                         df_list,  # Pass list of dataframes as documented
@@ -522,7 +549,7 @@ Provide clear, accurate responses with specific numbers and insights.
         
         return self.agents_cache[thread_id], self.dataframes_cache[thread_id], []
     
-    def check_file_availability(self, thread_id: str, query: str) -> Tuple[bool, Optional[str]]:
+    def check_file_availability(self, thread_id, query):
         """
         Check if a file mentioned in the query is available in the dataframes cache.
         If not, identify which file is missing to inform the user.
@@ -568,7 +595,7 @@ Provide clear, accurate responses with specific numbers and insights.
         # No file mentioned or all mentioned files are available
         return True, None
     
-    def analyze(self, thread_id: str, query: str, files: List[Dict[str, Any]]) -> Tuple[Optional[str], Optional[str], List[str]]:
+    def analyze(self, thread_id, query, files):
         """
         Analyze data with pandas agent.
         
@@ -583,10 +610,32 @@ Provide clear, accurate responses with specific numbers and insights.
         # Initialize thread storage if needed
         self.initialize_thread(thread_id)
         
+        # Log analysis request details
+        logging.info(f"Analyzing data for thread {thread_id} with query: {query}")
+        logging.info(f"Files to process: {len(files)}")
+        for i, file_info in enumerate(files):
+            file_name = file_info.get("name", "unnamed_file")
+            file_path = file_info.get("path", "unknown_path")
+            file_type = file_info.get("type", "unknown_type")
+            logging.info(f"  File {i+1}: {file_name} ({file_type}) at {file_path}")
+            
+            # Check file existence and readability
+            if file_path and os.path.exists(file_path):
+                try:
+                    with open(file_path, 'rb') as f:
+                        first_bytes = f.read(10)
+                    logging.info(f"  File {file_name} is readable (first few bytes: {first_bytes})")
+                except Exception as e:
+                    logging.warning(f"  File {file_name} exists but might not be readable: {str(e)}")
+            else:
+                logging.warning(f"  File {file_name} path does not exist: {file_path}")
+        
         # Process any new files
         removed_files = []
         for file_info in files:
             _, error, removed_file = self.add_file(thread_id, file_info)
+            if error:
+                logging.warning(f"Error adding file {file_info.get('name', 'unnamed')}: {error}")
             if removed_file and removed_file not in removed_files:
                 removed_files.append(removed_file)
                 
@@ -623,6 +672,8 @@ Provide clear, accurate responses with specific numbers and insights.
             # Add a gentle hint about available files
             query_prefix = f"Available files: {file_list}. "
             enhanced_query = query_prefix + query
+            
+        logging.info(f"Final query to process: {enhanced_query}")
         
         try:
             # Invoke the agent with the query
@@ -636,6 +687,7 @@ Provide clear, accurate responses with specific numbers and insights.
             
             try:
                 # Actual agent execution
+                logging.info(f"Executing agent with query: {enhanced_query}")
                 agent_result = agent.invoke({"input": enhanced_query})
                 agent_output = agent_result.get("output", "")
                 
@@ -643,7 +695,39 @@ Provide clear, accurate responses with specific numbers and insights.
                 verbose_output = captured_output.getvalue()
                 logging.info(f"Agent verbose output:\n{verbose_output}")
                 
+                # Check if output seems empty or error-like
+                if not agent_output or "I don't have access to" in agent_output:
+                    logging.warning(f"Agent response appears problematic: {agent_output}")
+                    # Look for useful information in the verbose output that might help
+                    if "I don't have access to" in agent_output and verbose_output:
+                        # Try to extract column information from verbose output
+                        try:
+                            import re
+                            import pandas as pd
+                            df_desc = []
+                            # Get the first dataframe for basic info
+                            if dataframes:
+                                first_df_name = list(dataframes.keys())[0]
+                                first_df = dataframes[first_df_name]
+                                df_desc.append(f"File '{first_df_name}' has {len(first_df)} rows and {len(first_df.columns)} columns.")
+                                df_desc.append(f"Columns: {', '.join(first_df.columns.tolist())}")
+                                # Try to extract a sample
+                                try:
+                                    sample = first_df.head(5).to_string()
+                                    df_desc.append(f"Sample data (first 5 rows):\n{sample}")
+                                except:
+                                    pass
+                            
+                            # Add to agent output
+                            fallback_output = f"I analyzed your data and found:\n\n" + "\n".join(df_desc)
+                            logging.info(f"Providing fallback output with basic dataframe info")
+                            return fallback_output, None, removed_files
+                        except:
+                            # Couldn't extract info, return original with warning
+                            return agent_output + "\n\nNote: There might have been an issue accessing your file. Please verify your question and try again.", None, removed_files
+                
                 # Final response
+                logging.info(f"Agent completed successfully with output: {agent_output[:100]}...")
                 return agent_output, None, removed_files
                 
             except Exception as e:
@@ -655,7 +739,16 @@ Provide clear, accurate responses with specific numbers and insights.
                 verbose_output = captured_output.getvalue()
                 logging.info(f"Agent debugging output before error:\n{verbose_output}")
                 
-                return None, f"Error analyzing data: {error_detail}", removed_files
+                # Provide a more helpful error message with basic file info
+                error_msg = f"Error analyzing data: {error_detail}"
+                if dataframes:
+                    # Add basic info about the files we have
+                    file_info = []
+                    for name, df in dataframes.items():
+                        file_info.append(f"- File '{name}': {len(df)} rows, {len(df.columns)} columns")
+                    error_msg += "\n\nAvailable files:\n" + "\n".join(file_info)
+                
+                return None, error_msg, removed_files
                 
             finally:
                 # Restore stdout
@@ -665,6 +758,7 @@ Provide clear, accurate responses with specific numbers and insights.
             error_details = traceback.format_exc()
             logging.error(f"Critical error in analyze method: {str(e)}\n{error_details}")
             return None, f"Critical error in analysis: {str(e)}", removed_files
+            
 async def validate_resources(client: AzureOpenAI, thread_id: Optional[str], assistant_id: Optional[str]) -> Dict[str, bool]:
     """
     Validates that the given thread_id and assistant_id exist and are accessible.
