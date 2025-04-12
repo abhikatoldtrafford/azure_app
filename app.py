@@ -541,7 +541,7 @@ class PandasAgentManager:
                                 llm,
                                 df,  # Pass the dataframe directly
                                 verbose=True,
-                                agent_type=AgentType.ZERO_SHOT_REACT_DESCRIPTION  # Try alternative agent type
+                                agent_type=AgentType.ZERO_SHOT_REACT_DESCRIPTION,  # Try alternative agent type
                                 handle_parsing_errors=True, allow_dangerous_code=True, max_iterations=30, max_execution_time=120
                             )
                             logging.info(f"Successfully created pandas agent for thread {thread_id} using tool-calling approach")
