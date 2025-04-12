@@ -671,34 +671,13 @@ class PandasAgentManager:
         
         # Process any new files
         removed_files = []
-        files_added = False
-        
         for file_info in files:
-            file_name = file_info.get("name", "")
-            file_path = file_info.get("path", "")
-            
-            # Skip files with invalid paths
-            if not file_path or not os.path.exists(file_path):
-                logging.warning(f"Skipping file with invalid path: {file_name} at {file_path}")
-                continue
-                
-            # Add the file
-            dfs, error, removed_file = self.add_file(thread_id, file_info)
+            _, error, removed_file = self.add_file(thread_id, file_info)
             if error:
-                logging.warning(f"Error adding file {file_name}: {error}")
-            elif dfs:
-                files_added = True
-                logging.info(f"Successfully added file {file_name} to analysis")
-                
+                logging.warning(f"Error adding file {file_info.get('name', 'unnamed')}: {error}")
             if removed_file and removed_file not in removed_files:
                 removed_files.append(removed_file)
-        
-        # If we haven't added any files successfully in this call but have existing dataframes, use those
-        if not files_added and thread_id in self.dataframes_cache and self.dataframes_cache[thread_id]:
-            logging.info(f"No new files were added, but using {len(self.dataframes_cache[thread_id])} existing dataframes")
-        elif not files_added:
-            return None, "No valid data files could be loaded for analysis. Please check your files and try again.", removed_files
-                    
+                
         # Check if files mentioned in the query are available
         files_available, missing_file = self.check_file_availability(thread_id, query)
         if not files_available and missing_file:
@@ -712,7 +691,7 @@ class PandasAgentManager:
             return None, error_msg, removed_files
         
         if not dataframes:
-            return None, "No dataframes available for analysis. Please upload a valid CSV or Excel file and try again.", removed_files
+            return None, "No dataframes available for analysis", removed_files
             
         # Extract filename mentions in the query
         mentioned_files = []
@@ -746,17 +725,16 @@ class PandasAgentManager:
             sys.stdout = captured_output
             
             try:
-                # Prepare dataframe details for error cases and debugging
+                # Prepare dataframe details for error cases
                 df_details = []
                 for name, df in dataframes.items():
                     df_details.append(f"DataFrame '{name}': {df.shape[0]} rows, {df.columns.shape[0]} columns")
                     df_details.append(f"Columns: {', '.join(df.columns.tolist())}")
                     # Add first few rows for debugging
                     try:
-                        if df.shape[0] > 0:
-                            df_details.append(f"First 3 rows sample:\n{df.head(3)}")
-                    except Exception as e:
-                        logging.error(f"Error getting dataframe sample: {e}")
+                        df_details.append(f"First 3 rows sample:\n{df.head(3)}")
+                    except:
+                        pass
                 
                 # First try using run method (per documentation)
                 try:
@@ -768,57 +746,22 @@ class PandasAgentManager:
                     logging.warning(f"Agent run() method failed: {str(run_error)}, trying invoke() method")
                     try:
                         agent_result = agent.invoke({"input": enhanced_query})
-                        if isinstance(agent_result, dict):
-                            agent_output = agent_result.get("output", "")
-                        else:
-                            agent_output = str(agent_result)
+                        agent_output = agent_result.get("output", "")
                         logging.info(f"Agent completed successfully with invoke() method: {agent_output[:100]}...")
                     except Exception as invoke_error:
-                        # Both methods failed - try one more approach for older versions
-                        logging.warning(f"Agent invoke() method failed: {str(invoke_error)}, trying __call__ method")
-                        try:
-                            agent_output = agent(enhanced_query)
-                            logging.info(f"Agent completed successfully with __call__ method: {agent_output[:100]}...")
-                        except Exception as call_error:
-                            # All methods failed
-                            raise Exception(f"All agent execution methods failed: run error: {str(run_error)}, invoke error: {str(invoke_error)}, call error: {str(call_error)}")
+                        # Both methods failed
+                        raise Exception(f"Agent run() failed: {str(run_error)}; invoke() also failed: {str(invoke_error)}")
                 
                 # Get the captured verbose output
                 verbose_output = captured_output.getvalue()
                 logging.info(f"Agent verbose output:\n{verbose_output}")
                 
                 # Check if output seems empty or error-like
-                if not agent_output or "I don't have access to" in agent_output or "I cannot analyze" in agent_output:
+                if not agent_output or "I don't have access to" in agent_output:
                     logging.warning(f"Agent response appears problematic: {agent_output}")
-                    
-                    # Try to extract information from the verbose output
-                    if verbose_output and len(verbose_output) > 100:
-                        # Look for dataframe.info() or df.head() outputs in the verbose output
-                        import re
-                        info_matches = re.findall(r'<class \'pandas\.core\.frame\.DataFrame\'>\n.*\ndtypes:', verbose_output, re.DOTALL)
-                        head_matches = re.findall(r'\n\s*\d+\s+.*\n\s*\d+\s+.*\n\s*\d+\s+.*\n', verbose_output)
-                        
-                        if info_matches or head_matches:
-                            extracted_info = []
-                            
-                            if info_matches:
-                                extracted_info.append("DataFrame Information:")
-                                for match in info_matches[:2]:  # Limit to first 2 matches
-                                    extracted_info.append(match)
-                                    
-                            if head_matches:
-                                extracted_info.append("\nSample Data:")
-                                for match in head_matches[:3]:  # Limit to first 3 matches
-                                    extracted_info.append(match)
-                                    
-                            fallback_output = "I analyzed your data and found:\n\n" + "\n".join(extracted_info)
-                            fallback_output += "\n\nYou can ask specific questions about this data for more insights."
-                            logging.info(f"Extracted useful information from verbose output")
-                            return fallback_output, None, removed_files
                     
                     # Provide detailed dataframe information as fallback
                     fallback_output = "I analyzed your data and found:\n\n" + "\n".join(df_details[:10])
-                    fallback_output += "\n\nYou can ask specific questions about this data for more insights."
                     logging.info(f"Providing fallback output with basic dataframe info")
                     return fallback_output, None, removed_files
                 
@@ -833,25 +776,6 @@ class PandasAgentManager:
                 # Get verbose output for debugging
                 verbose_output = captured_output.getvalue()
                 logging.info(f"Agent debugging output before error:\n{verbose_output}")
-                
-                # Try to provide useful information even when execution fails
-                if verbose_output and len(verbose_output) > 100:
-                    # Try to extract any pandas output that might be useful
-                    import re
-                    useful_outputs = re.findall(r'(DataFrame|Series|Index|columns|shape|data types|nan).*', verbose_output)
-                    calculations = re.findall(r'(mean|median|sum|count|min|max|std|var).*=.*\d+\.*\d*', verbose_output)
-                    
-                    if useful_outputs or calculations:
-                        useful_info = []
-                        if useful_outputs:
-                            useful_info.extend(useful_outputs[:5])  # Limit to 5 most relevant outputs
-                        if calculations:
-                            useful_info.extend(calculations)
-                            
-                        partial_results = "I encountered an error during analysis, but here's what I found before the error:\n\n"
-                        partial_results += "\n".join(useful_info)
-                        partial_results += f"\n\nError: {error_detail}"
-                        return partial_results, None, removed_files
                 
                 # Provide a more helpful error message with basic file info
                 error_msg = f"Error analyzing data: {error_detail}"
@@ -939,37 +863,7 @@ async def pandas_agent(client: AzureOpenAI, thread_id: Optional[str], query: str
             file_name = file.get("name", "unnamed_file")
             file_path = file.get("path", "unknown_path")
             file_descriptions.append(f"{file_name} ({file_type})")
-            
-            # Verify file existence and attempt recovery if needed
-            if not file_path or not os.path.exists(file_path):
-                logging.warning(f"File {file_name} does not exist at path: {file_path}")
-                # Search for files with similar names in /tmp directory
-                possible_matches = []
-                for filename in os.listdir('/tmp'):
-                    if file_name in filename and os.path.isfile(os.path.join('/tmp', filename)):
-                        possible_matches.append(os.path.join('/tmp', filename))
-                
-                if possible_matches:
-                    # Use the most recently modified file if multiple matches
-                    best_match = max(possible_matches, key=os.path.getmtime)
-                    logging.info(f"Found alternative path for {file_name}: {best_match}")
-                    file["path"] = best_match
-                    file_path = best_match  # Update file_path for verification below
-                else:
-                    # Try to find any files for this thread - this is a fallback measure
-                    pandas_agent_files = []
-                    for tmp_file in os.listdir('/tmp'):
-                        if tmp_file.startswith('pandas_agent_') and os.path.isfile(os.path.join('/tmp', tmp_file)):
-                            pandas_agent_files.append(os.path.join('/tmp', tmp_file))
-                    
-                    if pandas_agent_files:
-                        # Use the most recently modified file
-                        newest_file = max(pandas_agent_files, key=os.path.getmtime)
-                        logging.info(f"Using fallback file for {file_name}: {newest_file}")
-                        file["path"] = newest_file
-                        file_path = newest_file
-            
-            # Verify updated file path and log file details
+            # Verify file existence
             if file_path and os.path.exists(file_path):
                 try:
                     file_size = os.path.getsize(file_path)
@@ -978,6 +872,17 @@ async def pandas_agent(client: AzureOpenAI, thread_id: Optional[str], query: str
                     logging.info(f"File {file_name} exists, size: {file_size} bytes, first bytes: {first_bytes}")
                 except Exception as e:
                     logging.warning(f"File exists but cannot read: {str(e)}")
+            else:
+                logging.warning(f"File {file_name} does not exist at path: {file_path}")
+                # Try to fix path if possible (some files might be in /tmp with prefixes)
+                possible_paths = [
+                    path for path in os.listdir('/tmp') 
+                    if file_name in path and os.path.isfile(os.path.join('/tmp', path))
+                ]
+                if possible_paths:
+                    corrected_path = os.path.join('/tmp', possible_paths[0])
+                    logging.info(f"Found possible alternative path for {file_name}: {corrected_path}")
+                    file["path"] = corrected_path
         
         file_list_str = ", ".join(file_descriptions) if file_descriptions else "No files provided"
         logging.info(f"Processing data analysis for thread {thread_id} with files: {file_list_str}")
@@ -1008,17 +913,6 @@ async def pandas_agent(client: AzureOpenAI, thread_id: Optional[str], query: str
             # Don't fail if we can't spawn thread
             logging.warning(f"Could not start progress update thread: {str(e)}")
         
-        # If we have no files or they're all invalid, attempt to recover files from the thread messages
-        if not files or all(not f.get("path") or not os.path.exists(f.get("path", "")) for f in files):
-            try:
-                # Attempt to retrieve files from thread messages
-                recovered_files = await recover_pandas_files_from_thread(client, thread_id)
-                if recovered_files:
-                    logging.info(f"Recovered {len(recovered_files)} files from thread messages")
-                    files = recovered_files
-            except Exception as recover_e:
-                logging.error(f"Error recovering files from thread: {recover_e}")
-        
         # Run the analysis using the PandasAgentManager
         result, error, removed_files = manager.analyze(thread_id, query, files)
         
@@ -1029,7 +923,7 @@ async def pandas_agent(client: AzureOpenAI, thread_id: Optional[str], query: str
             update_operation_status(operation_id, "error", 95, f"Error: {error}")
             
             # Detect if the error appears to be a file access issue
-            if "access" in error.lower() or "find" in error.lower() or "read" in error.lower() or "no dataframes" in error.lower():
+            if "access" in error.lower() or "find" in error.lower() or "read" in error.lower():
                 # Try to get basic dataframe info as a fallback
                 try:
                     df_info = []
@@ -1065,17 +959,6 @@ async def pandas_agent(client: AzureOpenAI, thread_id: Optional[str], query: str
             
             # Standard error response
             final_response = f"Error analyzing data: {error}"
-            
-            # Check if this is a file not found error, and provide more helpful message
-            if "not exist" in error.lower() or "no dataframes" in error.lower() or "file" in error.lower():
-                final_response = (
-                    f"I couldn't find the necessary data files for analysis. "
-                    f"This could be because:\n"
-                    f"1. The file was not uploaded correctly\n"
-                    f"2. The file was removed due to the 3-file limit per conversation\n"
-                    f"3. There might be a temporary system issue accessing the file\n\n"
-                    f"Please try uploading the file again and then ask your question."
-                )
             
             # If files were removed via FIFO, add a note about it
             if removed_files:
@@ -1149,64 +1032,6 @@ Please try again with a different query or contact support if the issue persists
 Operation ID: {operation_id}"""
                 
         return error_response
-
-# Helper function to recover pandas files from thread messages
-async def recover_pandas_files_from_thread(client: AzureOpenAI, thread_id: str) -> List[Dict[str, Any]]:
-    """
-    Attempt to recover pandas files information from thread messages.
-    This is useful when files are mentioned but not found in the current context.
-    
-    Args:
-        client: AzureOpenAI client
-        thread_id: The thread ID to search
-        
-    Returns:
-        List of file info dictionaries
-    """
-    try:
-        # Get thread messages
-        messages = client.beta.threads.messages.list(
-            thread_id=thread_id, 
-            order="desc",
-            limit=30  # Check a reasonable number of messages
-        )
-        
-        # Look for pandas_agent_files messages
-        for message in messages.data:
-            if hasattr(message, 'metadata') and message.metadata:
-                if message.metadata.get('type') == 'pandas_agent_files':
-                    try:
-                        files_json = message.metadata.get('files', '[]')
-                        files = json.loads(files_json)
-                        
-                        # Verify and fix file paths
-                        for file in files:
-                            file_name = file.get('name', '')
-                            file_path = file.get('path', '')
-                            
-                            # Check if the file exists
-                            if not os.path.exists(file_path):
-                                # Search for the file in /tmp
-                                for tmp_file in os.listdir('/tmp'):
-                                    if file_name in tmp_file and os.path.isfile(os.path.join('/tmp', tmp_file)):
-                                        file['path'] = os.path.join('/tmp', tmp_file)
-                                        logging.info(f"Found alternative path for {file_name}: {file['path']}")
-                                        break
-                        
-                        # Return only files that exist
-                        valid_files = [f for f in files if os.path.exists(f.get('path', ''))]
-                        if valid_files:
-                            logging.info(f"Recovered {len(valid_files)} valid files from thread messages")
-                            return valid_files
-                    except Exception as e:
-                        logging.error(f"Error parsing pandas files from message: {e}")
-        
-        # If we reach here, we didn't find any valid pandas files
-        return []
-        
-    except Exception as e:
-        logging.error(f"Error recovering pandas files from thread: {e}")
-        return []
 async def image_analysis(client: AzureOpenAI, image_data: bytes, filename: str, prompt: Optional[str] = None) -> str:
     """Analyzes an image using Azure OpenAI vision capabilities and returns the analysis text."""
     try:
@@ -1545,7 +1370,6 @@ Remember that the pandas_agent has full access to all CSV/Excel files that have 
 
             if is_csv or is_excel:
                 # Instead of using code_interpreter, we'll track CSV/Excel files for the pandas_agent
-                
                 session_csv_excel_files.append({
                     "name": filename,
                     "path": file_path,
@@ -1810,25 +1634,10 @@ async def upload_file(
         # Handle CSV/Excel (pandas_agent) files
         if is_csv or is_excel:
             # Store the file for pandas_agent
-            safe_filename = re.sub(r'[^\w\-\.]', '_', filename)
-            thread_identifier = thread_id[-6:] if thread_id else str(int(time.time()))[-6:]
-            permanent_path = os.path.join('/tmp/', f"pandas_agent_{thread_identifier}_{safe_filename}")
-            try:
-                with open(permanent_path, 'wb') as f:
-                    with open(file_path, 'rb') as src:
-                        f.write(src.read())
-                
-                # Verify the file was copied correctly
-                if os.path.exists(permanent_path):
-                    file_size = os.path.getsize(permanent_path)
-                    logging.info(f"File copied successfully to {permanent_path}, size: {file_size} bytes")
-                else:
-                    logging.error(f"Failed to copy file to {permanent_path}")
-                    raise Exception("File storage failed")
-            except Exception as copy_e:
-                logging.error(f"Error copying file to permanent path: {copy_e}")
-                # If copy fails, use the original path (not ideal but better than failing)
-                permanent_path = file_path
+            permanent_path = os.path.join('/tmp/', f"pandas_agent_{int(time.time())}_{filename}")
+            with open(permanent_path, 'wb') as f:
+                with open(file_path, 'rb') as src:
+                    f.write(src.read())
             
             # Prepare file info
             file_info = {
@@ -1859,26 +1668,9 @@ async def upload_file(
                             except:
                                 pandas_files = []
                             break
-                    existing_file_index = -1
-                    for i, existing_file in enumerate(pandas_files):
-                        if existing_file.get("name") == filename:
-                            existing_file_index = i
-                            break
-                    if existing_file_index >= 0:
-                        pandas_files[existing_file_index] = file_info
-                        logging.info(f"Replacing existing file info for {filename}")
-                    else:
-                        pandas_files.append(file_info)
-                        logging.info(f"Adding new file info for {filename}")
-                    if pandas_files_message_id:
-                        # Delete the old message (can't update metadata directly)
-                        try:
-                            client.beta.threads.messages.delete(
-                                thread_id=thread_id,
-                                message_id=pandas_files_message_id
-                            )
-                        except Exception as e:
-                            logging.error(f"Error deleting pandas files message: {e}")
+                    
+                    # Add the new file
+                    pandas_files.append(file_info)
                     
                     # Update or create the pandas files message
                     if pandas_files_message_id:
@@ -1890,25 +1682,18 @@ async def upload_file(
                             )
                         except Exception as e:
                             logging.error(f"Error deleting pandas files message: {e}")
-                    file_json = json.dumps(pandas_files, indent=None, separators=(',', ':'))
-            
-                    # Create the metadata message
+                    
+                    # Create a new message with updated files
+                    import json
                     client.beta.threads.messages.create(
                         thread_id=thread_id,
                         role="user",
                         content="PANDAS_AGENT_FILES_INFO (DO NOT DISPLAY TO USER)",
                         metadata={
                             "type": "pandas_agent_files",
-                            "files": file_json
+                            "files": json.dumps(pandas_files)
                         }
                     )
-                    try:
-                        from app import PandasAgentManager
-                        manager = PandasAgentManager.get_instance()
-                        manager.add_file(thread_id, file_info)
-                        logging.info(f"Preloaded file {filename} into PandasAgentManager")
-                    except Exception as manager_e:
-                        logging.warning(f"Could not preload file into PandasAgentManager: {manager_e}")
                     
                     logging.info(f"Updated pandas agent files info in thread {thread_id}")
                 except Exception as e:
@@ -1918,8 +1703,7 @@ async def upload_file(
                 "message": "File successfully uploaded for pandas agent processing.",
                 "filename": filename,
                 "type": "csv" if is_csv else "excel",
-                "processing_method": "pandas_agent",
-                "path": permanent_path
+                "processing_method": "pandas_agent"
             }
             
             # If thread_id provided, add file awareness message
@@ -1930,7 +1714,7 @@ async def upload_file(
                     "processing_method": "pandas_agent"
                 })
             
-            logging.info(f"Added '{filename}' for pandas_agent processing at path {permanent_path}")
+            logging.info(f"Added '{filename}' for pandas_agent processing")
             
             # Build completely new tools list, ensuring no duplicates
             required_tools = [
