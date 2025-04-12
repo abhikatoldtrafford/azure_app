@@ -356,9 +356,34 @@ class PandasAgentManager:
         # Initialize thread storage if needed
         self.initialize_thread(thread_id)
         
+        # Ensure dependencies are available
+        if not self._ensure_dependencies():
+            return None, None, ["Required dependencies not available. Please check server logs."]
+        
+        # Check if tabulate is missing and try to install it
+        if not self.has_tabulate:
+            try:
+                import subprocess
+                logging.info("Attempting to install missing tabulate dependency...")
+                subprocess.check_call(["pip", "install", "tabulate"])
+                self.has_tabulate = True
+                logging.info("Successfully installed tabulate")
+            except Exception as e:
+                logging.warning(f"Could not install tabulate: {str(e)}")
+                # We'll continue without tabulate, using pandas' built-in string representation
+                
         # Initialize imports
         try:
-            from langchain_experimental.agents import create_pandas_dataframe_agent
+            # Conditionally import based on what's available
+            try:
+                from langchain_experimental.agents import create_pandas_dataframe_agent
+            except ImportError:
+                # Fall back to older langchain import path if experimental not available
+                try:
+                    from langchain.agents import create_pandas_dataframe_agent
+                except ImportError:
+                    return None, None, ["LangChain pandas agent module not available"]
+                
             import pandas as pd
         except ImportError as e:
             return None, None, [f"Required libraries not available: {str(e)}"]
@@ -376,107 +401,133 @@ class PandasAgentManager:
         # Create or update the agent if needed
         if thread_id not in self.agents_cache or self.agents_cache[thread_id] is None:
             try:
-                logging.info(f"Creating pandas agent for thread {thread_id} with {len(self.dataframes_cache[thread_id])} dataframes")
-                
                 # Get all dataframes and file names
                 dfs = self.dataframes_cache[thread_id]
+                df_list = []  # Will contain the actual DataFrame objects
+                df_names = []  # Will track the names for reference
                 
-                # Convert dict of dataframes to a single combined dataframe if there's only one
-                if len(dfs) == 1:
-                    # For a single dataframe, just use that directly
-                    df_name = list(dfs.keys())[0]
-                    df = dfs[df_name]
+                # Prepare the list of dataframes and track names
+                for name, df in dfs.items():
+                    df_list.append(df)
+                    df_names.append(name)
+                
+                # Create custom prefix that lists all dataframes with their names
+                if len(df_list) == 1:
+                    # For a single dataframe case
+                    df_name = df_names[0]
+                    df = df_list[0]
                     prefix = f"""You are analyzing a pandas DataFrame from file '{df_name}'.
-    The DataFrame has {len(df)} rows and {len(df.columns)} columns.
-    Columns: {', '.join(df.columns.tolist())}
-    
-    Provide clear, accurate responses with specific numbers and insights.
-    """
-                    self.agents_cache[thread_id] = create_pandas_dataframe_agent(
-                        llm,
-                        df,  # Pass the single dataframe directly
-                        agent_type="tool-calling",
-                        verbose=True,
-                        handle_parsing_errors=True,
-                        prefix=prefix,
-                        allow_dangerous_code=True
-                    )
+The DataFrame has {len(df)} rows and {len(df.columns)} columns.
+Columns: {', '.join(df.columns.tolist())}
+
+Provide clear, accurate responses with specific numbers and insights.
+Always refer to the dataframe by its original filename: '{df_name}'
+"""
+                    # Single dataframe - pass directly
+                    try:
+                        logging.info(f"Creating agent for single dataframe: {df_name}")
+                        self.agents_cache[thread_id] = create_pandas_dataframe_agent(
+                            llm,
+                            df,  # Pass the single dataframe directly
+                            agent_type="tool-calling",
+                            verbose=True,
+                            handle_parsing_errors=True,
+                            prefix=prefix,
+                            allow_dangerous_code=True
+                        )
+                    except Exception as inner_e:
+                        # If getting an error about tabulate, try with more conservative parameters
+                        if "tabulate" in str(inner_e):
+                            logging.warning(f"Error with tabulate, trying alternative approach: {str(inner_e)}")
+                            self.agents_cache[thread_id] = create_pandas_dataframe_agent(
+                                llm,
+                                df,
+                                agent_type="openai-tools",
+                                verbose=True,
+                                prefix=prefix
+                            )
+                        else:
+                            raise  # Re-raise if it's not a tabulate issue
                 else:
-                    # For multiple dataframes, we'll combine them into a dictionary of variables in the agent's context
-                    import importlib
-                    if importlib.util.find_spec("langchain_experimental"):
-                        # Create a combined dataframe with a 'source' column
-                        combined_df = pd.DataFrame()
-                        
-                        for idx, (name, df) in enumerate(dfs.items()):
-                            # Make a copy of the dataframe and add a source column
-                            temp_df = df.copy()
-                            # Create a unique prefix for column names to avoid collisions
-                            prefix = f"df{idx}_"
-                            # Rename columns with the prefix
-                            temp_df = temp_df.add_prefix(prefix)
-                            # Add a source column
-                            temp_df['source'] = name
+                    # Multiple dataframes - prepare a list of dataframes as expected by LangChain
+                    
+                    # Create a detailed prefix that explains all available dataframes
+                    dataframe_descriptions = []
+                    for i, (name, df) in enumerate(zip(df_names, df_list)):
+                        # For each dataframe, create a detailed description
+                        desc = f"df[{i}]: '{name}' - {len(df)} rows, {len(df.columns)} columns. "
+                        desc += f"Columns: {', '.join(df.columns.tolist()[:5])}"
+                        if len(df.columns) > 5:
+                            desc += f", ... and {len(df.columns) - 5} more"
+                        dataframe_descriptions.append(desc)
+                    
+                    prefix = f"""You are analyzing multiple dataframes from different files.
+The following dataframes are available:
+{chr(10).join(dataframe_descriptions)}
+
+IMPORTANT: Access each dataframe using its index in the 'dfs' list.
+For example:
+- dfs[0] for the first dataframe ('{df_names[0]}')
+- dfs[1] for the second dataframe ('{df_names[1]}')
+{f"- dfs[2] for the third dataframe ('{df_names[2]}')" if len(df_names) > 2 else ""}
+
+ALWAYS refer to dataframes by their original filenames in your responses.
+When presenting results, clearly indicate which file/dataframe the data comes from.
+
+Provide clear, accurate responses with specific numbers and insights.
+"""
+                    
+                    try:
+                        logging.info(f"Creating agent for multiple dataframes: {df_names}")
+                        # Use list of dataframes for multiple dataframes
+                        self.agents_cache[thread_id] = create_pandas_dataframe_agent(
+                            llm,
+                            df_list,  # Pass the list of dataframes
+                            agent_type="tool-calling",
+                            verbose=True,
+                            handle_parsing_errors=True,
+                            prefix=prefix,
+                            allow_dangerous_code=True
+                        )
+                    except Exception as inner_e:
+                        # If getting an error about tabulate, try with more conservative parameters
+                        if "tabulate" in str(inner_e):
+                            logging.warning(f"Error with tabulate, trying alternative approach: {str(inner_e)}")
+                            self.agents_cache[thread_id] = create_pandas_dataframe_agent(
+                                llm,
+                                df_list,  # Still pass the list of dataframes
+                                agent_type="openai-tools",
+                                verbose=True,
+                                prefix=prefix,
+                                allow_dangerous_code=True
+                            )
+                        else:
+                            # If there's another issue, try with just the first dataframe as fallback
+                            logging.warning(f"Error creating multi-dataframe agent, falling back to first dataframe: {str(inner_e)}")
+                            df_name = df_names[0]
+                            df = df_list[0]
                             
-                            # Add to the combined dataframe
-                            if combined_df.empty:
-                                combined_df = temp_df
-                            else:
-                                # Use concat to avoid issues with different column names
-                                combined_df = pd.concat([combined_df, temp_df], ignore_index=True)
-                        
-                        # Create a prefix that explains how to use the combined dataframe
-                        file_descriptions = []
-                        for idx, (name, df) in enumerate(dfs.items()):
-                            prefix = f"df{idx}_"
-                            cols = [f"{prefix}{col}" for col in df.columns]
-                            file_descriptions.append(f"'{name}': Columns prefixed with '{prefix}', e.g., {', '.join(cols[:3])}" + ("..." if len(cols) > 3 else ""))
-                        
-                        prefix = f"""You are analyzing a combined DataFrame with data from multiple files.
-    The DataFrame has a 'source' column that tells you which file each row comes from.
-    Source files:
-    {chr(10).join(file_descriptions)}
-    
-    To filter rows from a specific file, use: df[df['source'] == 'filename']
-    All columns (except 'source') are prefixed with 'dfX_' where X is the index of the source file.
-    
-    Provide clear, accurate responses with specific numbers and insights.
-    """
-                        self.agents_cache[thread_id] = create_pandas_dataframe_agent(
-                            llm,
-                            combined_df,
-                            agent_type="tool-calling",
-                            verbose=True,
-                            handle_parsing_errors=True,
-                            prefix=prefix,
-                            allow_dangerous_code=True
-                        )
-                    else:
-                        # If langchain_experimental is not available or we can't do the above approach,
-                        # just use the first dataframe
-                        df_name = list(dfs.keys())[0]
-                        df = dfs[df_name]
-                        logging.warning(f"Using only the first dataframe ({df_name}) due to limitations in handling multiple dataframes")
-                        
-                        prefix = f"""You are analyzing a pandas DataFrame from file '{df_name}'.
-    WARNING: There are {len(dfs)} dataframes available, but due to limitations, only this one is being used.
-    The DataFrame has {len(df)} rows and {len(df.columns)} columns.
-    Columns: {', '.join(df.columns.tolist())}
-    
-    Provide clear, accurate responses with specific numbers and insights.
-    """
-                        self.agents_cache[thread_id] = create_pandas_dataframe_agent(
-                            llm,
-                            df,
-                            agent_type="tool-calling",
-                            verbose=True,
-                            handle_parsing_errors=True,
-                            prefix=prefix,
-                            allow_dangerous_code=True
-                        )
-                
-                # Store the dataframes directly in the agent for reference
-                self.agents_cache[thread_id].dataframes = dfs
+                            fallback_prefix = f"""You are analyzing a pandas DataFrame from file '{df_name}'.
+WARNING: There were {len(df_list)} dataframes available, but due to technical limitations, only this one is being used.
+The DataFrame has {len(df)} rows and {len(df.columns)} columns.
+Columns: {', '.join(df.columns.tolist())}
+
+ALWAYS refer to the dataframe by its original filename: '{df_name}'
+Provide clear, accurate responses with specific numbers and insights.
+"""
+                            
+                            try:
+                                self.agents_cache[thread_id] = create_pandas_dataframe_agent(
+                                    llm,
+                                    df,
+                                    agent_type="openai-tools",  # Use more stable type for fallback
+                                    verbose=True,
+                                    prefix=fallback_prefix,
+                                    allow_dangerous_code=True
+                                )
+                            except Exception as final_e:
+                                logging.error(f"Final fallback failed: {str(final_e)}")
+                                return None, dfs, [f"Could not create pandas agent after multiple attempts: {str(final_e)}"]
                 
             except Exception as e:
                 error_msg = f"Failed to create pandas agent: {str(e)}"
