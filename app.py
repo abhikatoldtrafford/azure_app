@@ -14,6 +14,7 @@ import asyncio
 import json
 from io import StringIO
 import sys
+import re
 # Simple status updates for long-running operations
 operation_statuses = {}
 
