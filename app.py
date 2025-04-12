@@ -530,7 +530,7 @@ class PandasAgentManager:
                             df,  # Pass the dataframe directly
                             verbose=True,
                             agent_type=AgentType.ZERO_SHOT_REACT_DESCRIPTION,  # Use standard agent type
-                            handle_parsing_errors=True, allow_dangerous_code=True
+                            handle_parsing_errors=True, allow_dangerous_code=True, max_iterations=30, max_execution_time=120, verbose = True
                         )
                         logging.info(f"Successfully created pandas agent for thread {thread_id} using standard approach")
                     except Exception as e1:
@@ -542,7 +542,7 @@ class PandasAgentManager:
                                 df,  # Pass the dataframe directly
                                 verbose=True,
                                 agent_type="tool-calling",  # Try alternative agent type
-                                handle_parsing_errors=True, allow_dangerous_code=True
+                                handle_parsing_errors=True, allow_dangerous_code=True, max_iterations=30, max_execution_time=120, verbose = True
                             )
                             logging.info(f"Successfully created pandas agent for thread {thread_id} using tool-calling approach")
                         except Exception as e2:
@@ -562,7 +562,7 @@ class PandasAgentManager:
                             df_list,  # Pass list of dataframes 
                             verbose=True,
                             agent_type=AgentType.ZERO_SHOT_REACT_DESCRIPTION,  # Use standard agent type
-                            handle_parsing_errors=True, allow_dangerous_code=True
+                            handle_parsing_errors=True, allow_dangerous_code=True, max_iterations=30, max_execution_time=120, verbose = True 
                         )
                         logging.info(f"Successfully created multi-df pandas agent using standard approach")
                     except Exception as e1:
@@ -574,7 +574,7 @@ class PandasAgentManager:
                                 df_list,  # Pass list of dataframes
                                 verbose=True,
                                 agent_type="tool-calling",  # Try alternative agent type
-                                handle_parsing_errors=True, allow_dangerous_code=True
+                                handle_parsing_errors=True, allow_dangerous_code=True, max_iterations=30, max_execution_time=120, verbose = True
                             )
                             logging.info(f"Successfully created multi-df pandas agent using tool-calling approach")
                         except Exception as e2:
