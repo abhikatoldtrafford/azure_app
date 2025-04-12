@@ -2056,51 +2056,47 @@ async def conversation(
                                             # Stream initial status
                                             yield "\n[Analyzing your data...]\n"
                                             
-                                            # Use the PandasAgentManager to execute the query
-                                            try:
-                                                # Execute the pandas_agent using the new class-based implementation
-                                                analysis_result = asyncio.run(pandas_agent(
-                                                    client=client,
-                                                    thread_id=session,
-                                                    query=query,
-                                                    files=pandas_files
-                                                ))
-                                                
-                                                # Add to tool outputs
-                                                tool_outputs.append({
-                                                    "tool_call_id": tool_call.id,
-                                                    "output": analysis_result
-                                                })
-                                                
-                                                # Save for potential fallback
-                                                tool_call_results.append(analysis_result)
-                                                
-                                                # Stream status indicating completion
-                                                yield "\n[Data analysis complete]\n"
-                                                
-                                            except Exception as e:
-                                                error_details = traceback.format_exc()
-                                                logging.error(f"Error executing pandas_agent: {e}\n{error_details}")
-                                                error_msg = f"Error analyzing data: {str(e)}"
-                                                
-                                                # Add error to tool outputs
-                                                tool_outputs.append({
-                                                    "tool_call_id": tool_call.id,
-                                                    "output": error_msg
-                                                })
-                                                
-                                                # Stream error
-                                                yield f"\n[Error: {str(e)}]\n"
+                                            # Execute the pandas_agent using the class-based implementation
+                                            analysis_result = await pandas_agent(
+                                                client=client,
+                                                thread_id=session,
+                                                query=query,
+                                                files=pandas_files
+                                            )
+                                            
+                                            # Stream status indicating completion
+                                            yield "\n[Data analysis complete]\n"
+                                            
+                                            # *** IMPORTANT: Display the actual analysis result to the user ***
+                                            yield "\n[Analysis Result]:\n"
+                                            yield analysis_result
+                                            
+                                            # Add to tool outputs
+                                            tool_outputs.append({
+                                                "tool_call_id": tool_call.id,
+                                                "output": analysis_result
+                                            })
+                                            
+                                            # Save for potential fallback
+                                            tool_call_results.append(analysis_result)
                                             
                                         except Exception as e:
                                             error_details = traceback.format_exc()
-                                            logging.error(f"Error processing pandas_agent tool call: {e}\n{error_details}")
+                                            logging.error(f"Error executing pandas_agent: {e}\n{error_details}")
+                                            error_msg = f"Error analyzing data: {str(e)}"
+                                            
+                                            # Add error to tool outputs
                                             tool_outputs.append({
                                                 "tool_call_id": tool_call.id,
-                                                "output": f"Error processing pandas_agent request: {str(e)}"
+                                                "output": error_msg
                                             })
-                                            yield f"\n[Error processing data request: {str(e)}]\n"
-                                
+                                            
+                                            # Stream error to user
+                                            yield f"\n[Error: {str(e)}]\n"
+                                            
+                                            # Save for potential fallback
+                                            tool_call_results.append(error_msg)
+                                            
                                 # Submit tool outputs
                                 if tool_outputs:
                                     retry_count = 0
@@ -2117,6 +2113,7 @@ async def conversation(
                                                 tool_outputs=tool_outputs
                                             )
                                             submit_success = True
+                                            # Don't yield extra message here - we've already shown the actual result
                                             logging.info(f"Successfully submitted tool outputs for run {event.data.id}")
                                         except Exception as submit_e:
                                             retry_count += 1
@@ -2124,14 +2121,14 @@ async def conversation(
                                             if retry_count >= max_retries:
                                                 yield "\n[Error: Failed to submit analysis results. Please try again.]\n"
                                             time.sleep(1)
-                                    
                     
                     # Yield any remaining text in the buffer
                     if buffer:
                         yield ''.join(buffer)
                         
-                    # Ensure we have a response
-                    if not completed and tool_call_results:
+                    # We only show preliminary results if we haven't already shown them
+                    # and the run didn't complete normally
+                    if not completed and tool_call_results and not submit_success:
                         # If the run didn't complete normally but we have tool results,
                         # show them directly to avoid leaving the user without a response
                         yield "\n\n[Note: Here are the preliminary analysis results:]\n\n"
@@ -2171,6 +2168,7 @@ async def conversation(
     except Exception as e:
         logging.error(f"Error in /conversation endpoint setup: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to process conversation request: {str(e)}")
+        
 @app.get("/chat")
 async def chat(
     session: Optional[str] = None,
