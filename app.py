@@ -429,7 +429,7 @@ class PandasAgentManager:
     
     def get_or_create_agent(self, thread_id):
         """
-        Get or create a pandas agent for a thread.
+        Get or create a pandas agent for a thread with clear dataframe reference instructions.
         
         Args:
             thread_id (str): Thread ID
@@ -477,20 +477,46 @@ class PandasAgentManager:
                     df_name = list(dfs.keys())[0]
                     df = dfs[df_name]
                     
-                    logging.info(f"Creating single dataframe agent for '{df_name}', {len(df)} rows, {len(df.columns)} columns")
+                    # Create sanitized variable name from filename
+                    safe_var_name = df_name.replace(' ', '_').replace('.', '_').replace('-', '_')
+                    safe_var_name = re.sub(r'[^a-zA-Z0-9_]', '', safe_var_name)
+                    if not safe_var_name[0].isalpha() and safe_var_name[0] != '_':
+                        safe_var_name = 'df_' + safe_var_name
                     
-                    # Create a detailed prefix that explains the dataframe
-                    prefix = f"""You are analyzing a pandas DataFrame from file '{df_name}'.
-The DataFrame has {len(df)} rows and {len(df.columns)} columns.
-Columns: {', '.join(df.columns.tolist())}
-
-IMPORTANT: Always refer to the dataframe by its original filename: '{df_name}'
-Provide clear, accurate responses with specific numbers and insights.
-"""
+                    logging.info(f"Creating single dataframe agent for '{df_name}', using variable name '{safe_var_name}'")
+                    
+                    # Create a detailed prefix that explains the dataframe with explicit variable name
+                    prefix = f"""You are analyzing a pandas DataFrame called '{safe_var_name}' from file '{df_name}'.
+    The DataFrame has {len(df)} rows and {len(df.columns)} columns.
+    Columns: {', '.join(df.columns.tolist())}
+    
+    IMPORTANT INSTRUCTIONS FOR CODE GENERATION:
+    1. In the code you execute, the dataframe is already loaded and available as '{safe_var_name}'.
+    2. DO NOT use code like 'df = pd.read_csv()'. The dataframe is ALREADY loaded as '{safe_var_name}'.
+    3. ALWAYS reference the dataframe using the variable name '{safe_var_name}' in your code.
+    4. In your explanations, refer to the dataframe by its original filename: '{df_name}'.
+    
+    Example of correct code:
+    ```python
+    # Get basic info about the dataframe
+    {safe_var_name}.info()
+    
+    # Summary statistics
+    {safe_var_name}.describe()
+    
+    # Access specific columns
+    {safe_var_name}['{df.columns[0] if len(df.columns) > 0 else "column_name"}']
+    ```
+    
+    Provide clear, accurate responses with specific numbers and insights.
+    """
+                    
+                    # Rename the dataframe to match the instruction
+                    renamed_df = df.copy()
                     
                     self.agents_cache[thread_id] = create_pandas_dataframe_agent(
                         llm,
-                        df,  # Pass the single dataframe directly
+                        renamed_df,  # Pass the single dataframe directly
                         agent_type="tool-calling",  # Use recommended agent type
                         verbose=True,
                         handle_parsing_errors=True,
@@ -505,11 +531,20 @@ Provide clear, accurate responses with specific numbers and insights.
                     
                     logging.info(f"Creating multi-dataframe agent with {len(df_list)} dataframes: {df_names}")
                     
+                    # Create sanitized variable names for each dataframe
+                    safe_var_names = []
+                    for name in df_names:
+                        safe_name = name.replace(' ', '_').replace('.', '_').replace('-', '_')
+                        safe_name = re.sub(r'[^a-zA-Z0-9_]', '', safe_name)
+                        if not safe_name[0].isalpha() and safe_name[0] != '_':
+                            safe_name = 'df_' + safe_name
+                        safe_var_names.append(safe_name)
+                    
                     # Create a detailed prefix that explains available dataframes
                     dataframe_descriptions = []
-                    for i, (name, df) in enumerate(zip(df_names, df_list)):
+                    for i, (name, safe_name, df) in enumerate(zip(df_names, safe_var_names, df_list)):
                         # For each dataframe, create a description
-                        desc = f"dfs[{i}]: '{name}' - {len(df)} rows, {len(df.columns)} columns. "
+                        desc = f"dfs[{i}]: Variable name '{safe_name}' from file '{name}' - {len(df)} rows, {len(df.columns)} columns. "
                         if len(df.columns) > 0:
                             desc += f"Columns: {', '.join(df.columns.tolist()[:5])}"
                             if len(df.columns) > 5:
@@ -517,20 +552,33 @@ Provide clear, accurate responses with specific numbers and insights.
                         dataframe_descriptions.append(desc)
                     
                     prefix = f"""You are analyzing multiple dataframes from different files.
-The following dataframes are available:
-{chr(10).join(dataframe_descriptions)}
-
-IMPORTANT: Access each dataframe using its index in the 'dfs' list.
-For example:
-- dfs[0] for the first dataframe ('{df_names[0]}')
-- dfs[1] for the second dataframe ('{df_names[1]}')
-{f"- dfs[2] for the third dataframe ('{df_names[2]}')" if len(df_names) > 2 else ""}
-
-ALWAYS refer to dataframes by their original filenames in your responses.
-When presenting results, clearly indicate which file/dataframe the data comes from.
-
-Provide clear, accurate responses with specific numbers and insights.
-"""
+    The following dataframes are available:
+    {chr(10).join(dataframe_descriptions)}
+    
+    IMPORTANT INSTRUCTIONS FOR CODE GENERATION:
+    1. Access each dataframe using its index in the 'dfs' list.
+    2. DO NOT try to read files with pd.read_csv() or similar. The dataframes are ALREADY loaded in the 'dfs' list.
+    3. Use this format to access dataframes:
+       - dfs[0] for the first dataframe ('{df_names[0]}')
+       - dfs[1] for the second dataframe ('{df_names[1]}')
+       {f"- dfs[2] for the third dataframe ('{df_names[2]}')" if len(df_names) > 2 else ""}
+    
+    4. In your explanations, ALWAYS refer to dataframes by their original filenames.
+    
+    Example of correct code:
+    ```python
+    # Get basic info about the first dataframe
+    dfs[0].info()
+    
+    # Compare multiple dataframes
+    print(f"Dataframe 1 has {len(dfs[0])} rows, Dataframe 2 has {len(dfs[1])} rows")
+    
+    # Join data if needed
+    merged_df = pd.merge(dfs[0], dfs[1], on='common_column', how='inner')
+    ```
+    
+    Provide clear, accurate responses with specific numbers and insights.
+    """
                     
                     self.agents_cache[thread_id] = create_pandas_dataframe_agent(
                         llm,
