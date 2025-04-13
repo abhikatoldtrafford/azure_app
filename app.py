@@ -1554,9 +1554,9 @@ You are a Product Management AI Co-Pilot that helps create documentation and ana
 ### Understanding File Types and Processing Methods:
 
 1. **CSV/Excel Files** - When users upload these files, you should:
-   - Use your built-in pandas_agent tool to analyze them
-   - Call the pandas_agent tool with specific questions about the data
-   - NEVER try to analyze the data yourself - always use the pandas_agent tool
+   - ALWAYS use the pandas_agent tool to analyze them - NEVER try to answer from memory
+   - For ANY question about data in CSV/Excel files, even follow-up questions, you MUST use the pandas_agent tool
+   - Never rely on past analysis results - always run a fresh analysis with the pandas_agent tool
    - Common use cases: data summarization, statistical analysis, finding trends, answering specific questions about the data
 
 2. **Documents (PDF, DOC, TXT, etc.)** - When users upload these files, you should:
@@ -1571,11 +1571,11 @@ You are a Product Management AI Co-Pilot that helps create documentation and ana
 
 ### Using the pandas_agent Tool:
 
-When you need to analyze CSV or Excel files, use the pandas_agent tool. Here's how:
-1. Identify data-related questions (e.g., "What's the average revenue?", "How many customers are in the dataset?")
-2. Formulate a clear, specific query for the pandas_agent
+When a user asks ANY question about data in CSV or Excel files (including follow-up questions), ALWAYS use the pandas_agent tool:
+1. Identify that the question relates to data (e.g., "What's the average revenue?", "How many customers are in the dataset?", "Can you explain this trend?", etc.)
+2. Formulate a clear, specific query for the pandas_agent that includes the necessary context
 3. Call the pandas_agent tool with your query
-4. Incorporate the results into your response
+4. Never try to answer data-related questions from memory of previous conversations
 
 Examples of good pandas_agent queries:
 - "Summarize the data in sales_data.csv"
@@ -1593,13 +1593,15 @@ When asked to create a PRD, include these sections:
 - Non-Functional Requirements, Use Cases
 - Milestones, Risks
 
-Always leverage any uploaded files to inform the PRD content.
+Always leverage any uploaded files to fetch information for the PRD content. 
+If unsure about some details, please ask user to provide or clarify information.
 
 ### Important Guidelines:
 
 - Always reference files by their exact filenames
 - Use tools appropriately based on file type
-- Never attempt to analyze CSV/Excel data without using the pandas_agent tool
+- NEVER attempt to analyze CSV/Excel data without using the pandas_agent tool
+- For ANY question about data in CSV/Excel files, even follow-up questions, you MUST use the pandas_agent tool
 - Acknowledge limitations and be transparent when information is unavailable
 - Ensure responses are concise, relevant, and helpful
 
@@ -2605,96 +2607,158 @@ async def chat(
 ):
     """
     Handles conversation queries and returns the full response as JSON.
-    Enhanced with robust error handling and operational tracking.
+    Uses the same logic as the streaming endpoint but returns the complete response.
     """
     client = create_client()
-    operation_id = f"chat_{int(time.time())}_{os.urandom(2).hex()}"
-    update_operation_status(operation_id, "started", 0, "Starting chat request")
 
     try:
-        # Resource validation code remains the same...
-        # [validation code from original function]
+        # Validate resources if provided 
+        if session or assistant:
+            validation = await validate_resources(client, session, assistant)
+            
+            # Create new thread if invalid
+            if session and not validation["thread_valid"]:
+                logging.warning(f"Invalid thread ID: {session}, creating a new one")
+                try:
+                    thread = client.beta.threads.create()
+                    session = thread.id
+                    logging.info(f"Created recovery thread: {session}")
+                except Exception as e:
+                    logging.error(f"Failed to create recovery thread: {e}")
+                    raise HTTPException(status_code=500, detail="Failed to create a valid conversation thread")
+            
+            # Create new assistant if invalid
+            if assistant and not validation["assistant_valid"]:
+                logging.warning(f"Invalid assistant ID: {assistant}, creating a new one")
+                try:
+                    assistant_obj = client.beta.assistants.create(
+                        name=f"recovery_assistant_{int(time.time())}",
+                        model="gpt-4o-mini",
+                        instructions="You are a helpful assistant recovering from a system error.",
+                    )
+                    assistant = assistant_obj.id
+                    logging.info(f"Created recovery assistant: {assistant}")
+                except Exception as e:
+                    logging.error(f"Failed to create recovery assistant: {e}")
+                    raise HTTPException(status_code=500, detail="Failed to create a valid assistant")
+        
+        # Create defaults if not provided
+        if not assistant:
+            logging.warning("No assistant ID provided for /chat, creating a default one.")
+            try:
+                assistant_obj = client.beta.assistants.create(
+                    name="default_conversation_assistant",
+                    model="gpt-4o-mini",
+                    instructions="You are a helpful conversation assistant.",
+                )
+                assistant = assistant_obj.id
+            except Exception as e:
+                logging.error(f"Failed to create default assistant: {e}")
+                raise HTTPException(status_code=500, detail="Failed to create default assistant")
 
-        # Add user message if prompt is given
+        if not session:
+            logging.warning("No session (thread) ID provided for /chat, creating a new one.")
+            try:
+                thread = client.beta.threads.create()
+                session = thread.id
+            except Exception as e:
+                logging.error(f"Failed to create default thread: {e}")
+                raise HTTPException(status_code=500, detail="Failed to create default thread")
+
+        # Add user message to the thread if prompt is given
         if prompt:
-            update_operation_status(operation_id, "message", 35, "Adding user message to thread")
             try:
                 client.beta.threads.messages.create(
-                    thread_id=session, role="user", content=prompt
+                    thread_id=session,
+                    role="user",
+                    content=prompt
                 )
             except Exception as e:
                 logging.error(f"Failed to add message to thread {session}: {e}")
-                update_operation_status(operation_id, "error", 100, f"Message creation failed: {str(e)}")
-                raise HTTPException(status_code=500, detail="Failed to add message to chat thread")
-
-        # Run the assistant with enhanced tool call handling
+                raise HTTPException(status_code=500, detail="Failed to add message to conversation thread")
+        
+        # Variables to track state
+        full_response = ""
+        tool_call_results = []
+        latest_message_id = None
+            
+        # Get the most recent message ID before starting the run
         try:
-            # Create a run
-            update_operation_status(operation_id, "run_starting", 40, "Starting assistant run")
-            run = client.beta.threads.runs.create(
+            pre_run_messages = client.beta.threads.messages.list(
                 thread_id=session,
-                assistant_id=assistant
+                order="desc",
+                limit=1
             )
-            run_id = run.id
-            
-            # Poll until run completes or requires action
-            poll_count = 0
-            max_poll_time = 180  # Maximum time to wait (3 minutes)
-            start_time = time.time()
-            
-            # Track if we've processed any tool calls to include in response
-            processed_tool_calls = []
-            
-            while time.time() - start_time < max_poll_time:
-                poll_count += 1
+            if pre_run_messages and pre_run_messages.data:
+                latest_message_id = pre_run_messages.data[0].id
+                logging.info(f"Latest message before run: {latest_message_id}")
+        except Exception as e:
+            logging.warning(f"Could not get latest message before run: {e}")
+        
+        # Create run
+        run = client.beta.threads.runs.create(
+            thread_id=session,
+            assistant_id=assistant
+        )
+        run_id = run.id
+        logging.info(f"Created run {run_id} for thread {session}")
+        
+        # Poll for run status
+        max_poll_attempts = 60  # 5 minute timeout with 5 second intervals
+        poll_interval = 5  # seconds
+        tool_outputs_submitted = False
+        wait_for_final_response = False
+        
+        for attempt in range(max_poll_attempts):
+            try:
+                run_status = client.beta.threads.runs.retrieve(
+                    thread_id=session,
+                    run_id=run_id
+                )
                 
-                # Update status periodically
-                if poll_count % 5 == 0:  # Every 5 polls
-                    elapsed = time.time() - start_time
-                    progress = min(40 + int(elapsed / max_poll_time * 50), 90)  # Cap at 90%
-                    update_operation_status(operation_id, "running", progress, f"Processing run (elapsed: {elapsed:.1f}s)")
+                logging.info(f"Run status poll {attempt+1}/{max_poll_attempts}: {run_status.status}")
                 
-                # Get run status with retry logic
-                retry_count = 0
-                max_retries = 3
-                run_status = None
+                # Handle completed run
+                if run_status.status == "completed":
+                    # Get the latest message
+                    messages = client.beta.threads.messages.list(
+                        thread_id=session,
+                        order="desc",
+                        limit=1
+                    )
+                    
+                    if messages and messages.data:
+                        latest_message = messages.data[0]
+                        # Check if this is a new message (different from our pre-run message)
+                        if not latest_message_id or latest_message.id != latest_message_id:
+                            for content_part in latest_message.content:
+                                if content_part.type == 'text':
+                                    full_response += content_part.text.value
+                            
+                            logging.info(f"Successfully retrieved final response")
+                    break  # Exit the polling loop
                 
-                while retry_count < max_retries and not run_status:
-                    try:
-                        run_status = client.beta.threads.runs.retrieve(
-                            thread_id=session,
-                            run_id=run_id
-                        )
-                        break
-                    except Exception as e:
-                        retry_count += 1
-                        logging.error(f"Error retrieving run status (attempt {retry_count}): {e}")
-                        if retry_count >= max_retries:
-                            raise  # Re-raise if all retries fail
-                        time.sleep(1)
+                # Handle failed/cancelled/expired run
+                elif run_status.status in ["failed", "cancelled", "expired"]:
+                    logging.error(f"Run ended with status: {run_status.status}")
+                    return JSONResponse(content={"response": f"Sorry, I encountered an error and couldn't complete your request. Run status: {run_status.status}. Please try again."})
                 
-                # Critical part: properly handle requires_action status
-                if run_status.status == "requires_action":
-                    logging.info(f"Run {run_id} requires action: {run_status.required_action.type}")
-                    # Handle tool calls
+                # Handle tool calls
+                elif run_status.status == "requires_action":
                     if run_status.required_action.type == "submit_tool_outputs":
-                        update_operation_status(operation_id, "tool_processing", 70, "Processing tool calls")
                         tool_calls = run_status.required_action.submit_tool_outputs.tool_calls
                         tool_outputs = []
                         
                         for tool_call in tool_calls:
-                            logging.info(f"Processing tool call: {tool_call.function.name}")
-                            
                             if tool_call.function.name == "pandas_agent":
                                 try:
-                                    # Extract arguments with error handling
+                                    # Extract arguments
+                                    import json
                                     args = json.loads(tool_call.function.arguments)
                                     query = args.get("query", "")
                                     filename = args.get("filename", None)
                                     
-                                    update_operation_status(operation_id, "data_retrieval", 75, f"Retrieving data files for query: {query[:30]}...")
-                                    
-                                    # Get pandas files for this thread with retry logic
+                                    # Get pandas files for this thread
                                     pandas_files = []
                                     retry_count = 0
                                     max_retries = 3
@@ -2718,197 +2782,109 @@ async def chat(
                                         except Exception as list_e:
                                             retry_count += 1
                                             logging.error(f"Error retrieving pandas files (attempt {retry_count}): {list_e}")
-                                            if retry_count >= max_retries:
-                                                update_operation_status(operation_id, "warning", 76, "Could not retrieve file information")
                                             time.sleep(1)
                                     
                                     # Filter by filename if specified
                                     if filename:
                                         pandas_files = [f for f in pandas_files if f.get("name") == filename]
                                     
-                                    update_operation_status(operation_id, "data_analysis", 80, f"Analyzing data with pandas_agent")
-                                    
-                                    # Process files and build response
+                                    # Generate operation ID for status tracking
                                     pandas_agent_operation_id = f"pandas_agent_{int(time.time())}_{os.urandom(2).hex()}"
-                                    update_operation_status(pandas_agent_operation_id, "started", 0, "Starting data analysis")
                                     
-                                    # Extract data from file information 
-                                    file_descriptions = []
-                                    for file in pandas_files:
-                                        file_type = file.get("type", "unknown")
-                                        file_name = file.get("name", "unnamed_file")
-                                        file_descriptions.append(f"{file_name} ({file_type})")
-                                    
-                                    file_list = ", ".join(file_descriptions) if file_descriptions else "No files available"
-                                    
-                                    # Build placeholder response
-                                    response = f"""CSV/Excel file analysis is not supported yet. This function will be implemented in a future update.
-
-Query received: "{query}"
-
-Available files for analysis: {file_list}
-
-When implemented, this agent will be able to analyze your data files and provide insights based on your query.
-
-Operation ID: {pandas_agent_operation_id}"""
-                                    
-                                    update_operation_status(pandas_agent_operation_id, "completed", 100, "Analysis completed successfully")
+                                    # Execute the pandas_agent
+                                    analysis_result = await pandas_agent(
+                                        client=client,
+                                        thread_id=session,
+                                        query=query,
+                                        files=pandas_files
+                                    )
                                     
                                     # Add to tool outputs
                                     tool_outputs.append({
                                         "tool_call_id": tool_call.id,
-                                        "output": response
+                                        "output": analysis_result
                                     })
                                     
-                                    # Save processed tool call information
-                                    processed_tool_calls.append({
-                                        "type": "pandas_agent",
-                                        "query": query,
-                                        "response": response
-                                    })
+                                    # Save for potential fallback
+                                    tool_call_results.append(analysis_result)
                                     
                                 except Exception as e:
                                     error_details = traceback.format_exc()
-                                    logging.error(f"Error processing pandas_agent tool call: {e}\n{error_details}")
-                                    update_operation_status(operation_id, "error", 80, f"Tool processing error: {str(e)}")
+                                    logging.error(f"Error executing pandas_agent: {e}\n{error_details}")
+                                    error_msg = f"Error analyzing data: {str(e)}"
+                                    
+                                    # Add error to tool outputs
                                     tool_outputs.append({
                                         "tool_call_id": tool_call.id,
-                                        "output": f"Error processing pandas_agent request: {str(e)}"
+                                        "output": error_msg
                                     })
+                                    
+                                    # Save for potential fallback
+                                    tool_call_results.append(error_msg)
                         
-                        # Submit tool outputs with retry logic
+                        # Submit tool outputs
                         if tool_outputs:
-                            update_operation_status(operation_id, "submitting_results", 85, "Submitting tool results")
                             retry_count = 0
                             max_retries = 3
                             submit_success = False
                             
                             while retry_count < max_retries and not submit_success:
                                 try:
-                                    logging.info(f"Submitting {len(tool_outputs)} tool outputs for run {run_id}")
                                     client.beta.threads.runs.submit_tool_outputs(
                                         thread_id=session,
                                         run_id=run_id,
                                         tool_outputs=tool_outputs
                                     )
                                     submit_success = True
-                                    logging.info("Tool outputs submitted successfully")
+                                    tool_outputs_submitted = True
+                                    wait_for_final_response = True
+                                    logging.info(f"Successfully submitted tool outputs for run {run_id}")
                                 except Exception as submit_e:
                                     retry_count += 1
                                     logging.error(f"Error submitting tool outputs (attempt {retry_count}): {submit_e}")
-                                    if retry_count >= max_retries:
-                                        update_operation_status(operation_id, "error", 85, f"Tool submission failed: {str(submit_e)}")
-                                        # If we can't submit tool outputs, cancel the run
-                                        try:
-                                            client.beta.threads.runs.cancel(
-                                                thread_id=session,
-                                                run_id=run_id
-                                            )
-                                        except:
-                                            pass  # Ignore errors during cancellation
-                                        break
                                     time.sleep(1)
                             
-                            # Continue polling - IMPORTANT: let run continue after tool submission
-                            continue
-                        else:
-                            # If we couldn't generate any outputs, cancel the run
-                            update_operation_status(operation_id, "warning", 85, "No tool outputs generated")
-                            try:
-                                client.beta.threads.runs.cancel(
-                                    thread_id=session,
-                                    run_id=run_id
-                                )
-                            except:
-                                pass  # Ignore errors during cancellation
-                            break
-                    else:
-                        # Unknown action required
-                        update_operation_status(operation_id, "warning", 85, f"Unknown required action: {run_status.required_action.type}")
-                        try:
-                            client.beta.threads.runs.cancel(
-                                thread_id=session,
-                                run_id=run_id
-                            )
-                        except:
-                            pass  # Ignore errors during cancellation
-                        break
-                    
-                elif run_status.status in ["completed", "failed", "cancelled"]:
-                    update_operation_status(
-                        operation_id, 
-                        "finished" if run_status.status == "completed" else "error", 
-                        90, 
-                        f"Run {run_status.status}")
-                    break
+                            if not submit_success:
+                                return JSONResponse(content={"response": f"Sorry, I encountered an error processing your data analysis request. Please try again."})
                 
-                # Adaptive wait before polling again
-                poll_interval = min(1 + (poll_count * 0.1), 3)  # Start with 1s, increase slowly, cap at 3s
+                # Continue polling if still in progress
+                if attempt < max_poll_attempts - 1:
+                    time.sleep(poll_interval)
+                    
+            except Exception as poll_e:
+                logging.error(f"Error polling run status (attempt {attempt+1}): {poll_e}")
                 time.sleep(poll_interval)
-            
-            # Handle timeout case
-            if time.time() - start_time >= max_poll_time:
-                update_operation_status(operation_id, "timeout", 90, f"Run timed out after {max_poll_time}s")
-                logging.warning(f"Run {run_id} timed out after {max_poll_time} seconds")
-                try:
-                    client.beta.threads.runs.cancel(thread_id=session, run_id=run_id)
-                except:
-                    pass  # Ignore errors during cancellation
-            
-            # Get the final messages with retry
-            update_operation_status(operation_id, "retrieving_response", 95, "Retrieving final response")
-            retry_count = 0
-            max_retries = 3
-            messages = None
-            
-            while retry_count < max_retries and not messages:
-                try:
-                    messages = client.beta.threads.messages.list(
-                        thread_id=session,
-                        order="desc",
-                        limit=1  # Just get the latest message
-                    )
-                    break
-                except Exception as e:
-                    retry_count += 1
-                    logging.error(f"Error retrieving final message (attempt {retry_count}): {e}")
-                    if retry_count >= max_retries:
-                        update_operation_status(operation_id, "error", 95, f"Failed to retrieve final message: {str(e)}")
-                        raise  # Re-raise if all retries fail
-                    time.sleep(1)
-            
-            response_content = ""
-            if messages and messages.data:
-                latest_message = messages.data[0]
-                for content_part in latest_message.content:
-                    if content_part.type == 'text':
-                        response_content += content_part.text.value
-            
-            # If we processed tool calls but the final response doesn't reflect that,
-            # include the tool call results in the response
-            if processed_tool_calls and ("unable to analyze" in response_content.lower() or 
-                                         "can't analyze" in response_content.lower() or 
-                                         "cannot analyze" in response_content.lower()):
-                logging.info("Adding processed tool call results to response")
-                tool_response = "\n\n[Data Analysis Results]:\n\n"
-                for tool_call in processed_tool_calls:
-                    if tool_call["type"] == "pandas_agent":
-                        tool_response += tool_call["response"]
-                response_content = tool_response
-            
-            update_operation_status(operation_id, "completed", 100, "Chat request completed successfully")
-            return JSONResponse(content={"response": response_content})
+                
+        # If we reach here without a full_response, but we have tool results, use those
+        if not full_response and tool_call_results:
+            full_response = "\n\n".join(tool_call_results)
+            logging.info("Using tool call results as fallback response")
+        
+        # If we still don't have a response, try one more time to get the latest message
+        if not full_response:
+            try:
+                messages = client.beta.threads.messages.list(
+                    thread_id=session,
+                    order="desc",
+                    limit=1
+                )
+                
+                if messages and messages.data:
+                    latest_message = messages.data[0]
+                    for content_part in latest_message.content:
+                        if content_part.type == 'text':
+                            full_response += content_part.text.value
+            except Exception as final_e:
+                logging.error(f"Error retrieving final message: {final_e}")
+        
+        # Final fallback if we still don't have a response
+        if not full_response:
+            full_response = "I processed your request, but couldn't generate a proper response. Please try again or rephrase your question."
 
-        except Exception as e:
-            error_details = traceback.format_exc()
-            logging.error(f"Error during run processing for thread {session}: {e}\n{error_details}")
-            update_operation_status(operation_id, "error", 100, f"Run processing error: {str(e)}")
-            raise HTTPException(status_code=500, detail="Error generating response. Please try again.")
+        return JSONResponse(content={"response": full_response})
 
     except Exception as e:
-        error_details = traceback.format_exc()
-        logging.error(f"Error in /chat endpoint setup: {e}\n{error_details}")
-        update_operation_status(operation_id, "error", 100, f"Chat request failed: {str(e)}")
+        logging.error(f"Error in /chat endpoint: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to process chat request: {str(e)}")
 if __name__ == "__main__":
     import uvicorn
