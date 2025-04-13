@@ -36,7 +36,69 @@ def create_client():
         api_key=AZURE_API_KEY,
         api_version=AZURE_API_VERSION,
     )
-
+def debug_print_files(self, thread_id: str):
+    """
+    Debug function to print information about files registered with the pandas agent.
+    
+    Args:
+        thread_id (str): The thread ID to check files for
+    
+    Returns:
+        str: Debug information about files and dataframes
+    """
+    import pandas as pd
+    
+    debug_output = []
+    debug_output.append(f"=== PANDAS AGENT DEBUG INFO FOR THREAD {thread_id} ===")
+    
+    # Get file info
+    file_info = self.file_info_cache.get(thread_id, [])
+    debug_output.append(f"Registered Files: {len(file_info)}")
+    
+    for i, info in enumerate(file_info):
+        file_name = info.get("name", "unnamed")
+        file_path = info.get("path", "unknown")
+        file_type = info.get("type", "unknown")
+        debug_output.append(f"\n[{i+1}] File: {file_name} ({file_type})")
+        debug_output.append(f"    Path: {file_path}")
+        debug_output.append(f"    Exists: {os.path.exists(file_path)}")
+        
+        if os.path.exists(file_path):
+            try:
+                file_size = os.path.getsize(file_path)
+                debug_output.append(f"    Size: {file_size} bytes")
+                
+                # Read first few bytes
+                with open(file_path, 'rb') as f:
+                    first_bytes = f.read(50)
+                debug_output.append(f"    First bytes: {first_bytes}")
+            except Exception as e:
+                debug_output.append(f"    Error reading file: {str(e)}")
+    
+    # Get dataframe info
+    dataframes = self.dataframes_cache.get(thread_id, {})
+    debug_output.append(f"\nLoaded DataFrames: {len(dataframes)}")
+    
+    for df_name, df in dataframes.items():
+        debug_output.append(f"\nDataFrame: {df_name}")
+        try:
+            debug_output.append(f"  Shape: {df.shape}")
+            debug_output.append(f"  Columns: {list(df.columns)}")
+            debug_output.append(f"  Types: {df.dtypes.to_dict()}")
+            
+            # Sample data (first 3 rows)
+            debug_output.append(f"  Sample data (3 rows):")
+            debug_output.append(f"{df.head(3).to_string()}")
+            
+            # Detect potential issues
+            has_nulls = df.isnull().any().any()
+            debug_output.append(f"  Contains nulls: {has_nulls}")
+            
+        except Exception as e:
+            debug_output.append(f"  Error examining dataframe: {str(e)}")
+    
+    # Return as string
+    return "\n".join(debug_output)
 class PandasAgentManager:
     """
     Enhanced class to manage pandas agents and dataframes for different threads.
@@ -707,26 +769,51 @@ class PandasAgentManager:
         
         if not dataframes:
             return None, "No dataframes available for analysis", removed_files
-            
+                
         # Extract filename mentions in the query
         mentioned_files = []
         for df_name in dataframes.keys():
             base_name = df_name.split(" [Sheet:")[0].lower()  # Handle Excel sheet names
-            if base_name in query.lower():
+            if base_name.lower() in query.lower():
                 mentioned_files.append(df_name)
                 
-        # Process the query
-        enhanced_query = query
-        
-        # If no specific file is mentioned but we have multiple files, provide minimal guidance
-        if len(dataframes) > 1 and not mentioned_files:
-            # Create a concise list of available files
-            file_list = ", ".join(f"'{name}'" for name in dataframes.keys())
+        # Process the query - FIX THE FILE LOADING ISSUE
+        if "csv" in query.lower() or "excel" in query.lower() or ".xlsx" in query.lower() or ".xls" in query.lower():
+            # If the query mentions a specific file, create a clear instruction to use the loaded dataframe
+            if mentioned_files:
+                mentioned_file = mentioned_files[0]
+                # Create informative query that prevents file reloading
+                enhanced_query = f"""
+    The dataframe for '{mentioned_file}' is ALREADY LOADED. DO NOT try to load the file from disk.
+    Instead, use the dataframe that is already available to you.
+
+    Analyze this dataframe to answer: {query}
+                """
+            else:
+                # Generic instruction for any CSV/Excel mention without specific match
+                enhanced_query = f"""
+    The dataframes are ALREADY LOADED. DO NOT try to load any files from disk.
+    Use the dataframes that are already available to you.
+
+    Analyze these dataframes to answer: {query}
+                """
+        else:
+            # If no specific file type is mentioned, use original query
+            enhanced_query = query
             
-            # Add a gentle hint about available files
-            query_prefix = f"Available files: {file_list}. "
-            enhanced_query = query_prefix + query
-            
+            # If no specific file is mentioned but we have multiple files, provide minimal guidance
+            if len(dataframes) > 1 and not mentioned_files:
+                # Create a concise list of available files
+                file_list = ", ".join(f"'{name}'" for name in dataframes.keys())
+                
+                # Add a gentle hint about available files
+                query_prefix = f"""
+    Available dataframes: {file_list}
+    DO NOT try to load any files from disk - the data is already loaded.
+
+    """
+                enhanced_query = query_prefix + query
+                
         logging.info(f"Final query to process: {enhanced_query}")
         
         try:
@@ -764,21 +851,80 @@ class PandasAgentManager:
                         agent_output = agent_result.get("output", "")
                         logging.info(f"Agent completed successfully with invoke() method: {agent_output[:100]}...")
                     except Exception as invoke_error:
-                        # Both methods failed
-                        raise Exception(f"Agent run() failed: {str(run_error)}; invoke() also failed: {str(invoke_error)}")
+                        # Try one last approach - if we see a file not found error, generate a summary directly
+                        error_msg = str(run_error) + " " + str(invoke_error)
+                        if "FileNotFoundError" in error_msg or "No such file" in error_msg:
+                            # Generate a direct summary from the dataframes
+                            summary = []
+                            for name, df in dataframes.items():
+                                summary.append(f"## Summary of {name}")
+                                summary.append(f"* Shape: {df.shape[0]} rows, {df.shape[1]} columns")
+                                summary.append(f"* Columns: {', '.join(df.columns.tolist())}")
+                                
+                                # Add basic statistics for numeric columns
+                                try:
+                                    num_cols = df.select_dtypes(include=['number']).columns
+                                    if len(num_cols) > 0:
+                                        summary.append("\n### Basic Statistics for Numeric Columns:")
+                                        summary.append(df[num_cols].describe().to_string())
+                                except Exception as stats_err:
+                                    summary.append(f"Error calculating statistics: {str(stats_err)}")
+                                
+                                # Add sample data
+                                try:
+                                    summary.append("\n### Sample Data (First 5 rows):")
+                                    summary.append(df.head(5).to_string())
+                                except Exception as sample_err:
+                                    summary.append(f"Error showing sample: {str(sample_err)}")
+                                    
+                                summary.append("\n")
+                                
+                            return "\n".join(summary), None, removed_files
+                        else:
+                            # Both methods failed with a different error
+                            raise Exception(f"Agent run() failed: {str(run_error)}; invoke() also failed: {str(invoke_error)}")
                 
                 # Get the captured verbose output
                 verbose_output = captured_output.getvalue()
                 logging.info(f"Agent verbose output:\n{verbose_output}")
                 
                 # Check if output seems empty or error-like
-                if not agent_output or "I don't have access to" in agent_output:
+                if not agent_output or "I don't have access to" in agent_output or "not find" in agent_output.lower():
                     logging.warning(f"Agent response appears problematic: {agent_output}")
                     
-                    # Provide detailed dataframe information as fallback
-                    fallback_output = "I analyzed your data and found:\n\n" + "\n".join(df_details[:10])
-                    logging.info(f"Providing fallback output with basic dataframe info")
-                    return fallback_output, None, removed_files
+                    # Check if there was a file not found error in the verbose output
+                    if "FileNotFoundError" in verbose_output or "No such file" in verbose_output:
+                        # Generate a direct summary from the dataframes
+                        summary = []
+                        for name, df in dataframes.items():
+                            summary.append(f"## Summary of {name}")
+                            summary.append(f"* Shape: {df.shape[0]} rows, {df.shape[1]} columns")
+                            summary.append(f"* Columns: {', '.join(df.columns.tolist())}")
+                            
+                            # Add basic statistics for numeric columns
+                            try:
+                                num_cols = df.select_dtypes(include=['number']).columns
+                                if len(num_cols) > 0:
+                                    summary.append("\n### Basic Statistics for Numeric Columns:")
+                                    summary.append(df[num_cols].describe().to_string())
+                            except Exception as stats_err:
+                                summary.append(f"Error calculating statistics: {str(stats_err)}")
+                            
+                            # Add sample data
+                            try:
+                                summary.append("\n### Sample Data (First 5 rows):")
+                                summary.append(df.head(5).to_string())
+                            except Exception as sample_err:
+                                summary.append(f"Error showing sample: {str(sample_err)}")
+                                
+                            summary.append("\n")
+                            
+                        return "\n".join(summary), None, removed_files
+                    else:
+                        # Provide detailed dataframe information as fallback
+                        fallback_output = "I analyzed your data and found:\n\n" + "\n".join(df_details[:10])
+                        logging.info(f"Providing fallback output with basic dataframe info")
+                        return fallback_output, None, removed_files
                 
                 # Final response - successful case
                 return agent_output, None, removed_files
@@ -791,6 +937,35 @@ class PandasAgentManager:
                 # Get verbose output for debugging
                 verbose_output = captured_output.getvalue()
                 logging.info(f"Agent debugging output before error:\n{verbose_output}")
+                
+                # Check if there was a file not found error
+                if "FileNotFoundError" in verbose_output or "No such file" in verbose_output or "FileNotFoundError" in error_detail:
+                    # Generate a direct summary from the dataframes
+                    summary = []
+                    for name, df in dataframes.items():
+                        summary.append(f"## Summary of {name}")
+                        summary.append(f"* Shape: {df.shape[0]} rows, {df.shape[1]} columns")
+                        summary.append(f"* Columns: {', '.join(df.columns.tolist())}")
+                        
+                        # Add basic statistics for numeric columns
+                        try:
+                            num_cols = df.select_dtypes(include=['number']).columns
+                            if len(num_cols) > 0:
+                                summary.append("\n### Basic Statistics for Numeric Columns:")
+                                summary.append(df[num_cols].describe().to_string())
+                        except Exception as stats_err:
+                            summary.append(f"Error calculating statistics: {str(stats_err)}")
+                        
+                        # Add sample data
+                        try:
+                            summary.append("\n### Sample Data (First 5 rows):")
+                            summary.append(df.head(5).to_string())
+                        except Exception as sample_err:
+                            summary.append(f"Error showing sample: {str(sample_err)}")
+                            
+                        summary.append("\n")
+                        
+                    return "\n".join(summary), None, removed_files
                 
                 # Provide a more helpful error message with basic file info
                 error_msg = f"Error analyzing data: {error_detail}"
@@ -864,6 +1039,18 @@ async def pandas_agent(client: AzureOpenAI, thread_id: Optional[str], query: str
     operation_id = f"pandas_agent_{int(time.time())}_{os.urandom(2).hex()}"
     update_operation_status(operation_id, "started", 0, "Starting data analysis")
     
+    # Flag for background thread to stop
+    stop_background_updates = threading.Event()
+    
+    # Background thread for progress updates
+    def send_progress_updates():
+        progress = 50
+        while progress < 85 and not stop_background_updates.is_set():
+            time.sleep(1.5)  # Update every 1.5 seconds
+            progress += 2
+            update_operation_status(operation_id, "executing", min(progress, 85), 
+                                   "Analysis in progress...")
+    
     try:
         # Verify thread_id is provided
         if not thread_id:
@@ -871,36 +1058,98 @@ async def pandas_agent(client: AzureOpenAI, thread_id: Optional[str], query: str
             update_operation_status(operation_id, "error", 100, error_msg)
             return f"Error: {error_msg}"
         
-        # Log files being processed
+        # Enhanced debugging: Log detailed info about files
+        logging.info(f"PANDAS AGENT DEBUG - Query: '{query}'")
+        logging.info(f"PANDAS AGENT DEBUG - Thread ID: {thread_id}")
+        logging.info(f"PANDAS AGENT DEBUG - Files count: {len(files)}")
+        
+        # Log files being processed with much more detail
         file_descriptions = []
-        for file in files:
+        valid_files = []
+        invalid_files = []
+        
+        for i, file in enumerate(files):
             file_type = file.get("type", "unknown")
             file_name = file.get("name", "unnamed_file")
             file_path = file.get("path", "unknown_path")
+            
+            # Detailed file logging
+            debug_info = (f"File {i+1}: '{file_name}' ({file_type}) - "
+                         f"Path: {file_path}")
+            logging.info(f"PANDAS AGENT DEBUG - {debug_info}")
+            
             file_descriptions.append(f"{file_name} ({file_type})")
-            # Verify file existence
+            
+            # Verify file existence with more robust checking
+            file_exists = False
+            file_size = None
+            first_bytes = None
+            
             if file_path and os.path.exists(file_path):
                 try:
                     file_size = os.path.getsize(file_path)
                     with open(file_path, 'rb') as f:
                         first_bytes = f.read(10)
-                    logging.info(f"File {file_name} exists, size: {file_size} bytes, first bytes: {first_bytes}")
+                    file_exists = True
+                    logging.info(f"PANDAS AGENT DEBUG - File verified: '{file_name}' exists, size: {file_size} bytes, first bytes: {first_bytes}")
+                    valid_files.append(file)
                 except Exception as e:
-                    logging.warning(f"File exists but cannot read: {str(e)}")
+                    logging.warning(f"PANDAS AGENT DEBUG - File exists but cannot read: '{file_name}' - {str(e)}")
+                    invalid_files.append((file_name, f"Read error: {str(e)}"))
             else:
-                logging.warning(f"File {file_name} does not exist at path: {file_path}")
-                # Try to fix path if possible (some files might be in /tmp with prefixes)
+                logging.warning(f"PANDAS AGENT DEBUG - File does not exist: '{file_name}' at path: {file_path}")
+                invalid_files.append((file_name, f"Path not found: {file_path}"))
+                
+                # Enhanced path correction: Look for files with similar names in /tmp
                 possible_paths = [
                     path for path in os.listdir('/tmp') 
-                    if file_name in path and os.path.isfile(os.path.join('/tmp', path))
+                    if file_name.lower() in path.lower() and os.path.isfile(os.path.join('/tmp', path))
                 ]
+                
                 if possible_paths:
+                    logging.info(f"PANDAS AGENT DEBUG - Found possible alternatives for '{file_name}':")
+                    for alt_path in possible_paths:
+                        full_path = os.path.join('/tmp', alt_path)
+                        alt_size = os.path.getsize(full_path)
+                        logging.info(f"  - Alternative: {full_path} (size: {alt_size} bytes)")
+                    
+                    # Use the first alternative found
                     corrected_path = os.path.join('/tmp', possible_paths[0])
-                    logging.info(f"Found possible alternative path for {file_name}: {corrected_path}")
+                    logging.info(f"PANDAS AGENT DEBUG - Using alternative path for {file_name}: {corrected_path}")
                     file["path"] = corrected_path
+                    valid_files.append(file)
+                else:
+                    # Try a more aggressive search for similarly named files
+                    all_tmp_files = os.listdir('/tmp')
+                    csv_files = [f for f in all_tmp_files if f.endswith('.csv') or f.endswith('.xlsx') or f.endswith('.xls')]
+                    
+                    logging.info(f"PANDAS AGENT DEBUG - Available files in /tmp directory:")
+                    for tmp_file in csv_files[:10]:  # Show first 10 to avoid log flooding
+                        logging.info(f"  - {tmp_file}")
+                    
+                    # Check if filename parts match (for handling timestamp prefixes)
+                    name_parts = re.split(r'[_\s]', file_name.lower())
+                    for tmp_file in csv_files:
+                        match_score = sum(1 for part in name_parts if part in tmp_file.lower())
+                        if match_score >= 2:  # If at least 2 parts match
+                            corrected_path = os.path.join('/tmp', tmp_file)
+                            logging.info(f"PANDAS AGENT DEBUG - Found partial match for '{file_name}': {corrected_path}")
+                            file["path"] = corrected_path
+                            valid_files.append(file)
+                            break
         
+        # Replace original files list with validated files
+        files = valid_files
+        
+        # Summary log
         file_list_str = ", ".join(file_descriptions) if file_descriptions else "No files provided"
-        logging.info(f"Processing data analysis for thread {thread_id} with files: {file_list_str}")
+        logging.info(f"PANDAS AGENT DEBUG - Processing data analysis for thread {thread_id} with files: {file_list_str}")
+        logging.info(f"PANDAS AGENT DEBUG - Valid files: {len(valid_files)}, Invalid files: {len(invalid_files)}")
+        
+        if len(valid_files) == 0:
+            update_operation_status(operation_id, "error", 100, "No valid files found for analysis")
+            return f"Error: Could not find any valid files to analyze. Please verify the uploaded files and try again.\n\nDebug info: {file_list_str}"
+            
         update_operation_status(operation_id, "files", 20, f"Processing files: {file_list_str}")
         
         # Get the PandasAgentManager instance
@@ -909,15 +1158,6 @@ async def pandas_agent(client: AzureOpenAI, thread_id: Optional[str], query: str
         # Process the query
         update_operation_status(operation_id, "analyzing", 50, f"Analyzing data with query: {query}")
         
-        # Stream status updates during execution
-        def send_progress_updates():
-            progress = 50
-            while progress < 85:
-                time.sleep(1.5)  # Update every 1.5 seconds
-                progress += 2
-                update_operation_status(operation_id, "executing", min(progress, 85), 
-                                        "Analysis in progress...")
-                
         # Start progress update in background
         update_thread = None
         try:
@@ -930,6 +1170,13 @@ async def pandas_agent(client: AzureOpenAI, thread_id: Optional[str], query: str
         
         # Run the analysis using the PandasAgentManager
         result, error, removed_files = manager.analyze(thread_id, query, files)
+        
+        # Stop the background updates
+        stop_background_updates.set()
+        
+        # Wait for the update thread to terminate (with timeout)
+        if update_thread and update_thread.is_alive():
+            update_thread.join(timeout=1.0)
         
         # Prepare the response
         update_operation_status(operation_id, "formatting", 90, "Formatting response")
@@ -972,8 +1219,27 @@ async def pandas_agent(client: AzureOpenAI, thread_id: Optional[str], query: str
                     # If fallback fails, return original error
                     logging.error(f"Fallback info generation failed: {fallback_e}")
             
-            # Standard error response
-            final_response = f"Error analyzing data: {error}"
+            # Add debug information to error response
+            debug_info = ""
+            if invalid_files:
+                debug_info = "\n\nDebug information:\n"
+                for name, err in invalid_files:
+                    debug_info += f"- File '{name}': {err}\n"
+                
+                # Add info about files in /tmp
+                try:
+                    tmp_files = [f for f in os.listdir('/tmp') if f.endswith('.csv') or f.endswith('.xlsx')]
+                    if tmp_files:
+                        debug_info += f"\nAvailable files in /tmp:\n"
+                        for i, tmp_file in enumerate(tmp_files[:10]):  # Show first 10
+                            tmp_path = os.path.join('/tmp', tmp_file)
+                            tmp_size = os.path.getsize(tmp_path)
+                            debug_info += f"- {tmp_file} (size: {tmp_size} bytes)\n"
+                except Exception as tmp_err:
+                    debug_info += f"\nError listing /tmp: {str(tmp_err)}\n"
+            
+            # Standard error response with debugging info
+            final_response = f"Error analyzing data: {error}{debug_info}"
             
             # If files were removed via FIFO, add a note about it
             if removed_files:
@@ -1011,6 +1277,9 @@ async def pandas_agent(client: AzureOpenAI, thread_id: Optional[str], query: str
         return final_response
     
     except Exception as e:
+        # Stop the background updates
+        stop_background_updates.set()
+        
         error_details = traceback.format_exc()
         logging.error(f"Critical error in pandas_agent: {str(e)}\n{error_details}")
         
@@ -1021,20 +1290,38 @@ async def pandas_agent(client: AzureOpenAI, thread_id: Optional[str], query: str
         debug_info = []
         try:
             # Check if files exist
+            debug_info.append("File System Debugging Information:")
             for file in files:
                 file_name = file.get("name", "unnamed")
                 file_path = file.get("path", "unknown")
                 if file_path and os.path.exists(file_path):
-                    debug_info.append(f"File '{file_name}' exists at path: {file_path}")
+                    debug_info.append(f"- File '{file_name}' exists at path: {file_path}")
                     file_size = os.path.getsize(file_path)
-                    debug_info.append(f" - Size: {file_size} bytes")
+                    debug_info.append(f"  - Size: {file_size} bytes")
+                    # Try to read first 20 bytes to verify readability
+                    try:
+                        with open(file_path, 'rb') as f:
+                            first_bytes = f.read(20)
+                        debug_info.append(f"  - First bytes: {first_bytes}")
+                    except Exception as read_err:
+                        debug_info.append(f"  - Read error: {str(read_err)}")
                 else:
-                    debug_info.append(f"File '{file_name}' does not exist at path: {file_path}")
-        except:
-            pass
+                    debug_info.append(f"- File '{file_name}' does not exist at path: {file_path}")
+                    
+                    # Look for similar files
+                    possible_paths = [
+                        path for path in os.listdir('/tmp') 
+                        if path.endswith(('.csv', '.xlsx', '.xls')) and os.path.isfile(os.path.join('/tmp', path))
+                    ]
+                    if possible_paths:
+                        debug_info.append(f"  - Found possible CSV/Excel files in /tmp directory:")
+                        for i, path in enumerate(possible_paths[:5]):  # Show first 5
+                            debug_info.append(f"    {i+1}. {path}")
+        except Exception as debug_err:
+            debug_info.append(f"Error during debugging: {str(debug_err)}")
         
         # Provide a graceful failure response with debug info
-        debug_str = "\n".join(debug_info) if debug_info else "No additional debug information available."
+        debug_str = "\n".join(debug_info)
         error_response = f"""Sorry, I encountered an error while trying to analyze your data files.
 
 Error details: {str(e)}
@@ -1047,6 +1334,7 @@ Please try again with a different query or contact support if the issue persists
 Operation ID: {operation_id}"""
                 
         return error_response
+        
 async def image_analysis(client: AzureOpenAI, image_data: bytes, filename: str, prompt: Optional[str] = None) -> str:
     """Analyzes an image using Azure OpenAI vision capabilities and returns the analysis text."""
     try:
@@ -2041,17 +2329,43 @@ async def conversation(
             buffer = []
             completed = False
             tool_call_results = []
+            run_id = None
+            tool_outputs_submitted = False
+            wait_for_final_response = False
+            latest_message_id = None
             
             try:
+                # Get the most recent message ID before starting the run
+                # This helps track if we've received new messages
+                try:
+                    pre_run_messages = client.beta.threads.messages.list(
+                        thread_id=session,
+                        order="desc",
+                        limit=1
+                    )
+                    if pre_run_messages and pre_run_messages.data:
+                        latest_message_id = pre_run_messages.data[0].id
+                        logging.info(f"Latest message before run: {latest_message_id}")
+                except Exception as e:
+                    logging.warning(f"Could not get latest message before run: {e}")
+                
                 # Create run and stream the response
                 with client.beta.threads.runs.stream(
                     thread_id=session,
                     assistant_id=assistant,
                 ) as stream:
                     for event in stream:
+                        # Store run ID for potential use
+                        if hasattr(event, 'data') and hasattr(event.data, 'id'):
+                            run_id = event.data.id
+                            
                         # Check for message creation and completion
                         if event.event == "thread.message.created":
                             logging.info(f"New message created: {event.data.id}")
+                            # Track if this is a new message after tool outputs were submitted
+                            if tool_outputs_submitted and event.data.id != latest_message_id:
+                                wait_for_final_response = True
+                                latest_message_id = event.data.id
                             
                         # Handle text deltas
                         if event.event == "thread.message.delta":
@@ -2061,11 +2375,20 @@ async def conversation(
                                     if content_part.type == 'text' and content_part.text:
                                         text_value = content_part.text.value
                                         if text_value:
-                                            buffer.append(text_value)
-                                            # Yield chunks frequently for better streaming feel
-                                            if len(buffer) >= 3:  # Smaller buffer for more frequent updates
-                                                yield ''.join(buffer)
-                                                buffer = []
+                                            # Check if this is text after the tool outputs were submitted
+                                            if tool_outputs_submitted and wait_for_final_response:
+                                                # This is the assistant's final response after analyzing the data
+                                                buffer.append(text_value)
+                                                # Yield chunks more frequently for better streaming
+                                                if len(buffer) >= 2:
+                                                    yield ''.join(buffer)
+                                                    buffer = []
+                                            elif not tool_outputs_submitted:
+                                                # Normal text before tool outputs were submitted
+                                                buffer.append(text_value)
+                                                if len(buffer) >= 3:
+                                                    yield ''.join(buffer)
+                                                    buffer = []
                         
                         # Explicitly handle run completion event
                         if event.event == "thread.run.completed":
@@ -2142,9 +2465,9 @@ async def conversation(
                                             # Stream status indicating completion
                                             yield "\n[Data analysis complete]\n"
                                             
-                                            # *** IMPORTANT: Display the actual analysis result to the user ***
-                                            yield "\n[Analysis Result]:\n"
-                                            yield analysis_result
+                                            # Display the actual analysis result to the user
+                                            # yield "\n[Analysis Result]:\n"
+                                            # yield analysis_result
                                             
                                             # Add to tool outputs
                                             tool_outputs.append({
@@ -2188,7 +2511,7 @@ async def conversation(
                                                 tool_outputs=tool_outputs
                                             )
                                             submit_success = True
-                                            # Don't yield extra message here - we've already shown the actual result
+                                            tool_outputs_submitted = True
                                             logging.info(f"Successfully submitted tool outputs for run {event.data.id}")
                                         except Exception as submit_e:
                                             retry_count += 1
@@ -2197,44 +2520,75 @@ async def conversation(
                                                 yield "\n[Error: Failed to submit analysis results. Please try again.]\n"
                                             time.sleep(1)
                     
-                    # Yield any remaining text in the buffer
+                    # Yield any remaining text in the buffer before exiting the stream loop
                     if buffer:
                         yield ''.join(buffer)
-                        
-                    # We only show preliminary results if we haven't already shown them
-                    # and the run didn't complete normally
-                    if not completed and tool_call_results and not submit_success:
-                        # If the run didn't complete normally but we have tool results,
-                        # show them directly to avoid leaving the user without a response
-                        yield "\n\n[Note: Here are the preliminary analysis results:]\n\n"
-                        for result in tool_call_results:
-                            yield result
-                        
-                # Additional fallback - fetch the most recent message if streaming didn't work
-                if not buffer and not tool_call_results:
-                    try:
-                        logging.info("Attempting to retrieve final response through direct message fetch")
-                        messages = client.beta.threads.messages.list(
-                            thread_id=session,
-                            order="desc",
-                            limit=1
-                        )
-                        if messages and messages.data:
-                            latest_message = messages.data[0]
-                            response_content = ""
-                            for content_part in latest_message.content:
-                                if content_part.type == 'text':
-                                    response_content += content_part.text.value
-                            if response_content:
-                                yield "\n\n[Response retrieved:]\n\n"
-                                yield response_content
-                    except Exception as fetch_e:
-                        logging.error(f"Failed to fetch final message: {fetch_e}")
-                        # Last resort
-                        yield "\n\n[Unable to retrieve complete response. Please try again.]\n"
+                        buffer = []
+                
+                # If tool outputs were submitted but we didn't receive a final response,
+                # we need to actively poll for the final response
+                if tool_outputs_submitted and not completed and run_id:
+                    logging.info(f"Tool outputs submitted but run not completed. Polling for final response...")
+                    
+                    # Poll for run completion
+                    max_poll_attempts = 15
+                    poll_interval = 2  # seconds
+                    
+                    for attempt in range(max_poll_attempts):
+                        try:
+                            run_status = client.beta.threads.runs.retrieve(
+                                thread_id=session,
+                                run_id=run_id
+                            )
+                            
+                            logging.info(f"Run status poll {attempt+1}/{max_poll_attempts}: {run_status.status}")
+                            
+                            if run_status.status == "completed":
+                                # Wait a moment for message to be fully available
+                                time.sleep(1)
+                                
+                                # Get the latest message
+                                messages = client.beta.threads.messages.list(
+                                    thread_id=session,
+                                    order="desc",
+                                    limit=1
+                                )
+                                
+                                if messages and messages.data:
+                                    latest_message = messages.data[0]
+                                    # Check if this is a new message (different from our pre-run message)
+                                    if not latest_message_id or latest_message.id != latest_message_id:
+                                        response_content = ""
+                                        
+                                        for content_part in latest_message.content:
+                                            if content_part.type == 'text':
+                                                response_content += content_part.text.value
+                                        
+                                        if response_content:
+                                            # Yield the assistant's final response
+                                            yield "\n\n"
+                                            yield response_content
+                                            logging.info("Successfully fetched and streamed final response")
+                                break  # Exit the polling loop
+                                
+                            elif run_status.status in ["failed", "cancelled", "expired"]:
+                                logging.error(f"Run ended with status: {run_status.status}")
+                                yield f"\n\n[Run {run_status.status}. Please try your question again.]"
+                                break
+                                
+                            # Continue polling if still in progress
+                            if attempt < max_poll_attempts - 1:
+                                time.sleep(poll_interval)
+                                
+                        except Exception as poll_e:
+                            logging.error(f"Error polling run status (attempt {attempt+1}): {poll_e}")
+                            if attempt == max_poll_attempts - 1:
+                                yield "\n\n[Could not retrieve final response. The analysis results are shown above.]"
+                            time.sleep(poll_interval)
                 
             except Exception as e:
-                logging.error(f"Streaming error during run for thread {session}: {e}")
+                error_details = traceback.format_exc()
+                logging.error(f"Streaming error during run for thread {session}: {e}\n{error_details}")
                 yield "\n[ERROR] An error occurred while generating the response. Please try again.\n"
 
         # Return the streaming response
@@ -2243,7 +2597,6 @@ async def conversation(
     except Exception as e:
         logging.error(f"Error in /conversation endpoint setup: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to process conversation request: {str(e)}")
-        
 @app.get("/chat")
 async def chat(
     session: Optional[str] = None,
