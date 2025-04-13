@@ -1440,13 +1440,15 @@ async def add_file_awareness(client: AzureOpenAI, thread_id: str, file_info: Dic
             elif file_type == "csv":
                 awareness_message += " This is a CSV file."
             
-            awareness_message += "\n\nWhen you need to analyze this data file, you can ask questions about it in natural language. For example:"
-            awareness_message += "\n- 'Can you summarize the data in the file?'"
-            awareness_message += "\n- 'How many records are in the CSV file?'"
-            awareness_message += "\n- 'What columns are available in the Excel file?'"
-            awareness_message += "\n- 'Find the average value of column X'" 
-            awareness_message += "\n- 'Plot the data from column Y over time'"
-            awareness_message += "\n\nThe pandas agent will process your request and return the results."
+            awareness_message += "\n\nIMPORTANT: You MUST use the pandas_agent tool for ANY request that mentions this file or asks about data analysis. This includes:"
+            awareness_message += "\n- Simple requests like 'explain the file'"
+            awareness_message += "\n- Vague requests like 'tell me about the data'"
+            awareness_message += "\n- Explicit requests like 'analyze this CSV'" 
+            awareness_message += "\n- Any query containing the filename"
+            awareness_message += "\n- ANY follow-up question after discussing this file"
+            
+            awareness_message += "\n\nUser requests like 'explain the report' or 'summarize the data' should ALWAYS trigger you to use the pandas_agent tool."
+            awareness_message += "\n\nNEVER try to answer questions about this file from memory - ALWAYS use the pandas_agent tool."
         
         elif processing_method == "thread_message":
             awareness_message += "This image has been analyzed and the descriptive content has been added to this thread."
@@ -1527,7 +1529,7 @@ async def initiate_chat(request: Request):
                     "properties": {
                         "query": {
                             "type": "string",
-                            "description": "The specific question or analysis task to perform on the data"
+                            "description": "The specific question or analysis task to perform on the data. Be comprehensive and explicit."
                         },
                         "filename": {
                             "type": "string",
@@ -1553,9 +1555,10 @@ You are a Product Management AI Co-Pilot that helps create documentation and ana
 
 ### Understanding File Types and Processing Methods:
 
-1. **CSV/Excel Files** - When users upload these files, you should:
+1. **CSV/Excel Files** - When users upload/follows up/enquire about these files, you should:
    - ALWAYS use the pandas_agent tool to analyze them - NEVER try to answer from memory
-   - For ANY question about data in CSV/Excel files, even follow-up questions, you MUST use the pandas_agent tool
+   - For ANY question about CSV/Excel data, you MUST use the pandas_agent tool, even for seemingly simple questions
+   - When a user mentions a CSV/Excel file name or asks about "data", "report", "spreadsheet", "numbers", "figures", "statistics", or similar terms, ALWAYS use the pandas_agent tool
    - Never rely on past analysis results - always run a fresh analysis with the pandas_agent tool
    - Common use cases: data summarization, statistical analysis, finding trends, answering specific questions about the data
 
@@ -1572,40 +1575,66 @@ You are a Product Management AI Co-Pilot that helps create documentation and ana
 ### Using the pandas_agent Tool:
 
 When a user asks ANY question about data in CSV or Excel files (including follow-up questions), ALWAYS use the pandas_agent tool:
-1. Identify that the question relates to data (e.g., "What's the average revenue?", "How many customers are in the dataset?", "Can you explain this trend?", etc.)
+1. Identify that the question relates to data files
 2. Formulate a clear, specific query for the pandas_agent that includes the necessary context
 3. Call the pandas_agent tool with your query
 4. Never try to answer data-related questions from memory of previous conversations
 
-Examples of good pandas_agent queries:
-- "Summarize the data in sales_data.csv"
-- "Calculate the average value in the 'Revenue' column from Q2_results.xlsx"
-- "Find the top 5 customers by purchase amount from customer_data.csv"
-- "Compare sales figures between 2022 and 2023 from the annual_report.xlsx"
 
-### PRD Generation:
+### PRD Generation Excellence:
 
-When asked to create a PRD, include these sections:
-- Product Manager, Product Name, Vision
-- Customer Problem, Personas, Date
-- Executive Summary, Goals & Objectives
-- Key Features, Functional Requirements
-- Non-Functional Requirements, Use Cases
-- Milestones, Risks
+When creating a PRD (Product Requirements Document), develop a comprehensive and professional document with these mandatory sections:
 
-Always leverage any uploaded files to fetch information for the PRD content. 
-If unsure about some details, please ask user to provide or clarify information.
+1. **Product Overview:**
+   - Product Manager: [Name and contact details]
+   - Product Name: [Clear, concise name]
+   - Date: [Current date and version]
+   - Vision Statement: [Compelling, aspirational vision in 1-2 sentences]
 
-### Important Guidelines:
+2. **Problem and Customer Analysis:**
+   - Customer Problem: [Clearly articulated problem statement]
+   - Market Opportunity: [Quantified TAM/SAM/SOM when possible]
+   - Personas: [Detailed primary and secondary user personas]
+   - User Stories: [Key scenarios from persona perspective]
 
+3. **Strategic Elements:**
+   - Executive Summary: [Brief overview of product and value proposition]
+   - Business Objectives: [Measurable goals with KPIs]
+   - Success Metrics: [Specific metrics to track success]
+
+4. **Detailed Requirements:**
+   - Key Features: [Prioritized feature list with clear descriptions]
+   - Functional Requirements: [Detailed specifications for each feature]
+   - Non-Functional Requirements: [Performance, security, scalability, etc.]
+   - Technical Specifications: [Relevant architecture and technical details]
+
+5. **Implementation Planning:**
+   - Milestones: [Phased delivery timeline with key dates]
+   - Dependencies: [Internal and external dependencies]
+   - Risks and Mitigations: [Potential challenges and contingency plans]
+
+6. **Appendices:**
+   - Supporting Documents: [Research findings, competitive analysis, etc.]
+   - Open Questions: [Items requiring further investigation]
+
+If any information is unavailable, clearly mark sections as "[To be determined]" and request specific clarification from the user. When creating a PRD, maintain a professional, clear, and structured format with appropriate headers and bullet points.
+
+### Professional Assistance Guidelines:
+
+- Demonstrate expertise and professionalism in all responses
+- Proactively seek clarification when details are missing or ambiguous
+- Ask specific questions about file names, requirements, or expectations when needed
+- Provide context for why you need certain information to deliver better results
+- Structure responses clearly with appropriate formatting for readability
 - Always reference files by their exact filenames
 - Use tools appropriately based on file type
 - NEVER attempt to analyze CSV/Excel data without using the pandas_agent tool
 - For ANY question about data in CSV/Excel files, even follow-up questions, you MUST use the pandas_agent tool
 - Acknowledge limitations and be transparent when information is unavailable
-- Ensure responses are concise, relevant, and helpful
+- Balance detail with conciseness based on the user's needs
+- When in doubt about requirements, ask targeted questions rather than making assumptions
 
-Remember that the pandas_agent has full access to all CSV/Excel files that have been uploaded in the current session.
+Remember to be thorough yet efficient with your responses, anticipating follow-up needs while addressing the immediate question.
 '''
     
     # Create the assistant
@@ -1825,13 +1854,13 @@ async def co_pilot(request: Request):
                 "type": "function",
                 "function": {
                     "name": "pandas_agent",
-                    "description": "Analyzes CSV and Excel files to answer data-related questions and perform data analysis",
+                    "description": "Analyzes CSV and Excel files to answer data-related questions and perform data analysis. Use this tool for ANY request that mentions files, data, or analysis, including requests like 'explain the data', 'summarize the file', or questions containing the file name.",
                     "parameters": {
                         "type": "object",
                         "properties": {
                             "query": {
                                 "type": "string",
-                                "description": "The specific question or analysis task to perform on the data"
+                                "description": "The specific question or analysis task to perform on the data. Be comprehensive and explicit."
                             },
                             "filename": {
                                 "type": "string",
@@ -1999,6 +2028,12 @@ async def upload_file(
                             "files": json.dumps(pandas_files)
                         }
                     )
+                    client.beta.threads.messages.create(
+                        thread_id=thread_id,
+                        role="user",
+                        content=f"IMPORTANT INSTRUCTION: For ANY query about the file '{filename}', including requests to explain, summarize, or analyze the file, or any mention of the filename, you MUST use the pandas_agent tool. Never try to answer questions about this file from memory.",
+                        metadata={"type": "pandas_agent_instruction"}
+                    )
                     
                     logging.info(f"Updated pandas agent files info in thread {thread_id}")
                 except Exception as e:
@@ -2027,7 +2062,7 @@ async def upload_file(
                     "type": "function",
                     "function": {
                         "name": "pandas_agent",
-                        "description": "Analyzes CSV and Excel files to answer data-related questions and perform data analysis",
+                        "description": "Analyzes CSV and Excel files to answer data-related questions and perform data analysis. Use this tool for ANY request that mentions files, data, or analysis, including requests like 'explain the data', 'summarize the file', or questions containing the file name.",
                         "parameters": {
                             "type": "object",
                             "properties": {
