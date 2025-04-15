@@ -2534,10 +2534,206 @@ async def process_conversation(
             if not success:
                 raise HTTPException(status_code=500, detail="Failed to add message to conversation thread after retries")
         
-        # Define the streaming generator function - used for both modes
+        # Handle non-streaming mode (/chat endpoint)
+        if not stream_output:
+            # For non-streaming mode, we'll use a completely different approach
+            full_response = ""
+            try:
+                # Create a run without streaming
+                run = client.beta.threads.runs.create(
+                    thread_id=session,
+                    assistant_id=assistant
+                )
+                run_id = run.id
+                logging.info(f"Created run {run_id} for thread {session} (non-streaming mode)")
+                
+                # Poll for run completion
+                max_poll_attempts = 60  # 5 minute timeout with 5 second intervals
+                poll_interval = 5  # seconds
+                tool_outputs_submitted = False
+                tool_call_results = []
+                
+                for attempt in range(max_poll_attempts):
+                    try:
+                        run_status = client.beta.threads.runs.retrieve(
+                            thread_id=session,
+                            run_id=run_id
+                        )
+                        
+                        logging.info(f"Run status poll {attempt+1}/{max_poll_attempts}: {run_status.status}")
+                        
+                        # Handle completed run
+                        if run_status.status == "completed":
+                            # Get the latest message
+                            messages = client.beta.threads.messages.list(
+                                thread_id=session,
+                                order="desc",
+                                limit=1
+                            )
+                            
+                            if messages and messages.data:
+                                latest_message = messages.data[0]
+                                for content_part in latest_message.content:
+                                    if content_part.type == 'text':
+                                        full_response += content_part.text.value
+                                
+                                logging.info(f"Successfully retrieved final response")
+                            break  # Exit the polling loop
+                        
+                        # Handle failed/cancelled/expired run
+                        elif run_status.status in ["failed", "cancelled", "expired"]:
+                            logging.error(f"Run ended with status: {run_status.status}")
+                            return JSONResponse(content={"response": f"Sorry, I encountered an error and couldn't complete your request. Run status: {run_status.status}. Please try again."})
+                        
+                        # Handle tool calls
+                        elif run_status.status == "requires_action":
+                            if run_status.required_action.type == "submit_tool_outputs":
+                                tool_calls = run_status.required_action.submit_tool_outputs.tool_calls
+                                tool_outputs = []
+                                
+                                for tool_call in tool_calls:
+                                    if tool_call.function.name == "pandas_agent":
+                                        try:
+                                            # Extract arguments
+                                            import json
+                                            args = json.loads(tool_call.function.arguments)
+                                            query = args.get("query", "")
+                                            filename = args.get("filename", None)
+                                            
+                                            # Get pandas files for this thread
+                                            pandas_files = []
+                                            retry_count = 0
+                                            max_retries = 3
+                                            
+                                            while retry_count < max_retries:
+                                                try:
+                                                    messages = client.beta.threads.messages.list(
+                                                        thread_id=session,
+                                                        order="desc",
+                                                        limit=50
+                                                    )
+                                                    
+                                                    for msg in messages.data:
+                                                        if hasattr(msg, 'metadata') and msg.metadata and msg.metadata.get('type') == 'pandas_agent_files':
+                                                            try:
+                                                                pandas_files = json.loads(msg.metadata.get('files', '[]'))
+                                                            except Exception as parse_e:
+                                                                logging.error(f"Error parsing pandas files metadata: {parse_e}")
+                                                            break
+                                                    break  # Success, exit retry loop
+                                                except Exception as list_e:
+                                                    retry_count += 1
+                                                    logging.error(f"Error retrieving pandas files (attempt {retry_count}): {list_e}")
+                                                    time.sleep(1)
+                                            
+                                            # Filter by filename if specified
+                                            if filename:
+                                                pandas_files = [f for f in pandas_files if f.get("name") == filename]
+                                            
+                                            # Generate operation ID for status tracking
+                                            pandas_agent_operation_id = f"pandas_agent_{int(time.time())}_{os.urandom(2).hex()}"
+                                            
+                                            # Execute the pandas_agent
+                                            analysis_result = await pandas_agent(
+                                                client=client,
+                                                thread_id=session,
+                                                query=query,
+                                                files=pandas_files
+                                            )
+                                            
+                                            # Add to tool outputs
+                                            tool_outputs.append({
+                                                "tool_call_id": tool_call.id,
+                                                "output": analysis_result
+                                            })
+                                            
+                                            # Save for potential fallback
+                                            tool_call_results.append(analysis_result)
+                                            
+                                        except Exception as e:
+                                            error_details = traceback.format_exc()
+                                            logging.error(f"Error executing pandas_agent: {e}\n{error_details}")
+                                            error_msg = f"Error analyzing data: {str(e)}"
+                                            
+                                            # Add error to tool outputs
+                                            tool_outputs.append({
+                                                "tool_call_id": tool_call.id,
+                                                "output": error_msg
+                                            })
+                                            
+                                            # Save for potential fallback
+                                            tool_call_results.append(error_msg)
+                                
+                                # Submit tool outputs
+                                if tool_outputs:
+                                    retry_count = 0
+                                    max_retries = 3
+                                    submit_success = False
+                                    
+                                    while retry_count < max_retries and not submit_success:
+                                        try:
+                                            client.beta.threads.runs.submit_tool_outputs(
+                                                thread_id=session,
+                                                run_id=run_id,
+                                                tool_outputs=tool_outputs
+                                            )
+                                            submit_success = True
+                                            tool_outputs_submitted = True
+                                            logging.info(f"Successfully submitted tool outputs for run {run_id}")
+                                        except Exception as submit_e:
+                                            retry_count += 1
+                                            logging.error(f"Error submitting tool outputs (attempt {retry_count}): {submit_e}")
+                                            time.sleep(1)
+                                    
+                                    if not submit_success:
+                                        return JSONResponse(content={"response": f"Sorry, I encountered an error processing your data analysis request. Please try again."})
+                        
+                        # Continue polling if still in progress
+                        if attempt < max_poll_attempts - 1:
+                            time.sleep(poll_interval)
+                            
+                    except Exception as poll_e:
+                        logging.error(f"Error polling run status (attempt {attempt+1}): {poll_e}")
+                        time.sleep(poll_interval)
+                        
+                # If we reach here without a full_response, but we have tool results, use those
+                if not full_response and tool_call_results:
+                    full_response = "\n\n".join(tool_call_results)
+                    logging.info("Using tool call results as fallback response")
+                
+                # If we still don't have a response, try one more time to get the latest message
+                if not full_response:
+                    try:
+                        messages = client.beta.threads.messages.list(
+                            thread_id=session,
+                            order="desc",
+                            limit=1
+                        )
+                        
+                        if messages and messages.data:
+                            latest_message = messages.data[0]
+                            for content_part in latest_message.content:
+                                if content_part.type == 'text':
+                                    full_response += content_part.text.value
+                    except Exception as final_e:
+                        logging.error(f"Error retrieving final message: {final_e}")
+                
+                # Final fallback if we still don't have a response
+                if not full_response:
+                    full_response = "I processed your request, but couldn't generate a proper response. Please try again or rephrase your question."
+
+                return JSONResponse(content={"response": full_response})
+                
+            except Exception as e:
+                logging.error(f"Error in non-streaming response generation: {e}")
+                return JSONResponse(
+                    content={"response": "An error occurred while processing your request. Please try again."},
+                    status_code=500
+                )
+        
+        # Define the streaming generator function for streaming mode only
         def stream_response():
             buffer = []
-            full_response = []  # For collecting entire response in non-streaming mode
             completed = False
             tool_call_results = []
             run_id = None
@@ -2590,17 +2786,14 @@ async def process_conversation(
                                             if tool_outputs_submitted and wait_for_final_response:
                                                 # This is the assistant's final response after analyzing the data
                                                 buffer.append(text_value)
-                                                # Always collect for the full response
-                                                full_response.append(text_value)
                                                 # Yield chunks more frequently for better streaming
-                                                if stream_output and len(buffer) >= 2:
+                                                if len(buffer) >= 2:
                                                     yield ''.join(buffer)
                                                     buffer = []
                                             elif not tool_outputs_submitted:
                                                 # Normal text before tool outputs were submitted
                                                 buffer.append(text_value)
-                                                full_response.append(text_value)
-                                                if stream_output and len(buffer) >= 3:
+                                                if len(buffer) >= 3:
                                                     yield ''.join(buffer)
                                                     buffer = []
                         
@@ -2615,10 +2808,7 @@ async def process_conversation(
                                 tool_calls = event.data.required_action.submit_tool_outputs.tool_calls
                                 tool_outputs = []
                                 
-                                processing_message = "\n[Processing data analysis request...]\n"
-                                full_response.append(processing_message)
-                                if stream_output:
-                                    yield processing_message
+                                yield "\n[Processing data analysis request...]\n"
                                 
                                 for tool_call in tool_calls:
                                     if tool_call.function.name == "pandas_agent":
@@ -2654,10 +2844,7 @@ async def process_conversation(
                                                     retry_count += 1
                                                     logging.error(f"Error retrieving pandas files (attempt {retry_count}): {list_e}")
                                                     if retry_count >= max_retries:
-                                                        warning_msg = "\n[Warning: Could not retrieve file information]\n"
-                                                        full_response.append(warning_msg)
-                                                        if stream_output:
-                                                            yield warning_msg
+                                                        yield "\n[Warning: Could not retrieve file information]\n"
                                                     time.sleep(1)
                                             
                                             # Filter by filename if specified
@@ -2665,22 +2852,17 @@ async def process_conversation(
                                                 pandas_files = [f for f in pandas_files if f.get("name") == filename]
                                             
                                             # Stream progress updates
-                                            loading_msg = "\n[Loading data files...]\n"
-                                            full_response.append(loading_msg)
-                                            if stream_output:
-                                                yield loading_msg
+                                            yield "\n[Loading data files...]\n"
                                             
                                             # Generate operation ID for status tracking
                                             pandas_agent_operation_id = f"pandas_agent_{int(time.time())}_{os.urandom(2).hex()}"
                                             update_operation_status(pandas_agent_operation_id, "started", 0, "Starting data analysis")
                                             
                                             # Stream initial status
-                                            analyzing_msg = "\n[Analyzing your data...]\n"
-                                            full_response.append(analyzing_msg)
-                                            if stream_output:
-                                                yield analyzing_msg
+                                            yield "\n[Analyzing your data...]\n"
                                             
-                                            # Get analysis result
+                                            # Modified: Don't try to add message directly to thread from the pandas_agent
+                                            # Instead, get the analysis result and return it directly as a tool output
                                             manager = PandasAgentManager.get_instance()
                                             result, error, removed_files = manager.analyze(
                                                 thread_id=session,
@@ -2697,10 +2879,7 @@ async def process_conversation(
                                                 analysis_result += f"\n\nNote: The following file(s) were removed due to the 3-file limit: {removed_files_str}"
                                             
                                             # Stream status indicating completion
-                                            complete_msg = "\n[Data analysis complete]\n"
-                                            full_response.append(complete_msg)
-                                            if stream_output:
-                                                yield complete_msg
+                                            yield "\n[Data analysis complete]\n"
                                             
                                             # Log the final analysis for debugging
                                             logging.info(f"Pandas agent completed analysis: {analysis_result[:100]}...")
@@ -2729,10 +2908,7 @@ async def process_conversation(
                                             })
                                             
                                             # Stream error to user
-                                            error_response = f"\n[Error: {str(e)}]\n"
-                                            full_response.append(error_response)
-                                            if stream_output:
-                                                yield error_response
+                                            yield f"\n[Error: {str(e)}]\n"
                                             
                                             # Save for potential fallback
                                             tool_call_results.append(error_msg)
@@ -2743,10 +2919,7 @@ async def process_conversation(
                                     max_retries = 3
                                     submit_success = False
                                     
-                                    generating_msg = "\n[Generating response based on analysis...]\n"
-                                    full_response.append(generating_msg)
-                                    if stream_output:
-                                        yield generating_msg
+                                    yield "\n[Generating response based on analysis...]\n"
                                     
                                     while retry_count < max_retries and not submit_success:
                                         try:
@@ -2762,14 +2935,11 @@ async def process_conversation(
                                             retry_count += 1
                                             logging.error(f"Error submitting tool outputs (attempt {retry_count}): {submit_e}")
                                             if retry_count >= max_retries:
-                                                error_submit_msg = "\n[Error: Failed to submit analysis results. Please try again.]\n"
-                                                full_response.append(error_submit_msg)
-                                                if stream_output:
-                                                    yield error_submit_msg
+                                                yield "\n[Error: Failed to submit analysis results. Please try again.]\n"
                                             time.sleep(1)
                     
                     # Yield any remaining text in the buffer before exiting the stream loop
-                    if buffer and stream_output:
+                    if buffer:
                         yield ''.join(buffer)
                         buffer = []
                 
@@ -2813,25 +2983,15 @@ async def process_conversation(
                                                 response_content += content_part.text.value
                                         
                                         if response_content:
-                                            # Prepare the assistant's final response
-                                            separator = "\n\n"
-                                            full_response.append(separator)
-                                            full_response.append(response_content)
-                                            
-                                            if stream_output:
-                                                # Yield the assistant's final response
-                                                yield separator
-                                                yield response_content
-                                                
-                                            logging.info("Successfully fetched final response")
+                                            # Yield the assistant's final response
+                                            yield "\n\n"
+                                            yield response_content
+                                            logging.info("Successfully fetched and streamed final response")
                                 break  # Exit the polling loop
                                 
                             elif run_status.status in ["failed", "cancelled", "expired"]:
                                 logging.error(f"Run ended with status: {run_status.status}")
-                                error_status_msg = f"\n\n[Run {run_status.status}. Please try your question again.]"
-                                full_response.append(error_status_msg)
-                                if stream_output:
-                                    yield error_status_msg
+                                yield f"\n\n[Run {run_status.status}. Please try your question again.]"
                                 break
                                 
                             # Continue polling if still in progress
@@ -2841,44 +3001,16 @@ async def process_conversation(
                         except Exception as poll_e:
                             logging.error(f"Error polling run status (attempt {attempt+1}): {poll_e}")
                             if attempt == max_poll_attempts - 1:
-                                retrieval_error_msg = "\n\n[Could not retrieve final response. The analysis results are shown above.]"
-                                full_response.append(retrieval_error_msg)
-                                if stream_output:
-                                    yield retrieval_error_msg
+                                yield "\n\n[Could not retrieve final response. The analysis results are shown above.]"
                             time.sleep(poll_interval)
                 
             except Exception as e:
                 error_details = traceback.format_exc()
                 logging.error(f"Streaming error during run for thread {session}: {e}\n{error_details}")
-                error_msg = "\n[ERROR] An error occurred while generating the response. Please try again.\n"
-                full_response.append(error_msg)
-                if stream_output:
-                    yield error_msg
-                    
-            # For non-streaming mode, always return the full collected response
-            if not stream_output:
-                # Join all collected text for non-streaming return
-                return ''.join(full_response)
+                yield "\n[ERROR] An error occurred while generating the response. Please try again.\n"
 
-        # End of stream_response generator function
-        
-        # For streaming mode, return a StreamingResponse
-        if stream_output:
-            return StreamingResponse(stream_response(), media_type="text/event-stream")
-        else:
-            # For non-streaming mode, run the generator to completion and return the full response
-            full_text = "".join([chunk for chunk in stream_response() if isinstance(chunk, str)])
-            
-            # If the generator didn't return any text (possibly returned the full string directly)
-            if not full_text:
-                # Run it once more non-streaming mode
-                full_text = stream_response()
-                
-            # If we still don't have a response, provide a fallback
-            if not full_text:
-                full_text = "I processed your request, but couldn't generate a proper response. Please try again or rephrase your question."
-                
-            return JSONResponse(content={"response": full_text})
+        # Return the streaming response for streaming mode
+        return StreamingResponse(stream_response(), media_type="text/event-stream")
 
     except Exception as e:
         endpoint_type = "conversation" if stream_output else "chat"
