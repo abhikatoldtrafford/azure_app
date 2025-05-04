@@ -2104,7 +2104,6 @@ async def upload_file(
                         if hasattr(msg, 'metadata') and msg.metadata and msg.metadata.get('type') == 'pandas_agent_files':
                             pandas_files_message_id = msg.id
                             try:
-                                import json
                                 pandas_files = json.loads(msg.metadata.get('files', '[]'))
                             except:
                                 pandas_files = []
@@ -2125,7 +2124,6 @@ async def upload_file(
                             logging.error(f"Error deleting pandas files message: {e}")
                     
                     # Create a new message with updated files
-                    import json
                     client.beta.threads.messages.create(
                         thread_id=thread_id,
                         role="user",
@@ -3088,7 +3086,6 @@ async def process_conversation(
                                     if tool_call.function.name == "pandas_agent":
                                         try:
                                             # Extract arguments
-                                            import json
                                             args = json.loads(tool_call.function.arguments)
                                             query = args.get("query", "")
                                             filename = args.get("filename", None)
