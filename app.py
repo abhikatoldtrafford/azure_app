@@ -6891,7 +6891,7 @@ async def root():
             const chevron = element.querySelector('.fa-chevron-down');
             chevron.style.transform = category.classList.contains('active') ? 'rotate(180deg)' : 'rotate(0)';
         }
-
+    
         // Copy code to clipboard
         function copyCode(button) {
             const codeBlock = button.parentElement;
@@ -6908,13 +6908,14 @@ async def root():
                 }, 2000);
             });
         }
-
+    
         // Chatbot functionality
         let chatbotOpen = false;
         let sessionId = null;
         let assistantId = null;
-
+    
         function toggleChatbot() {
+            console.log('Toggle chatbot called');
             const chatbot = document.getElementById('chatbot');
             chatbotOpen = !chatbotOpen;
             
@@ -6930,9 +6931,10 @@ async def root():
                 chatbot.classList.remove('active');
             }
         }
-
+    
         async function initializeChat() {
             try {
+                console.log('Initializing chat...');
                 const response = await fetch('/initiate-chat', {
                     method: 'POST',
                     body: new FormData()
@@ -6941,22 +6943,23 @@ async def root():
                 const data = await response.json();
                 sessionId = data.session;
                 assistantId = data.assistant;
+                console.log('Chat initialized:', sessionId, assistantId);
             } catch (error) {
                 console.error('Failed to initialize chat:', error);
             }
         }
-
+    
         function handleChatKeyPress(event) {
             if (event.key === 'Enter') {
                 sendMessage();
             }
         }
-
+    
         // Enhanced message rendering with markdown support
         function addMessage(content, type) {
             const messagesContainer = document.getElementById('chatMessages');
             const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${type}`;
+            messageDiv.className = 'message ' + type;
             
             // Parse and render markdown tables and other formatting
             const formattedContent = parseMarkdown(content);
@@ -6965,10 +6968,10 @@ async def root():
             messagesContainer.appendChild(messageDiv);
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }
-
+    
         function parseMarkdown(text) {
             // Escape HTML first
-            let html = text.replace(/[&<>"']/g, (match) => {
+            let html = text.replace(/[&<>"']/g, function(match) {
                 const escapeMap = {
                     '&': '&amp;',
                     '<': '&lt;',
@@ -6978,39 +6981,39 @@ async def root():
                 };
                 return escapeMap[match];
             });
-
+    
             // Parse markdown tables
             html = parseMarkdownTables(html);
             
             // Parse code blocks
-            html = html.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
+            html = html.replace(/```([\\s\\S]*?)```/g, '<pre><code>$1</code></pre>');
             
             // Parse inline code
             html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
             
             // Parse bold
-            html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+            html = html.replace(/\\*\\*([^*]+)\\*\\*/g, '<strong>$1</strong>');
             
             // Parse italic
-            html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+            html = html.replace(/\\*([^*]+)\\*/g, '<em>$1</em>');
             
             // Parse links (but preserve download links)
-            html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+            html = html.replace(/\\[([^\\]]+)\\]\\(([^)]+)\\)/g, '<a href="$2" target="_blank">$1</a>');
             
             // Parse line breaks
-            html = html.replace(/\n/g, '<br>');
+            html = html.replace(/\\n/g, '<br>');
             
             // Restore download links that were already in HTML format
-            html = html.replace(/&lt;a href="([^"]+)"([^&]*)&gt;([^&]+)&lt;\/a&gt;/g, '<a href="$1"$2>$3</a>');
+            html = html.replace(/&lt;a href="([^"]+)"([^&]*)&gt;([^&]+)&lt;\\/a&gt;/g, '<a href="$1"$2>$3</a>');
             
             // Wrap in paragraph if not already structured
             if (!html.includes('<table') && !html.includes('<pre>') && !html.includes('<ul>') && !html.includes('<ol>')) {
-                html = `<p>${html}</p>`;
+                html = '<p>' + html + '</p>';
             }
             
             return html;
         }
-
+    
         function parseMarkdownTables(text) {
             // Split text into lines
             const lines = text.split('\\n');
@@ -7025,7 +7028,7 @@ async def root():
                 if (line.includes('|')) {
                     // Check if next line is separator (header row)
                     const nextLine = i + 1 < lines.length ? lines[i + 1].trim() : '';
-                    const isHeaderSeparator = nextLine.match(/^\\|?[\\s-:|]+\\|?$/);
+                    const isHeaderSeparator = /^\\|?[\\s\\-:|]+\\|?$/.test(nextLine);
                     
                     if (!inTable) {
                         inTable = true;
@@ -7033,10 +7036,10 @@ async def root():
                         
                         if (isHeaderSeparator) {
                             // This is a header row
-                            const headers = line.split('|').filter(cell => cell.trim());
+                            const headers = line.split('|').filter(function(cell) { return cell.trim(); });
                             tableHtml += '<thead><tr>';
-                            headers.forEach(header => {
-                                tableHtml += `<th>${header.trim()}</th>`;
+                            headers.forEach(function(header) {
+                                tableHtml += '<th>' + header.trim() + '</th>';
                             });
                             tableHtml += '</tr></thead>\\n<tbody>';
                             i++; // Skip separator line
@@ -7048,10 +7051,10 @@ async def root():
                     
                     if (inTable && !isHeaderSeparator) {
                         // Regular table row
-                        const cells = line.split('|').filter(cell => cell.trim());
+                        const cells = line.split('|').filter(function(cell) { return cell.trim(); });
                         tableHtml += '<tr>';
-                        cells.forEach(cell => {
-                            tableHtml += `<td>${cell.trim()}</td>`;
+                        cells.forEach(function(cell) {
+                            tableHtml += '<td>' + cell.trim() + '</td>';
                         });
                         tableHtml += '</tr>';
                     }
@@ -7076,7 +7079,7 @@ async def root():
             
             return result;
         }
-
+    
         async function sendMessage() {
             const input = document.getElementById('chatInput');
             const sendButton = document.querySelector('.chatbot-send');
@@ -7126,7 +7129,7 @@ async def root():
                     
                     let botMessage = data.response;
                     if (data.download_url) {
-                        botMessage += `\\n\\n📎 **File generated successfully!**\\n[Download ${data.filename || 'file'}](${data.download_url})`;
+                        botMessage += '\\n\\n📎 **File generated successfully!**\\n[Download ' + (data.filename || 'file') + '](' + data.download_url + ')';
                     }
                     
                     addMessage(botMessage, 'bot');
@@ -7136,7 +7139,7 @@ async def root():
                         await initializeChat();
                     }
                     
-                    const response = await fetch(`/chat?session=${sessionId}&assistant=${assistantId}&prompt=${encodeURIComponent(message)}`);
+                    const response = await fetch('/chat?session=' + sessionId + '&assistant=' + assistantId + '&prompt=' + encodeURIComponent(message));
                     const data = await response.json();
                     
                     hideTyping();
@@ -7153,32 +7156,26 @@ async def root():
                 input.focus();
             }
         }
-
+    
         function showTyping() {
             const messagesContainer = document.getElementById('chatMessages');
             const typingDiv = document.createElement('div');
             typingDiv.className = 'message bot';
             typingDiv.id = 'typingIndicator';
-            typingDiv.innerHTML = `
-                <div class="typing-indicator">
-                    <div class="typing-dot"></div>
-                    <div class="typing-dot"></div>
-                    <div class="typing-dot"></div>
-                </div>
-            `;
+            typingDiv.innerHTML = '<div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>';
             messagesContainer.appendChild(typingDiv);
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }
-
+    
         function hideTyping() {
             const typingIndicator = document.getElementById('typingIndicator');
             if (typingIndicator) {
                 typingIndicator.remove();
             }
         }
-
+    
         // Navbar scroll effect
-        window.addEventListener('scroll', () => {
+        window.addEventListener('scroll', function() {
             const navbar = document.getElementById('navbar');
             if (window.scrollY > 50) {
                 navbar.style.background = 'rgba(3, 7, 18, 0.95)';
@@ -7188,9 +7185,9 @@ async def root():
                 navbar.style.boxShadow = 'none';
             }
         });
-
+    
         // Smooth scrolling
-        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+        document.querySelectorAll('a[href^="#"]').forEach(function(anchor) {
             anchor.addEventListener('click', function (e) {
                 e.preventDefault();
                 const target = document.querySelector(this.getAttribute('href'));
@@ -7199,24 +7196,24 @@ async def root():
                 }
             });
         });
-
+    
         // Intersection Observer for animations
         const observerOptions = {
             threshold: 0.1,
             rootMargin: '0px'
         };
-
-        const observer = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
+    
+        const observer = new IntersectionObserver(function(entries) {
+            entries.forEach(function(entry) {
                 if (entry.isIntersecting) {
                     entry.target.style.opacity = '1';
                     entry.target.style.transform = 'translateY(0)';
                 }
             });
         }, observerOptions);
-
+    
         // Observe elements
-        document.querySelectorAll('.arch-component, .capability-card, .endpoint').forEach(el => {
+        document.querySelectorAll('.arch-component, .capability-card, .endpoint').forEach(function(el) {
             el.style.opacity = '0';
             el.style.transform = 'translateY(30px)';
             el.style.transition = 'all 0.6s ease-out';
