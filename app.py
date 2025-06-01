@@ -2,6 +2,9 @@ import logging
 import threading
 from fastapi import FastAPI, Request, UploadFile, Form, HTTPException
 from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, Response
+import mimetypes
 from openai import AzureOpenAI
 from typing import Optional, List, Dict, Any, Tuple
 import os
@@ -22,6 +25,14 @@ from fastapi.responses import Response, FileResponse
 from fastapi.staticfiles import StaticFiles
 import hashlib
 import shutil
+import PyPDF2
+import chardet
+from bs4 import BeautifulSoup
+import pandas as pd
+import io
+import uuid
+import tempfile
+import platform
 # Simple status updates for long-running operations
 operation_statuses = {}
 
@@ -30,7 +41,14 @@ operation_statuses = {}
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 app = FastAPI()
-
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Configure based on your needs
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["Content-Disposition", "Content-Type", "Content-Length"]
+)
 # Azure OpenAI client configuration
 AZURE_ENDPOINT = "https://prodhubfinnew-openai-97de.openai.azure.com/" # Replace with your endpoint if different
 AZURE_API_KEY = "97fa8c02f9e64e8ea5434987b11fe6f4" # Replace with your key if different
@@ -42,7 +60,43 @@ MAX_DOWNLOAD_FILES = 10  # Keep only 10 most recent files
 os.makedirs(DOWNLOADS_DIR, exist_ok=True)
 
 # Mount static files directory for serving downloads
-app.mount("/download-files", StaticFiles(directory=DOWNLOADS_DIR), name="download-files")
+#app.mount("/download-files", StaticFiles(directory=DOWNLOADS_DIR), name="download-files")
+def get_downloads_directory():
+    """Get the appropriate downloads directory based on the environment."""
+    if os.getenv("AZURE_APP_SERVICE", "").lower() == "true":
+        # Azure App Service - use home directory which is persistent
+        home_dir = os.getenv("HOME", "/tmp")
+        downloads_dir = os.path.join(home_dir, "chat_downloads")
+    elif platform.system() == "Windows":
+        # Windows development
+        downloads_dir = os.path.join(tempfile.gettempdir(), "chat_downloads")
+    else:
+        # Linux/Mac - use /tmp for development
+        downloads_dir = "/tmp/chat_downloads"
+    
+    # Ensure directory exists with proper permissions
+    try:
+        os.makedirs(downloads_dir, mode=0o755, exist_ok=True)
+        
+        # Test write permissions
+        test_file = os.path.join(downloads_dir, ".write_test")
+        with open(test_file, 'w') as f:
+            f.write("test")
+        os.remove(test_file)
+        
+        logging.info(f"Downloads directory initialized: {downloads_dir}")
+        return downloads_dir
+    except Exception as e:
+        logging.error(f"Failed to initialize downloads directory {downloads_dir}: {e}")
+        # Fallback to temp directory
+        fallback_dir = os.path.join(tempfile.gettempdir(), "chat_downloads")
+        os.makedirs(fallback_dir, mode=0o755, exist_ok=True)
+        logging.info(f"Using fallback directory: {fallback_dir}")
+        return fallback_dir
+
+# Update the global variable
+DOWNLOADS_DIR = get_downloads_directory()
+
 def create_client():
     """Creates an AzureOpenAI client instance."""
     return AzureOpenAI(
@@ -50,7 +104,64 @@ def create_client():
         api_key=AZURE_API_KEY,
         api_version=AZURE_API_VERSION,
     )
- 
+ def save_download_file(content: bytes, filename: str) -> str:
+    """
+    Save a file for download with proper permissions.
+    
+    Args:
+        content: File content as bytes
+        filename: Desired filename
+        
+    Returns:
+        Full path to the saved file
+    """
+    # Sanitize filename
+    safe_filename = secure_filename(filename)
+    filepath = os.path.join(DOWNLOADS_DIR, safe_filename)
+    
+    try:
+        # Write file with explicit permissions
+        with open(filepath, 'wb') as f:
+            f.write(content)
+        
+        # Set file permissions to be readable by the web server
+        os.chmod(filepath, 0o644)
+        
+        logging.info(f"Saved download file: {filepath} ({len(content)} bytes)")
+        return filepath
+        
+    except Exception as e:
+        logging.error(f"Failed to save download file {filename}: {e}")
+        raise
+
+def secure_filename(filename: str) -> str:
+    """
+    Sanitize a filename to be safe for filesystem storage.
+    
+    Args:
+        filename: Original filename
+        
+    Returns:
+        Sanitized filename
+    """
+    import re
+    
+    # Remove any path components
+    filename = os.path.basename(filename)
+    
+    # Replace unsafe characters
+    filename = re.sub(r'[^\w\s.-]', '_', filename)
+    filename = re.sub(r'[\s]+', '_', filename)
+    
+    # Ensure it has a proper extension
+    if '.' not in filename:
+        filename += '.bin'
+    
+    # Add timestamp to ensure uniqueness
+    name, ext = os.path.splitext(filename)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    return f"{name}_{timestamp}{ext}"
 def debug_print_files(self, thread_id: str):
     """
     Debug function to print information about files registered with the pandas agent.
@@ -217,7 +328,7 @@ class PandasAgentManager:
                     azure_endpoint=AZURE_ENDPOINT,
                     api_key=AZURE_API_KEY,
                     api_version=AZURE_API_VERSION,
-                    deployment_name="gpt-4.1",
+                    deployment_name="gpt-4o",
                     temperature=0
                 )
                 logging.info("Initialized LangChain LLM for pandas agents")
@@ -3470,8 +3581,6 @@ async def chat(
     Uses the same logic as the streaming endpoint but returns the complete response.
     """
     return await process_conversation(session, prompt, assistant, stream_output=False)
-# Add these imports at the top of app.py (after existing imports)
-# Add these helper functions after existing helper functions
 
 def extract_text_from_file(file_content: bytes, filename: str) -> str:
     """
@@ -3508,7 +3617,7 @@ def extract_text_from_file(file_content: bytes, filename: str) -> str:
         elif file_ext in ['.docx', '.doc']:
             # Extract text from Word document
             doc_file = io.BytesIO(file_content)
-            doc = DocxDocument(doc_file)
+            doc = Document(doc_file)
             text_content = []
             
             for paragraph in doc.paragraphs:
@@ -3528,7 +3637,6 @@ def extract_text_from_file(file_content: bytes, filename: str) -> str:
             
         elif file_ext in ['.html', '.htm']:
             # Extract text from HTML
-            from bs4 import BeautifulSoup
             soup = BeautifulSoup(file_content, 'html.parser')
             return soup.get_text(separator='\n', strip=True)
             
@@ -3576,8 +3684,120 @@ def prepare_file_for_completion(file_content: bytes, filename: str, file_type: s
         }
 
 
+def generate_file_from_response(content: str, file_type: str) -> Optional[Tuple[bytes, str]]:
+    """
+    Generate a file from completion response content with better error handling.
+    """
+    try:
+        # Extract CSV content
+        csv_content = extract_csv_from_content(content)
+        
+        if file_type == 'csv':
+            # Ensure proper CSV formatting
+            if not csv_content:
+                logging.warning("No CSV content found in response")
+                return None
+                
+            # Add UTF-8 BOM for Excel compatibility
+            bom = '\ufeff'
+            file_bytes = (bom + csv_content).encode('utf-8-sig')
+            
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"generated_data_{timestamp}.csv"
+            
+            return file_bytes, filename
+            
+        elif file_type == 'excel':
+            try:
+                import pandas as pd
+                from io import StringIO, BytesIO
+                
+                # Parse CSV content
+                if not csv_content:
+                    logging.warning("No CSV content found for Excel conversion")
+                    return None
+                
+                df = pd.read_csv(StringIO(csv_content))
+                
+                # Create Excel with better formatting
+                buffer = BytesIO()
+                with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                    df.to_excel(writer, index=False, sheet_name='Data')
+                    
+                    # Get the workbook and worksheet
+                    workbook = writer.book
+                    worksheet = writer.sheets['Data']
+                    
+                    # Auto-adjust column widths
+                    for column in df:
+                        column_length = max(
+                            df[column].astype(str).map(len).max(),
+                            len(str(column))
+                        )
+                        col_idx = df.columns.get_loc(column)
+                        column_letter = chr(65 + col_idx)
+                        worksheet.column_dimensions[column_letter].width = min(column_length + 2, 50)
+                
+                buffer.seek(0)
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"generated_data_{timestamp}.xlsx"
+                
+                return buffer.getvalue(), filename
+                
+            except Exception as excel_error:
+                logging.error(f"Excel generation failed: {excel_error}")
+                # Fallback to CSV
+                return generate_file_from_response(content, 'csv')
+                
+    except Exception as e:
+        logging.error(f"Error generating {file_type} file: {e}")
+        return None
+@app.get("/test-download")
+async def test_download_functionality():
+    """
+    Test endpoint to verify download functionality is working.
+    Creates a test file and returns download URL.
+    """
+    try:
+        # Create a test CSV file
+        test_content = "name,status,timestamp\nDownload Test,Success,{}\n".format(
+            datetime.now().isoformat()
+        )
+        
+        test_filename = f"test_download_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        
+        # Save the file
+        filepath = save_download_file(
+            test_content.encode('utf-8'),
+            test_filename
+        )
+        
+        # Verify file was created
+        if not os.path.exists(filepath):
+            raise Exception("File creation failed")
+        
+        # Test file permissions
+        if not os.access(filepath, os.R_OK):
+            raise Exception("File is not readable")
+        
+        return JSONResponse({
+            "status": "success",
+            "message": "Download test successful",
+            "filename": test_filename,
+            "download_url": f"/download-files/{test_filename}",
+            "file_size": os.path.getsize(filepath),
+            "downloads_directory": DOWNLOADS_DIR,
+            "file_permissions": oct(os.stat(filepath).st_mode)[-3:]
+        })
+        
+    except Exception as e:
+        logging.error(f"Download test failed: {e}")
+        return JSONResponse({
+            "status": "error",
+            "error": str(e),
+            "downloads_directory": DOWNLOADS_DIR
+        }, status_code=500)
 # Add this new endpoint for stateless chat completion
-
 @app.post("/completion")
 async def chat_completion(
     request: Request,
@@ -3586,30 +3806,30 @@ async def chat_completion(
     temperature: float = Form(0.7),
     max_tokens: int = Form(1000),
     system_message: Optional[str] = Form(None),
+    output_format: Optional[str] = Form(None),  # 'csv', 'excel', or None
     files: Optional[List[UploadFile]] = None
 ):
     """
     Stateless chat completion endpoint that accepts text, files, and images.
-    Works like ChatGPT API - no state, no threads, no assistants.
-    
-    Args:
-        prompt: The user's message/question
-        model: Model to use (default: gpt-4.1)
-        temperature: Response randomness (0-2, default: 0.7)
-        max_tokens: Maximum response length
-        system_message: Optional system prompt
-        files: Optional list of files (images, PDFs, docs, etc.)
-        
-    Returns:
-        JSON response with the completion
+    Enhanced with better error handling and CSV extraction.
     """
     client = create_client()
     
     try:
+        # Validate output format
+        if output_format and output_format not in ['csv', 'excel']:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "status": "error",
+                    "message": "Invalid output_format. Must be 'csv', 'excel', or None"
+                }
+            )
+        
         # Start building the messages array
         messages = []
         
-        # Add system message if provided
+        # Add system message
         if system_message:
             messages.append({
                 "role": "system",
@@ -3617,9 +3837,24 @@ async def chat_completion(
             })
         else:
             # Default system message
+            default_system = "You are a helpful, knowledgeable AI assistant. You can analyze images, documents, and answer questions on any topic."
+            
+            # If output format is specified, adjust system message
+            if output_format in ['csv', 'excel']:
+                default_system += (
+                    f"\n\nIMPORTANT: The user wants the response in {output_format.upper()} format. "
+                    "When presenting tabular data:\n"
+                    "1. Provide ONLY the raw CSV data\n"
+                    "2. Do NOT include any explanatory text before or after\n"
+                    "3. Do NOT use markdown formatting or code blocks\n"
+                    "4. Start directly with the header row\n"
+                    "5. Use comma as delimiter\n"
+                    "6. Quote fields that contain commas"
+                )
+            
             messages.append({
                 "role": "system",
-                "content": "You are a helpful, knowledgeable AI assistant. You can analyze images, documents, and answer questions on any topic."
+                "content": default_system
             })
         
         # Build user message content
@@ -3632,14 +3867,23 @@ async def chat_completion(
         })
         
         # Process uploaded files if any
+        processed_files = []
         if files:
             for file in files:
-                if file.filename:  # Ensure file has a name
+                if not file.filename:  # Skip files without names
+                    continue
+                    
+                try:
                     # Read file content
                     file_content = await file.read()
                     file_type = file.content_type or mimetypes.guess_type(file.filename)[0] or "application/octet-stream"
                     
-                    logging.info(f"Processing file: {file.filename} ({file_type})")
+                    logging.info(f"Processing file: {file.filename} ({file_type}, {len(file_content)} bytes)")
+                    
+                    # Validate file size (e.g., max 10MB)
+                    if len(file_content) > 10 * 1024 * 1024:
+                        logging.warning(f"File {file.filename} exceeds 10MB limit")
+                        continue
                     
                     # Prepare file for inclusion
                     prepared_content = prepare_file_for_completion(
@@ -3650,6 +3894,11 @@ async def chat_completion(
                     
                     # Add to user content
                     user_content.append(prepared_content)
+                    processed_files.append(file.filename)
+                    
+                except Exception as file_error:
+                    logging.error(f"Error processing file {file.filename}: {file_error}")
+                    # Continue with other files
         
         # Add user message with all content
         messages.append({
@@ -3658,17 +3907,96 @@ async def chat_completion(
         })
         
         # Make the completion request
-        logging.info(f"Making completion request with model: {model}")
+        logging.info(f"Making completion request with model: {model}, processed files: {processed_files}")
         
-        completion = client.chat.completions.create(
-            model=model,
-            messages=messages,
-            temperature=temperature,
-            max_tokens=max_tokens
-        )
+        try:
+            completion = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens
+            )
+        except Exception as api_error:
+            logging.error(f"OpenAI API error: {api_error}")
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "status": "error",
+                    "error": "AI service temporarily unavailable",
+                    "message": "Please try again in a moment"
+                }
+            )
         
         # Extract the response
         response_content = completion.choices[0].message.content
+        
+        # Check if we need to generate a file
+        download_url = None
+        generated_filename = None
+        
+        if output_format in ['csv', 'excel'] and response_content:
+            try:
+                # Extract CSV content from response
+                csv_content = extract_csv_from_content(response_content)
+                
+                # Validate CSV content
+                if not csv_content or len(csv_content.strip().split('\n')) < 2:
+                    logging.warning("Generated content doesn't appear to be valid CSV")
+                else:
+                    # Generate timestamp for filename
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    
+                    if output_format == 'csv':
+                        # Save as CSV
+                        filename = f"generated_data_{timestamp}.csv"
+                        file_bytes = csv_content.encode('utf-8')
+                    else:
+                        # Convert to Excel
+                        try:
+                            import pandas as pd
+                            from io import StringIO, BytesIO
+                            
+                            # Parse CSV with pandas
+                            df = pd.read_csv(StringIO(csv_content))
+                            
+                            # Validate dataframe
+                            if df.empty:
+                                raise ValueError("Parsed dataframe is empty")
+                            
+                            # Write to Excel
+                            buffer = BytesIO()
+                            with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                                df.to_excel(writer, index=False, sheet_name='Data')
+                            
+                            buffer.seek(0)
+                            filename = f"generated_data_{timestamp}.xlsx"
+                            file_bytes = buffer.getvalue()
+                            
+                        except Exception as excel_error:
+                            logging.error(f"Error converting to Excel: {excel_error}")
+                            # Fallback to CSV
+                            filename = f"generated_data_{timestamp}.csv"
+                            file_bytes = csv_content.encode('utf-8')
+                            output_format = 'csv'  # Update format for response
+                    
+                    # Save file to downloads directory
+                    filepath = os.path.join(DOWNLOADS_DIR, filename)
+                    with open(filepath, 'wb') as f:
+                        f.write(file_bytes)
+                    
+                    generated_filename = filename
+                    
+                    # Clean up old downloads
+                    cleanup_old_downloads()
+                    
+                    # Generate download URL
+                    download_url = construct_download_url(request, filename)
+                    
+                    logging.info(f"Generated {output_format} file: {filename}")
+                    
+            except Exception as file_gen_error:
+                logging.error(f"Error generating {output_format} file: {file_gen_error}")
+                # Continue without file generation
         
         # Return the response
         return JSONResponse({
@@ -3679,33 +4007,301 @@ async def chat_completion(
                 "prompt_tokens": completion.usage.prompt_tokens,
                 "completion_tokens": completion.usage.completion_tokens,
                 "total_tokens": completion.usage.total_tokens
-            }
+            },
+            "download_url": download_url,
+            "output_format": output_format,
+            "filename": generated_filename,
+            "processed_files": processed_files
         })
         
+    except HTTPException:
+        raise
     except Exception as e:
-        logging.error(f"Error in chat completion: {str(e)}\n{traceback.format_exc()}")
+        logging.error(f"Unexpected error in chat completion: {str(e)}\n{traceback.format_exc()}")
         return JSONResponse(
             status_code=500,
             content={
                 "status": "error",
-                "error": str(e),
-                "message": "Failed to generate completion"
+                "error": "Internal server error",
+                "message": "An unexpected error occurred"
             }
         )
+# Add this endpoint for review extraction
 
+@app.post("/extract-reviews")
+async def extract_reviews(
+    request: Request,
+    file: UploadFile = Form(...),
+    columns: Optional[str] = Form("user,review,rating,date,source"),
+    model: str = Form("gpt-4.1"),
+    temperature: float = Form(0.1),
+    output_format: str = Form("csv"),
+    max_text_length: int = Form(50000)  # Increased from 10000
+):
+    """
+    Extract reviews from uploaded files into structured tabular format.
+    Enhanced with better validation and error handling.
+    """
+    client = create_client()
+    
+    try:
+        # Validate output format
+        if output_format not in ['csv', 'excel']:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "status": "error",
+                    "message": "Invalid output_format. Must be 'csv' or 'excel'"
+                }
+            )
+        
+        # Validate file
+        if not file.filename:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "status": "error",
+                    "message": "No filename provided"
+                }
+            )
+        
+        # Read and extract text from the uploaded file
+        try:
+            file_content = await file.read()
+            
+            # Validate file size (max 50MB for text extraction)
+            if len(file_content) > 50 * 1024 * 1024:
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "status": "error",
+                        "message": "File too large. Maximum size is 50MB"
+                    }
+                )
+            
+            extracted_text = extract_text_from_file(file_content, file.filename)
+            
+        except Exception as extract_error:
+            logging.error(f"Error reading file: {extract_error}")
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "status": "error",
+                    "message": f"Could not read file: {str(extract_error)}"
+                }
+            )
+        
+        if extracted_text.startswith("[Error") or extracted_text.startswith("[Unable"):
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "status": "error",
+                    "message": f"Could not extract text from file: {extracted_text}"
+                }
+            )
+        
+        # Parse and validate columns
+        column_list = [col.strip() for col in columns.split(',') if col.strip()]
+        if not column_list:
+            column_list = ["user", "review", "rating", "date", "source"]
+        
+        # Limit text length for API
+        if len(extracted_text) > max_text_length:
+            logging.warning(f"Text truncated from {len(extracted_text)} to {max_text_length} characters")
+            extracted_text = extracted_text[:max_text_length]
+        
+        # Build the extraction prompt with better instructions
+        system_message = f"""You are a data extraction specialist. Extract review data from the provided text into a structured CSV format.
+
+CRITICAL INSTRUCTIONS:
+1. Extract data into EXACTLY these columns: {','.join(column_list)}
+2. Output ONLY the CSV data - no explanations, no markdown, no code blocks
+3. Start with the header row, followed by data rows
+4. Use proper CSV formatting:
+   - Use comma as delimiter
+   - Quote fields that contain commas, quotes, or newlines
+   - Escape quotes within quoted fields by doubling them
+5. For missing data:
+   - Use empty string (two commas) for missing fields
+   - Do not use "N/A", "null", or other placeholders
+6. Extract ALL reviews found in the text
+7. Preserve the original content as much as possible
+
+Example output format:
+{','.join(column_list)}
+"John Doe","Great product! Really helped me.","5","2024-01-15","Amazon"
+"Jane Smith","Not what I expected, but ""okay"" overall","2","2024-01-10","Website"
+"Anonymous","Amazing service","5","",""
+"""
+
+        prompt = f"""Extract all reviews from the following text into CSV format with columns: {','.join(column_list)}
+
+Text to analyze:
+{extracted_text}
+
+Remember: Output ONLY the CSV data, nothing else. Start with the header row."""
+
+        # Make the completion request
+        messages = [
+            {"role": "system", "content": system_message},
+            {"role": "user", "content": prompt}
+        ]
+        
+        try:
+            completion = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=4000  # Allow for longer responses with multiple reviews
+            )
+        except Exception as api_error:
+            logging.error(f"OpenAI API error: {api_error}")
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "status": "error",
+                    "error": "AI service temporarily unavailable",
+                    "message": "Please try again in a moment"
+                }
+            )
+        
+        # Extract the response
+        csv_content = completion.choices[0].message.content
+        
+        # Clean the response using our improved function
+        csv_content = extract_csv_from_content(csv_content)
+        
+        # Validate CSV structure
+        try:
+            import csv
+            from io import StringIO
+            
+            # Try to parse the CSV
+            csv_reader = csv.reader(StringIO(csv_content))
+            rows = list(csv_reader)
+            
+            if len(rows) < 2:  # Need at least header and one data row
+                return JSONResponse(
+                    status_code=422,
+                    content={
+                        "status": "error",
+                        "message": "No reviews could be extracted from the file"
+                    }
+                )
+            
+            # Validate header matches requested columns
+            header = rows[0]
+            if len(header) != len(column_list):
+                logging.warning(f"Header mismatch: expected {len(column_list)} columns, got {len(header)}")
+            
+        except Exception as csv_error:
+            logging.error(f"CSV validation error: {csv_error}")
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "status": "error",
+                    "message": "Generated CSV is malformed. Please try again with different parameters."
+                }
+            )
+        
+        # Generate file
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        try:
+            if output_format == 'excel':
+                # Convert CSV to Excel
+                import pandas as pd
+                from io import StringIO, BytesIO
+                
+                df = pd.read_csv(StringIO(csv_content))
+                
+                # Clean up the dataframe
+                df = df.fillna('')  # Replace NaN with empty strings
+                
+                buffer = BytesIO()
+                with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                    df.to_excel(writer, index=False, sheet_name='Reviews')
+                    
+                    # Auto-adjust column widths
+                    worksheet = writer.sheets['Reviews']
+                    for column in df:
+                        column_length = max(df[column].astype(str).map(len).max(), len(str(column)))
+                        col_idx = df.columns.get_loc(column)
+                        worksheet.column_dimensions[chr(65 + col_idx)].width = min(column_length + 2, 50)
+                
+                buffer.seek(0)
+                filename = f"extracted_reviews_{timestamp}.xlsx"
+                file_bytes = buffer.getvalue()
+                
+            else:
+                # Save as CSV
+                filename = f"extracted_reviews_{timestamp}.csv"
+                file_bytes = csv_content.encode('utf-8')
+                
+        except Exception as file_gen_error:
+            logging.error(f"Error generating {output_format} file: {file_gen_error}")
+            # Fallback to CSV
+            filename = f"extracted_reviews_{timestamp}.csv"
+            file_bytes = csv_content.encode('utf-8')
+            output_format = 'csv'
+        
+        # Save file
+        filepath = os.path.join(DOWNLOADS_DIR, filename)
+        with open(filepath, 'wb') as f:
+            f.write(file_bytes)
+        
+        # Clean up old downloads
+        cleanup_old_downloads()
+        
+        # Generate download URL
+        download_url = construct_download_url(request, filename)
+        
+        # Count extracted reviews
+        review_count = len(rows) - 1  # Subtract header row
+        
+        return JSONResponse({
+            "status": "success",
+            "message": f"Successfully extracted {review_count} reviews",
+            "download_url": download_url,
+            "filename": filename,
+            "columns": column_list,
+            "output_format": output_format,
+            "review_count": review_count,
+            "source_file": file.filename,
+            "source_file_size": len(file_content),
+            "usage": {
+                "prompt_tokens": completion.usage.prompt_tokens,
+                "completion_tokens": completion.usage.completion_tokens,
+                "total_tokens": completion.usage.total_tokens
+            }
+        })
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Unexpected error in review extraction: {str(e)}\n{traceback.format_exc()}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "error": "Internal server error",
+                "message": "An unexpected error occurred during extraction"
+            }
+        )
 def cleanup_old_downloads():
     """
     Remove old download files, keeping only the most recent MAX_DOWNLOAD_FILES.
+    Now handles all file types: .docx, .csv, .xlsx
     """
     try:
-        # Get all .docx files in the downloads directory
+        # Get all downloadable files in the downloads directory
         files = []
         for filename in os.listdir(DOWNLOADS_DIR):
-            if filename.endswith('.docx'):
+            if filename.endswith(('.docx', '.csv', '.xlsx')):
                 filepath = os.path.join(DOWNLOADS_DIR, filename)
                 # Get file creation time
                 file_time = os.path.getctime(filepath)
-                files.append((filepath, file_time))
+                files.append((filepath, file_time, filename))
         
         # Sort by creation time (oldest first)
         files.sort(key=lambda x: x[1])
@@ -3715,14 +4311,12 @@ def cleanup_old_downloads():
             old_file = files.pop(0)
             try:
                 os.remove(old_file[0])
-                logging.info(f"Removed old download file: {old_file[0]}")
+                logging.info(f"Removed old download file: {old_file[2]}")
             except Exception as e:
                 logging.error(f"Error removing old file {old_file[0]}: {e}")
                 
     except Exception as e:
         logging.error(f"Error during download cleanup: {e}")
-
-
 def create_docx_from_content(content: str, images: Optional[List[bytes]] = None) -> bytes:
     """
     Convert chat content to DOCX format with proper Markdown table conversion.
@@ -4020,285 +4614,560 @@ async def download_chat(
         logging.error(f"Error in /download-chat endpoint: {str(e)}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Failed to generate download: {str(e)}")
 
-
-# Add this endpoint to serve individual files with proper headers
 @app.get("/download-files/{filename}")
-async def serve_download_file(filename: str):
+async def serve_download_file(
+    filename: str,
+    request: Request,
+    token: Optional[str] = None  # Optional token for access control
+):
     """
-    Serve a specific download file with proper headers for downloading.
-    
-    Args:
-        filename: Name of the file to download
+    Serve a file for download with proper headers and security.
+    """
+    try:
+        # Security validation
+        if not filename:
+            raise HTTPException(status_code=400, detail="Filename is required")
         
-    Returns:
-        File response with download headers
+        # Prevent directory traversal
+        if any(char in filename for char in ['..', '/', '\\', '\x00']):
+            logging.warning(f"Potential directory traversal attempt: {filename}")
+            raise HTTPException(status_code=400, detail="Invalid filename")
+        
+        # Construct filepath
+        filepath = os.path.join(DOWNLOADS_DIR, filename)
+        
+        # Verify file exists
+        if not os.path.exists(filepath):
+            logging.warning(f"File not found: {filepath}")
+            raise HTTPException(status_code=404, detail="File not found")
+        
+        # Double-check file is in downloads directory
+        real_filepath = os.path.realpath(filepath)
+        real_downloads_dir = os.path.realpath(DOWNLOADS_DIR)
+        
+        if not real_filepath.startswith(real_downloads_dir):
+            logging.error(f"Security violation: Attempted to access {real_filepath}")
+            raise HTTPException(status_code=403, detail="Access forbidden")
+        
+        # Get file info
+        file_stat = os.stat(filepath)
+        file_size = file_stat.st_size
+        
+        # Log download attempt
+        client_ip = request.client.host if request.client else "unknown"
+        logging.info(f"Download request for {filename} from {client_ip} (size: {file_size} bytes)")
+        
+        # Determine MIME type
+        mime_type, _ = mimetypes.guess_type(filename)
+        if not mime_type:
+            if filename.endswith('.docx'):
+                mime_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            elif filename.endswith('.xlsx'):
+                mime_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            elif filename.endswith('.csv'):
+                mime_type = "text/csv; charset=utf-8"
+            else:
+                mime_type = "application/octet-stream"
+        
+        # Read file content (for smaller files, to ensure we can serve it)
+        if file_size < 10 * 1024 * 1024:  # 10MB
+            try:
+                with open(filepath, 'rb') as f:
+                    content = f.read()
+                
+                # Return Response with explicit headers
+                return Response(
+                    content=content,
+                    media_type=mime_type,
+                    headers={
+                        "Content-Disposition": f'attachment; filename="{filename}"',
+                        "Content-Type": mime_type,
+                        "Content-Length": str(file_size),
+                        "Cache-Control": "no-cache, no-store, must-revalidate",
+                        "Pragma": "no-cache",
+                        "Expires": "0",
+                        "X-Content-Type-Options": "nosniff",
+                        "X-Download-Options": "noopen"
+                    }
+                )
+            except Exception as read_error:
+                logging.error(f"Error reading file {filename}: {read_error}")
+                # Fall back to FileResponse
+        
+        # For larger files or if reading fails, use FileResponse
+        return FileResponse(
+            path=filepath,
+            filename=filename,
+            media_type=mime_type,
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0",
+                "X-Content-Type-Options": "nosniff",
+                "X-Download-Options": "noopen"
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"Unexpected error serving file {filename}: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+@app.get("/verify-download/{filename}")
+async def verify_download(filename: str):
     """
-    # Validate filename to prevent directory traversal
-    if ".." in filename or "/" in filename or "\\" in filename:
-        raise HTTPException(status_code=400, detail="Invalid filename")
-    
-    # Check if file exists
-    filepath = os.path.join(DOWNLOADS_DIR, filename)
-    if not os.path.exists(filepath):
-        raise HTTPException(status_code=404, detail="File not found")
-    
-    # Return file with download headers
-    return FileResponse(
-        path=filepath,
-        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        headers={
-            "Content-Disposition": f"attachment; filename={filename}"
-        }
-    )
+    Verify if a file is available for download without actually downloading it.
+    """
+    try:
+        # Security validation
+        if not filename or any(char in filename for char in ['..', '/', '\\', '\x00']):
+            return JSONResponse({
+                "available": False,
+                "error": "Invalid filename"
+            }, status_code=400)
+        
+        filepath = os.path.join(DOWNLOADS_DIR, filename)
+        
+        if os.path.exists(filepath) and os.path.isfile(filepath):
+            file_stat = os.stat(filepath)
+            mime_type, _ = mimetypes.guess_type(filename)
+            
+            return JSONResponse({
+                "available": True,
+                "filename": filename,
+                "size": file_stat.st_size,
+                "modified": datetime.fromtimestamp(file_stat.st_mtime).isoformat(),
+                "mime_type": mime_type or "application/octet-stream"
+            })
+        else:
+            return JSONResponse({
+                "available": False,
+                "error": "File not found"
+            }, status_code=404)
+            
+    except Exception as e:
+        logging.error(f"Error verifying download {filename}: {e}")
+        return JSONResponse({
+            "available": False,
+            "error": "Verification failed"
+        }, status_code=500)
 @app.get("/health-check")
 async def comprehensive_health_check():
     """
-    Comprehensive health check that tests all endpoints and functionality.
-    Similar to how prdbot.py uses the API, but automated.
-    
-    Returns:
-        Detailed health status of all endpoints and services
+    Comprehensive health check that tests all critical functionality without creating expensive resources.
+    Performs lightweight tests and returns detailed status information.
     """
-    client = create_client()
+    start_time = time.time()
+    
     health_status = {
         "status": "checking",
         "timestamp": datetime.now().isoformat(),
-        "endpoints": {},
-        "azure_openai": {},
-        "file_system": {},
-        "overall_health": "unknown"
+        "version": "1.0.0",  # Add your app version
+        "environment": {
+            "python_version": sys.version.split()[0],
+            "fastapi_version": fastapi.__version__,
+        },
+        "checks": {
+            "azure_openai": {"status": "pending"},
+            "file_system": {"status": "pending"},
+            "dependencies": {"status": "pending"},
+            "endpoints": {"status": "pending"},
+            "pandas_agent": {"status": "pending"},
+        },
+        "endpoints_tested": {},
+        "warnings": [],
+        "errors": [],
     }
     
-    # Test Azure OpenAI connection
-    try:
-        # Try to list assistants to verify API key and endpoint
-        assistants = client.beta.assistants.list(limit=1)
-        health_status["azure_openai"] = {
-            "status": "healthy",
-            "endpoint": AZURE_ENDPOINT,
-            "api_version": AZURE_API_VERSION,
-            "connection": "established"
-        }
-    except Exception as e:
-        health_status["azure_openai"] = {
-            "status": "unhealthy",
-            "error": str(e),
-            "endpoint": AZURE_ENDPOINT
-        }
+    # Helper function to safely execute checks
+    async def safe_check(check_name: str, check_func):
+        try:
+            result = await check_func() if asyncio.iscoroutinefunction(check_func) else check_func()
+            health_status["checks"][check_name] = {"status": "healthy", **result}
+            return True
+        except Exception as e:
+            error_msg = f"{check_name}: {str(e)}"
+            health_status["checks"][check_name] = {"status": "unhealthy", "error": str(e)}
+            health_status["errors"].append(error_msg)
+            logging.error(f"Health check failed for {check_name}: {e}")
+            return False
     
-    # Test file system
-    try:
+    # 1. Test Azure OpenAI Connection
+    async def check_azure_openai():
+        client = create_client()
+        
+        # Try a minimal API call - list models or assistants with limit=1
+        try:
+            # Try to list assistants (minimal call)
+            assistants = client.beta.assistants.list(limit=1)
+            
+            # Try a simple completion to verify model access
+            test_completion = client.chat.completions.create(
+                model="gpt-4.1",
+                messages=[{"role": "user", "content": "Hi"}],
+                max_tokens=5,
+                temperature=0
+            )
+            
+            return {
+                "endpoint": AZURE_ENDPOINT,
+                "api_version": AZURE_API_VERSION,
+                "model_accessible": True,
+                "assistants_api": True
+            }
+        except Exception as e:
+            # Try basic completion only
+            try:
+                test_completion = client.chat.completions.create(
+                    model="gpt-4.1",
+                    messages=[{"role": "user", "content": "Hi"}],
+                    max_tokens=5
+                )
+                return {
+                    "endpoint": AZURE_ENDPOINT,
+                    "api_version": AZURE_API_VERSION,
+                    "model_accessible": True,
+                    "assistants_api": False,
+                    "warning": "Assistants API not accessible"
+                }
+            except:
+                raise
+    
+    # 2. Test File System
+    def check_file_system():
+        results = {
+            "temp_dir_writable": False,
+            "downloads_dir_exists": False,
+            "downloads_dir_writable": False,
+            "disk_space_available": 0
+        }
+        
         # Test /tmp directory
-        test_file = "/tmp/health_check_test.txt"
-        with open(test_file, "w") as f:
-            f.write("health check test")
-        os.remove(test_file)
-        
-        # Check downloads directory
-        downloads_exist = os.path.exists(DOWNLOADS_DIR)
-        
-        health_status["file_system"] = {
-            "status": "healthy",
-            "tmp_writable": True,
-            "downloads_dir_exists": downloads_exist
-        }
-    except Exception as e:
-        health_status["file_system"] = {
-            "status": "unhealthy",
-            "error": str(e)
-        }
-    
-    # Test 1: /completion endpoint (stateless)
-    try:
-        # Simulate a simple completion request
-        completion_data = {
-            "prompt": "Say 'Hello, health check passed!'",
-            "model": "gpt-4.1",
-            "temperature": 0.1,
-            "max_tokens": 50
-        }
-        
-        # Make internal request
-        response = await chat_completion(
-            request=Request({"type": "http", "method": "POST"}),
-            **completion_data
-        )
-        
-        response_data = json.loads(response.body)
-        
-        health_status["endpoints"]["/completion"] = {
-            "status": "healthy" if response_data.get("status") == "success" else "unhealthy",
-            "response_received": bool(response_data.get("response")),
-            "test_type": "stateless_completion"
-        }
-    except Exception as e:
-        health_status["endpoints"]["/completion"] = {
-            "status": "unhealthy",
-            "error": str(e)
-        }
-    
-    # Test 2: /initiate-chat endpoint
-    test_assistant_id = None
-    test_thread_id = None
-    test_vector_store_id = None
-    
-    try:
-        # Create a test assistant and thread
-        test_context = "Health check test context"
-        
-        # Simulate form data
-        form_data = {"context": test_context}
-        
-        # Create request manually since we're calling internally
-        data = {}
-        if test_context:
-            data["context"] = test_context
-            
-        response = requests.post(f"{AZURE_ENDPOINT.replace('openai.azure.com', 'localhost:8080')}/initiate-chat", 
-                               data=data)
-        
-        # For internal testing, create directly
-        vector_store =client.vector_stores.create(name=f"health_check_store_{int(time.time())}")
-        assistant = client.beta.assistants.create(
-            name=f"health_check_assistant_{int(time.time())}",
-            model="gpt-4.1",
-            instructions="You are a health check assistant.",
-            tools=[{"type": "file_search"}],
-            tool_resources={"file_search": {"vector_store_ids": [vector_store.id]}}
-        )
-        thread = client.beta.threads.create()
-        
-        test_assistant_id = assistant.id
-        test_thread_id = thread.id
-        test_vector_store_id = vector_store.id
-        
-        health_status["endpoints"]["/initiate-chat"] = {
-            "status": "healthy",
-            "assistant_created": bool(test_assistant_id),
-            "thread_created": bool(test_thread_id),
-            "vector_store_created": bool(test_vector_store_id)
-        }
-    except Exception as e:
-        health_status["endpoints"]["/initiate-chat"] = {
-            "status": "unhealthy",
-            "error": str(e)
-        }
-    
-    # Test 3: /conversation and /chat endpoints
-    if test_thread_id and test_assistant_id:
         try:
-            # Add a test message
-            client.beta.threads.messages.create(
-                thread_id=test_thread_id,
-                role="user",
-                content="Health check test message"
+            test_file = os.path.join("/tmp", f"health_check_{uuid.uuid4().hex}.txt")
+            with open(test_file, "w") as f:
+                f.write("health check test")
+            os.remove(test_file)
+            results["temp_dir_writable"] = True
+        except Exception as e:
+            results["temp_write_error"] = str(e)
+        
+        # Test downloads directory
+        try:
+            results["downloads_dir_exists"] = os.path.exists(DOWNLOADS_DIR)
+            if results["downloads_dir_exists"]:
+                test_file = os.path.join(DOWNLOADS_DIR, f"health_check_{uuid.uuid4().hex}.txt")
+                with open(test_file, "w") as f:
+                    f.write("test")
+                os.remove(test_file)
+                results["downloads_dir_writable"] = True
+                
+                # Check disk space (in MB)
+                stat = os.statvfs(DOWNLOADS_DIR)
+                results["disk_space_available"] = (stat.f_bavail * stat.f_frsize) / (1024 * 1024)
+        except Exception as e:
+            results["downloads_error"] = str(e)
+        
+        return results
+    
+    # 3. Test Dependencies
+    def check_dependencies():
+        dependencies = {}
+        critical_deps = {
+            "pandas": None,
+            "numpy": None,
+            "openai": None,
+            "langchain": None,
+            "openpyxl": None,
+            "PyPDF2": None,
+            "python-docx": None,
+            "Pillow": None,
+            "beautifulsoup4": None
+        }
+        
+        for dep_name in critical_deps:
+            try:
+                if dep_name == "python-docx":
+                    import docx
+                    dependencies[dep_name] = {"installed": True, "version": getattr(docx, "__version__", "unknown")}
+                elif dep_name == "beautifulsoup4":
+                    import bs4
+                    dependencies[dep_name] = {"installed": True, "version": bs4.__version__}
+                elif dep_name == "Pillow":
+                    import PIL
+                    dependencies[dep_name] = {"installed": True, "version": PIL.__version__}
+                else:
+                    module = __import__(dep_name)
+                    version = getattr(module, "__version__", "unknown")
+                    dependencies[dep_name] = {"installed": True, "version": version}
+            except ImportError:
+                dependencies[dep_name] = {"installed": False}
+                if dep_name in ["pandas", "numpy", "openai", "langchain"]:
+                    health_status["warnings"].append(f"Critical dependency {dep_name} not installed")
+        
+        return {"dependencies": dependencies}
+    
+    # 4. Test Pandas Agent Manager
+    def check_pandas_agent():
+        try:
+            manager = PandasAgentManager.get_instance()
+            
+            # Check if dependencies are available
+            deps_ok = manager._check_dependencies()
+            
+            # Test basic functionality without creating files
+            test_thread_id = f"health_check_{uuid.uuid4().hex}"
+            manager.initialize_thread(test_thread_id)
+            
+            # Verify initialization
+            thread_initialized = (
+                test_thread_id in manager.dataframes_cache and
+                test_thread_id in manager.file_info_cache
             )
             
-            # Test streaming endpoint simulation
-            health_status["endpoints"]["/conversation"] = {
-                "status": "healthy",
-                "test_type": "streaming",
-                "thread_id": test_thread_id,
-                "assistant_id": test_assistant_id
-            }
+            # Clean up
+            if test_thread_id in manager.dataframes_cache:
+                del manager.dataframes_cache[test_thread_id]
+            if test_thread_id in manager.file_info_cache:
+                del manager.file_info_cache[test_thread_id]
             
-            # Test non-streaming endpoint simulation
-            health_status["endpoints"]["/chat"] = {
-                "status": "healthy",
-                "test_type": "non-streaming",
-                "thread_id": test_thread_id,
-                "assistant_id": test_assistant_id
+            return {
+                "instance_available": True,
+                "dependencies_ok": deps_ok,
+                "initialization_works": thread_initialized
             }
         except Exception as e:
-            error_msg = str(e)
-            health_status["endpoints"]["/conversation"] = {
-                "status": "unhealthy",
-                "error": error_msg
-            }
-            health_status["endpoints"]["/chat"] = {
-                "status": "unhealthy",
-                "error": error_msg
-            }
+            return {"error": str(e)}
     
-    # Test 4: /download-chat endpoint
-    if test_thread_id:
+    # 5. Test Endpoints (Lightweight)
+    async def check_endpoints():
+        endpoint_results = {}
+        
+        # Test /completion endpoint with minimal request
         try:
-            # Check if we can prepare a download (without actually downloading)
-            messages = client.beta.threads.messages.list(
-                thread_id=test_thread_id,
-                order="desc",
-                limit=1
+            # Create a mock request
+            mock_request = type('Request', (), {
+                'base_url': 'http://localhost:8080/',
+                'headers': {'host': 'localhost:8080'}
+            })()
+            
+            # Test with minimal parameters
+            result = await chat_completion(
+                request=mock_request,
+                prompt="test",
+                model="gpt-4.1",
+                temperature=0,
+                max_tokens=1
             )
             
-            health_status["endpoints"]["/download-chat"] = {
+            endpoint_results["/completion"] = {
                 "status": "healthy",
-                "test_type": "download_preparation",
-                "messages_found": len(messages.data) > 0
+                "response_type": type(result).__name__
             }
         except Exception as e:
-            health_status["endpoints"]["/download-chat"] = {
+            endpoint_results["/completion"] = {
                 "status": "unhealthy",
-                "error": str(e)
+                "error": str(e)[:100]  # Limit error message length
             }
-    
-    # Test 5: PandasAgentManager
-    try:
-        manager = PandasAgentManager.get_instance()
-        manager_healthy = manager._check_dependencies()
         
-        health_status["pandas_agent"] = {
-            "status": "healthy" if manager_healthy else "unhealthy",
-            "dependencies_ok": manager_healthy,
-            "instance_created": True
-        }
-    except Exception as e:
-        health_status["pandas_agent"] = {
-            "status": "unhealthy",
-            "error": str(e),
-            "instance_created": False
-        }
-    
-    # Cleanup test resources
-    try:
-        if test_thread_id:
-            # Note: Thread deletion might not be supported in all API versions
-            pass
-        if test_assistant_id:
-            client.beta.assistants.delete(assistant_id=test_assistant_id)
-        if test_vector_store_id:
-            client.vector_stores.delete(vector_store_id=test_vector_store_id)
-    except Exception as e:
-        logging.warning(f"Cleanup error (non-critical): {e}")
-    
-    # Determine overall health
-    all_healthy = True
-    critical_components = ["azure_openai", "file_system"]
-    
-    # Check critical components
-    for component in critical_components:
-        if health_status.get(component, {}).get("status") != "healthy":
-            all_healthy = False
-            break
-    
-    # Check endpoints (at least 80% should be healthy)
-    if all_healthy:
-        healthy_endpoints = sum(1 for ep in health_status["endpoints"].values() 
-                              if ep.get("status") == "healthy")
-        total_endpoints = len(health_status["endpoints"])
+        # Test file processing functions
+        try:
+            # Test text extraction
+            test_text = b"Hello, world!"
+            extracted = extract_text_from_file(test_text, "test.txt")
+            
+            endpoint_results["file_extraction"] = {
+                "status": "healthy" if extracted == "Hello, world!" else "unhealthy",
+                "test_passed": extracted == "Hello, world!"
+            }
+        except Exception as e:
+            endpoint_results["file_extraction"] = {
+                "status": "unhealthy",
+                "error": str(e)[:100]
+            }
         
-        if total_endpoints > 0 and (healthy_endpoints / total_endpoints) < 0.8:
-            all_healthy = False
+        # Test CSV extraction function
+        try:
+            test_csv = "```csv\nname,age\nJohn,30\n```"
+            extracted_csv = extract_csv_from_content(test_csv)
+            expected = "name,age\nJohn,30"
+            
+            endpoint_results["csv_extraction"] = {
+                "status": "healthy" if extracted_csv.strip() == expected else "unhealthy",
+                "test_passed": extracted_csv.strip() == expected
+            }
+        except Exception as e:
+            endpoint_results["csv_extraction"] = {
+                "status": "unhealthy",
+                "error": str(e)[:100]
+            }
+        
+        # Test download URL construction
+        try:
+            mock_request = type('Request', (), {
+                'base_url': 'http://localhost:8080/',
+                'headers': {'host': 'localhost:8080'}
+            })()
+            
+            url = construct_download_url(mock_request, "test.csv")
+            
+            endpoint_results["download_url_construction"] = {
+                "status": "healthy",
+                "sample_url": url
+            }
+        except Exception as e:
+            endpoint_results["download_url_construction"] = {
+                "status": "unhealthy", 
+                "error": str(e)[:100]
+            }
+        
+        return {"endpoints": endpoint_results}
     
-    health_status["overall_health"] = "healthy" if all_healthy else "unhealthy"
-    health_status["status"] = "completed"
+    # Execute all checks
+    await safe_check("azure_openai", check_azure_openai)
+    await safe_check("file_system", check_file_system)
+    await safe_check("dependencies", check_dependencies)
+    await safe_check("pandas_agent", check_pandas_agent)
+    await safe_check("endpoints", check_endpoints)
     
-    # Return appropriate status code
-    status_code = 200 if all_healthy else 503
+    # Calculate overall health
+    total_checks = len(health_status["checks"])
+    healthy_checks = sum(1 for check in health_status["checks"].values() 
+                        if check.get("status") == "healthy")
+    
+    health_percentage = (healthy_checks / total_checks) * 100 if total_checks > 0 else 0
+    
+    # Determine overall status
+    if health_percentage == 100:
+        overall_status = "healthy"
+        status_code = 200
+    elif health_percentage >= 80:
+        overall_status = "degraded"
+        status_code = 200
+    elif health_percentage >= 50:
+        overall_status = "partial"
+        status_code = 503
+    else:
+        overall_status = "unhealthy" 
+        status_code = 503
+    
+    # Update final status
+    health_status["status"] = overall_status
+    health_status["health_percentage"] = round(health_percentage, 2)
+    health_status["execution_time_ms"] = round((time.time() - start_time) * 1000, 2)
+    
+    # Add summary
+    health_status["summary"] = {
+        "total_checks": total_checks,
+        "healthy_checks": healthy_checks,
+        "warnings_count": len(health_status["warnings"]),
+        "errors_count": len(health_status["errors"])
+    }
     
     return JSONResponse(
         content=health_status,
         status_code=status_code
     )
+
+
+# Add a lightweight health check endpoint for quick monitoring
+@app.get("/health")
+async def basic_health():
+    """
+    Basic health check endpoint for load balancers and monitoring.
+    Returns quickly with minimal checks.
+    """
+    try:
+        # Just verify the app is running and can create a client
+        client = create_client()
+        
+        return JSONResponse({
+            "status": "healthy",
+            "timestamp": datetime.now().isoformat()
+        })
+    except Exception as e:
+        return JSONResponse(
+            content={
+                "status": "unhealthy",
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            },
+            status_code=503
+        )
+
+
+# Add endpoint-specific test endpoint for debugging
+@app.post("/test-endpoint")
+async def test_specific_endpoint(
+    endpoint: str = Form(...),
+    test_data: Optional[str] = Form(None)
+):
+    """
+    Test a specific endpoint with mock data for debugging.
+    Only available in non-production environments.
+    """
+    # Security: Only allow in development/staging
+    if os.getenv("ENVIRONMENT", "development") == "production":
+        raise HTTPException(status_code=403, detail="Test endpoint not available in production")
+    
+    test_results = {
+        "endpoint": endpoint,
+        "timestamp": datetime.now().isoformat(),
+        "test_data": test_data,
+        "result": None,
+        "error": None
+    }
+    
+    try:
+        if endpoint == "/completion":
+            # Test completion endpoint
+            mock_request = type('Request', (), {
+                'base_url': 'http://localhost:8080/',
+                'headers': {'host': 'localhost:8080'}
+            })()
+            
+            result = await chat_completion(
+                request=mock_request,
+                prompt=test_data or "Hello, this is a test",
+                model="gpt-4.1",
+                temperature=0.5,
+                max_tokens=50
+            )
+            
+            test_results["result"] = json.loads(result.body.decode())
+            
+        elif endpoint == "/extract-reviews":
+            # Test with mock file
+            mock_file = type('UploadFile', (), {
+                'filename': 'test_reviews.txt',
+                'content_type': 'text/plain',
+                'read': lambda: asyncio.coroutine(lambda: test_data.encode() if test_data else b"User: John\nReview: Great product!\nRating: 5\n\nUser: Jane\nReview: Not bad\nRating: 3")()
+            })()
+            
+            mock_request = type('Request', (), {
+                'base_url': 'http://localhost:8080/',
+                'headers': {'host': 'localhost:8080'}
+            })()
+            
+            result = await extract_reviews(
+                request=mock_request,
+                file=mock_file,
+                columns="user,review,rating",
+                model="gpt-4.1",
+                temperature=0.1,
+                output_format="csv"
+            )
+            
+            test_results["result"] = json.loads(result.body.decode())
+            
+        else:
+            test_results["error"] = f"Unknown endpoint: {endpoint}"
+            
+    except Exception as e:
+        test_results["error"] = str(e)
+        test_results["traceback"] = traceback.format_exc()
+    
+    return JSONResponse(test_results)
 if __name__ == "__main__":
     import uvicorn
     print("Starting FastAPI server on http://0.0.0.0:8080")
