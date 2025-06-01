@@ -1,6 +1,6 @@
 fastapi
 uvicorn
-openai==1.75.0
+openai
 azure-identity
 azure-ai-ml
 azureml-inference-server-http
