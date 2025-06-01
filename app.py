@@ -1918,7 +1918,7 @@ You are the ultimate AI companion - equally comfortable discussing cooking recip
         # Attempt to clean up vector store if assistant creation fails
         try:
            client.vector_stores.delete(vector_store_id=vector_store.id)
-            logging.info(f"Cleaned up vector store {vector_store.id} after assistant creation failure.")
+           logging.info(f"Cleaned up vector store {vector_store.id} after assistant creation failure.")
         except Exception as cleanup_e:
             logging.error(f"Failed to cleanup vector store {vector_store.id} after error: {cleanup_e}")
         raise HTTPException(status_code=500, detail=f"An error occurred while creating assistant: {e}")
