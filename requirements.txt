@@ -13,3 +13,4 @@ tabulate
 tables
 openpyxl
 python-docx
+Pillow
