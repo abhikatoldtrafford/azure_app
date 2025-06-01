@@ -133,7 +133,30 @@ def save_download_file(content: bytes, filename: str) -> str:
     except Exception as e:
         logging.error(f"Failed to save download file {filename}: {e}")
         raise
-
+def construct_download_url(request: Request, filename: str) -> str:
+    """
+    Construct the download URL for a file.
+    
+    Args:
+        request: FastAPI request object
+        filename: Name of the file
+        
+    Returns:
+        Full download URL
+    """
+    # Get the base URL from the request
+    base_url = str(request.base_url).rstrip('/')
+    
+    # For Azure App Service, use the proper host
+    host = request.headers.get('host', '')
+    if 'azurewebsites.net' in host:
+        # Use HTTPS for Azure
+        base_url = f"https://{host}"
+    elif 'localhost' in host or '127.0.0.1' in host:
+        # Use HTTP for local development
+        base_url = f"http://{host}"
+    
+    return f"{base_url}/download-files/{filename}"
 def secure_filename(filename: str) -> str:
     """
     Sanitize a filename to be safe for filesystem storage.
@@ -5207,7 +5230,7 @@ from fastapi.responses import HTMLResponse
 @app.get("/", response_class=HTMLResponse)
 async def root():
     """
-    Serve a beautiful landing page with API documentation.
+    Serve an advanced portfolio-style landing page with integrated chatbot.
     """
     html_content = """
 <!DOCTYPE html>
@@ -5215,24 +5238,25 @@ async def root():
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Copilot v2 API - AI-Powered Assistant</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <title>Advanced AI API Platform - Next-Gen Intelligence Infrastructure</title>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         :root {
-            --primary: #6366f1;
-            --primary-dark: #4f46e5;
-            --secondary: #8b5cf6;
-            --accent: #ec4899;
-            --bg-dark: #0f172a;
-            --bg-card: #1e293b;
-            --bg-code: #0f172a;
-            --text-primary: #e2e8f0;
-            --text-secondary: #94a3b8;
-            --border: #334155;
+            --primary: #7c3aed;
+            --primary-light: #a78bfa;
+            --primary-dark: #5b21b6;
+            --secondary: #06b6d4;
+            --accent: #f59e0b;
             --success: #10b981;
-            --warning: #f59e0b;
-            --error: #ef4444;
+            --bg-main: #030712;
+            --bg-card: #111827;
+            --bg-elevated: #1f2937;
+            --text-primary: #f9fafb;
+            --text-secondary: #9ca3af;
+            --text-muted: #6b7280;
+            --border: #374151;
+            --glow: rgba(124, 58, 237, 0.5);
         }
 
         * {
@@ -5242,72 +5266,345 @@ async def root():
         }
 
         body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            background: var(--bg-dark);
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: var(--bg-main);
             color: var(--text-primary);
-            line-height: 1.6;
             overflow-x: hidden;
+            position: relative;
         }
 
-        .gradient-bg {
+        /* Advanced Background */
+        .bg-wrapper {
             position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 100vh;
-            background: radial-gradient(ellipse at top, #1e293b 0%, #0f172a 50%);
+            inset: 0;
             z-index: -1;
         }
 
-        .floating-gradient {
-            position: fixed;
+        .grid-bg {
+            position: absolute;
+            inset: 0;
+            background-image: 
+                linear-gradient(rgba(124, 58, 237, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(124, 58, 237, 0.03) 1px, transparent 1px);
+            background-size: 50px 50px;
+            animation: grid-move 20s linear infinite;
+        }
+
+        @keyframes grid-move {
+            0% { transform: translate(0, 0); }
+            100% { transform: translate(50px, 50px); }
+        }
+
+        .gradient-orb {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(80px);
+            opacity: 0.5;
+            animation: float 20s infinite ease-in-out;
+        }
+
+        .orb-1 {
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, var(--primary), transparent);
+            top: -300px;
+            left: -300px;
+        }
+
+        .orb-2 {
             width: 800px;
             height: 800px;
-            background: radial-gradient(circle, rgba(99, 102, 241, 0.1) 0%, transparent 70%);
-            border-radius: 50%;
-            animation: float 20s infinite ease-in-out;
-            z-index: -1;
-        }
-
-        .gradient-1 {
-            top: -400px;
-            left: -400px;
-        }
-
-        .gradient-2 {
+            background: radial-gradient(circle, var(--secondary), transparent);
             bottom: -400px;
             right: -400px;
             animation-delay: 10s;
-            background: radial-gradient(circle, rgba(139, 92, 246, 0.1) 0%, transparent 70%);
+        }
+
+        .orb-3 {
+            width: 500px;
+            height: 500px;
+            background: radial-gradient(circle, var(--accent), transparent);
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            animation-delay: 5s;
         }
 
         @keyframes float {
             0%, 100% { transform: translate(0, 0) scale(1); }
-            50% { transform: translate(30px, -30px) scale(1.1); }
+            25% { transform: translate(50px, -50px) scale(1.1); }
+            50% { transform: translate(-30px, 30px) scale(0.9); }
+            75% { transform: translate(30px, 50px) scale(1.05); }
         }
 
-        .container {
-            max-width: 1200px;
+        /* Navigation */
+        nav {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            background: rgba(3, 7, 18, 0.8);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border);
+            z-index: 100;
+            transition: all 0.3s;
+        }
+
+        .nav-container {
+            max-width: 1400px;
             margin: 0 auto;
-            padding: 2rem;
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .nav-logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+            align-items: center;
+        }
+
+        .nav-links a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            transition: color 0.3s;
+            font-weight: 500;
+        }
+
+        .nav-links a:hover {
+            color: var(--primary-light);
+        }
+
+        .try-demo-btn {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s;
+            box-shadow: 0 4px 15px var(--glow);
+        }
+
+        .try-demo-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px var(--glow);
+        }
+
+        /* Hero Section */
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 6rem 2rem 4rem;
             position: relative;
         }
 
-        /* Header */
-        .header {
+        .hero-content {
+            max-width: 1200px;
             text-align: center;
-            padding: 4rem 0;
             position: relative;
+            z-index: 1;
         }
 
-        .logo {
+        .badge {
             display: inline-flex;
             align-items: center;
-            gap: 1rem;
+            gap: 0.5rem;
+            background: rgba(124, 58, 237, 0.1);
+            border: 1px solid var(--primary);
+            padding: 0.5rem 1rem;
+            border-radius: 50px;
+            font-size: 0.875rem;
+            color: var(--primary-light);
             margin-bottom: 2rem;
         }
 
-        .logo-icon {
+        .hero h1 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: clamp(3rem, 8vw, 5rem);
+            font-weight: 700;
+            line-height: 1.1;
+            margin-bottom: 1.5rem;
+            background: linear-gradient(135deg, var(--text-primary), var(--primary-light), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: gradient-shift 8s ease infinite;
+        }
+
+        @keyframes gradient-shift {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+        }
+
+        .hero-subtitle {
+            font-size: 1.5rem;
+            color: var(--text-secondary);
+            margin-bottom: 3rem;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .hero-cta {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .cta-primary {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white;
+            padding: 1rem 2rem;
+            border-radius: 12px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 1.1rem;
+            transition: all 0.3s;
+            box-shadow: 0 4px 20px var(--glow);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .cta-primary:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 30px var(--glow);
+        }
+
+        .cta-secondary {
+            background: transparent;
+            color: var(--text-primary);
+            padding: 1rem 2rem;
+            border-radius: 12px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 1.1rem;
+            transition: all 0.3s;
+            border: 2px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .cta-secondary:hover {
+            border-color: var(--primary);
+            color: var(--primary-light);
+            transform: translateY(-3px);
+        }
+
+        /* Stats Ticker */
+        .stats-ticker {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            padding: 1.5rem;
+            margin: 4rem auto;
+            max-width: 1200px;
+            border-radius: 16px;
+            overflow: hidden;
+        }
+
+        .stats-row {
+            display: flex;
+            gap: 3rem;
+            animation: scroll 20s linear infinite;
+        }
+
+        @keyframes scroll {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(-50%); }
+        }
+
+        .stat-item {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            white-space: nowrap;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .stat-label {
+            color: var(--text-secondary);
+        }
+
+        /* Architecture Section */
+        .architecture {
+            padding: 6rem 2rem;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .section-header {
+            text-align: center;
+            margin-bottom: 4rem;
+        }
+
+        .section-title {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 3rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            background: linear-gradient(135deg, var(--text-primary), var(--primary-light));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .section-subtitle {
+            font-size: 1.25rem;
+            color: var(--text-secondary);
+        }
+
+        .architecture-diagram {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            padding: 3rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .arch-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+        }
+
+        .arch-component {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 2rem;
+            position: relative;
+            transition: all 0.3s;
+        }
+
+        .arch-component:hover {
+            transform: translateY(-5px);
+            border-color: var(--primary);
+            box-shadow: 0 10px 30px rgba(124, 58, 237, 0.2);
+        }
+
+        .arch-icon {
             width: 60px;
             height: 60px;
             background: linear-gradient(135deg, var(--primary), var(--secondary));
@@ -5315,209 +5612,267 @@ async def root():
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 2rem;
-            box-shadow: 0 10px 30px rgba(99, 102, 241, 0.3);
-        }
-
-        h1 {
-            font-size: 3.5rem;
-            font-weight: 700;
-            background: linear-gradient(135deg, var(--primary), var(--secondary), var(--accent));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            margin-bottom: 1rem;
-        }
-
-        .subtitle {
-            font-size: 1.25rem;
-            color: var(--text-secondary);
-            margin-bottom: 3rem;
-        }
-
-        /* Status Badge */
-        .status-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-            background: var(--bg-card);
-            padding: 0.75rem 1.5rem;
-            border-radius: 100px;
-            border: 1px solid var(--border);
-            margin-bottom: 3rem;
-        }
-
-        .status-indicator {
-            width: 10px;
-            height: 10px;
-            background: var(--success);
-            border-radius: 50%;
-            animation: pulse 2s infinite;
-        }
-
-        @keyframes pulse {
-            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
-            70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
-        }
-
-        /* Quick Start */
-        .quick-start {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 2rem;
-            margin-bottom: 3rem;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-        }
-
-        .quick-start h2 {
             font-size: 1.5rem;
             margin-bottom: 1rem;
+        }
+
+        .arch-component h3 {
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .arch-component p {
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+
+        .tech-stack-list {
             display: flex;
-            align-items: center;
+            flex-wrap: wrap;
             gap: 0.5rem;
-        }
-
-        .command-box {
-            background: var(--bg-code);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 1rem;
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.9rem;
-            position: relative;
             margin-top: 1rem;
-            overflow-x: auto;
         }
 
-        .copy-btn {
-            position: absolute;
-            top: 0.75rem;
-            right: 0.75rem;
-            background: var(--primary);
-            border: none;
-            color: white;
-            padding: 0.5rem 1rem;
-            border-radius: 6px;
-            cursor: pointer;
+        .tech-tag {
+            background: rgba(124, 58, 237, 0.1);
+            color: var(--primary-light);
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
             font-size: 0.875rem;
-            transition: all 0.2s;
-        }
-
-        .copy-btn:hover {
-            background: var(--primary-dark);
-            transform: translateY(-1px);
-        }
-
-        /* Features Grid */
-        .features {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 1.5rem;
-            margin-bottom: 3rem;
-        }
-
-        .feature-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 1.5rem;
+            border: 1px solid transparent;
             transition: all 0.3s;
         }
 
-        .feature-card:hover {
-            transform: translateY(-4px);
+        .tech-tag:hover {
             border-color: var(--primary);
-            box-shadow: 0 10px 30px rgba(99, 102, 241, 0.2);
+            transform: scale(1.05);
         }
 
-        .feature-icon {
-            width: 48px;
-            height: 48px;
-            background: linear-gradient(135deg, var(--primary), var(--secondary));
+        /* Features Comparison */
+        .comparison {
+            padding: 6rem 2rem;
+            background: var(--bg-card);
+            position: relative;
+        }
+
+        .comparison-table {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: var(--bg-elevated);
+            border-radius: 24px;
+            padding: 2rem;
+            overflow: hidden;
+        }
+
+        .comparison-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr;
+            gap: 1rem;
+        }
+
+        .comparison-header {
+            font-weight: 600;
+            padding: 1rem;
+            background: var(--bg-card);
             border-radius: 12px;
+            text-align: center;
+        }
+
+        .comparison-row {
+            display: contents;
+        }
+
+        .comparison-row > div {
+            padding: 1rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .feature-name {
+            color: var(--text-secondary);
+        }
+
+        .check {
+            color: var(--success);
+            font-size: 1.2rem;
+        }
+
+        .cross {
+            color: var(--text-muted);
+            font-size: 1.2rem;
+        }
+
+        .our-platform {
+            background: linear-gradient(135deg, rgba(124, 58, 237, 0.1), rgba(6, 182, 212, 0.1));
+            border: 1px solid var(--primary);
+        }
+
+        /* Capabilities */
+        .capabilities {
+            padding: 6rem 2rem;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .capability-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 2rem;
+            margin-top: 3rem;
+        }
+
+        .capability-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 2.5rem;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s;
+        }
+
+        .capability-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, var(--primary), var(--secondary));
+            transform: scaleX(0);
+            transition: transform 0.3s;
+        }
+
+        .capability-card:hover::before {
+            transform: scaleX(1);
+        }
+
+        .capability-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+        }
+
+        .capability-icon {
+            width: 70px;
+            height: 70px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            border-radius: 20px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 1.5rem;
-            margin-bottom: 1rem;
-        }
-
-        .feature-card h3 {
-            font-size: 1.25rem;
-            margin-bottom: 0.5rem;
-        }
-
-        .feature-card p {
-            color: var(--text-secondary);
-            font-size: 0.95rem;
-        }
-
-        /* Endpoints Section */
-        .endpoints {
-            margin-bottom: 3rem;
-        }
-
-        .section-header {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            margin-bottom: 2rem;
-        }
-
-        .section-header h2 {
             font-size: 2rem;
-            font-weight: 600;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 10px 30px rgba(124, 58, 237, 0.3);
         }
 
-        .endpoint-group {
+        .capability-card h3 {
+            font-size: 1.75rem;
+            margin-bottom: 1rem;
+            font-family: 'Space Grotesk', sans-serif;
+        }
+
+        .capability-card p {
+            color: var(--text-secondary);
+            line-height: 1.6;
+            margin-bottom: 1.5rem;
+        }
+
+        .capability-features {
+            list-style: none;
+        }
+
+        .capability-features li {
+            color: var(--text-secondary);
+            padding: 0.5rem 0;
+            padding-left: 1.5rem;
+            position: relative;
+        }
+
+        .capability-features li::before {
+            content: '▸';
+            position: absolute;
+            left: 0;
+            color: var(--primary);
+        }
+
+        /* API Documentation */
+        .api-docs {
+            padding: 6rem 2rem;
             background: var(--bg-card);
+        }
+
+        .endpoints-container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .endpoint-category {
+            background: var(--bg-elevated);
             border: 1px solid var(--border);
-            border-radius: 16px;
+            border-radius: 20px;
             margin-bottom: 2rem;
             overflow: hidden;
         }
 
-        .endpoint-group-header {
-            background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1));
-            padding: 1.5rem;
-            border-bottom: 1px solid var(--border);
+        .category-header {
+            background: linear-gradient(135deg, rgba(124, 58, 237, 0.1), transparent);
+            padding: 2rem;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.3s;
         }
 
-        .endpoint-group-header h3 {
-            font-size: 1.5rem;
-            font-weight: 600;
+        .category-header:hover {
+            background: linear-gradient(135deg, rgba(124, 58, 237, 0.2), transparent);
+        }
+
+        .category-title {
             display: flex;
             align-items: center;
-            gap: 0.75rem;
+            gap: 1rem;
+            font-size: 1.5rem;
+            font-weight: 600;
         }
 
-        .endpoint-item {
+        .endpoint-list {
+            padding: 2rem;
+            display: none;
+        }
+
+        .endpoint-category.active .endpoint-list {
+            display: block;
+        }
+
+        .endpoint {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
             padding: 1.5rem;
-            border-bottom: 1px solid var(--border);
-            transition: background 0.2s;
+            margin-bottom: 1rem;
+            transition: all 0.3s;
         }
 
-        .endpoint-item:last-child {
-            border-bottom: none;
-        }
-
-        .endpoint-item:hover {
-            background: rgba(99, 102, 241, 0.05);
+        .endpoint:hover {
+            border-color: var(--primary);
+            transform: translateX(5px);
         }
 
         .endpoint-header {
             display: flex;
             align-items: center;
             gap: 1rem;
-            margin-bottom: 0.75rem;
+            margin-bottom: 1rem;
         }
 
-        .method-badge {
-            padding: 0.25rem 0.75rem;
-            border-radius: 6px;
-            font-size: 0.875rem;
+        .method {
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
             font-weight: 600;
+            font-size: 0.875rem;
             font-family: 'JetBrains Mono', monospace;
         }
 
@@ -5527,14 +5882,14 @@ async def root():
         }
 
         .method-post {
-            background: rgba(99, 102, 241, 0.2);
-            color: var(--primary);
+            background: rgba(124, 58, 237, 0.2);
+            color: var(--primary-light);
         }
 
         .endpoint-path {
             font-family: 'JetBrains Mono', monospace;
             font-size: 1.1rem;
-            font-weight: 500;
+            color: var(--text-primary);
         }
 
         .endpoint-description {
@@ -5542,453 +5897,1077 @@ async def root():
             margin-bottom: 1rem;
         }
 
-        .curl-command {
-            background: var(--bg-code);
+        .code-block {
+            background: var(--bg-main);
             border: 1px solid var(--border);
             border-radius: 8px;
             padding: 1rem;
             font-family: 'JetBrains Mono', monospace;
-            font-size: 0.85rem;
-            position: relative;
+            font-size: 0.875rem;
             overflow-x: auto;
-            white-space: pre-wrap;
-            word-break: break-all;
+            position: relative;
         }
 
-        /* Stats Section */
-        .stats {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 1.5rem;
-            margin-bottom: 3rem;
+        .copy-button {
+            position: absolute;
+            top: 0.5rem;
+            right: 0.5rem;
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.875rem;
+            transition: all 0.3s;
         }
 
-        .stat-card {
-            background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1));
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 1.5rem;
-            text-align: center;
+        .copy-button:hover {
+            background: var(--primary-dark);
+            transform: scale(1.05);
         }
 
-        .stat-number {
-            font-size: 2.5rem;
-            font-weight: 700;
+        /* Chatbot */
+        .chatbot-toggle {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            width: 60px;
+            height: 60px;
             background: linear-gradient(135deg, var(--primary), var(--secondary));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 10px 30px rgba(124, 58, 237, 0.4);
+            transition: all 0.3s;
+            z-index: 1000;
         }
 
-        .stat-label {
-            color: var(--text-secondary);
+        .chatbot-toggle:hover {
+            transform: scale(1.1);
+            box-shadow: 0 15px 40px rgba(124, 58, 237, 0.5);
+        }
+
+        .chatbot-container {
+            position: fixed;
+            bottom: 6rem;
+            right: 2rem;
+            width: 400px;
+            height: 600px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+            display: none;
+            flex-direction: column;
+            z-index: 999;
+            overflow: hidden;
+        }
+
+        .chatbot-container.active {
+            display: flex;
+        }
+
+        .chatbot-header {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            padding: 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .chatbot-title {
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+
+        .chatbot-close {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s;
+        }
+
+        .chatbot-close:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: rotate(90deg);
+        }
+
+        .chatbot-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .message {
+            max-width: 80%;
+            padding: 1rem;
+            border-radius: 12px;
+            animation: messageSlide 0.3s ease-out;
+        }
+
+        @keyframes messageSlide {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .message.user {
+            background: var(--primary);
+            color: white;
+            align-self: flex-end;
+            margin-left: auto;
+        }
+
+        .message.bot {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            align-self: flex-start;
+        }
+
+        .chatbot-input-container {
+            padding: 1.5rem;
+            border-top: 1px solid var(--border);
+            display: flex;
+            gap: 1rem;
+        }
+
+        .chatbot-input {
+            flex: 1;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
             font-size: 0.95rem;
+            transition: all 0.3s;
+        }
+
+        .chatbot-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.2);
+        }
+
+        .chatbot-send {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .chatbot-send:hover {
+            background: var(--primary-dark);
+            transform: scale(1.05);
+        }
+
+        .typing-indicator {
+            display: flex;
+            gap: 0.3rem;
+            padding: 1rem;
+        }
+
+        .typing-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--text-secondary);
+            border-radius: 50%;
+            animation: typing 1.4s infinite;
+        }
+
+        .typing-dot:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-dot:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes typing {
+            0%, 60%, 100% {
+                opacity: 0.3;
+                transform: scale(0.8);
+            }
+            30% {
+                opacity: 1;
+                transform: scale(1);
+            }
         }
 
         /* Footer */
-        .footer {
+        footer {
+            padding: 2rem;
             text-align: center;
-            padding: 3rem 0;
             border-top: 1px solid var(--border);
-            margin-top: 5rem;
+            margin-top: 6rem;
         }
 
-        .footer-content {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 1rem;
-        }
-
-        .created-by {
-            font-size: 1.1rem;
-            color: var(--text-secondary);
-        }
-
-        .created-by a {
-            color: var(--primary);
-            text-decoration: none;
-            font-weight: 600;
-            transition: color 0.2s;
-        }
-
-        .created-by a:hover {
-            color: var(--secondary);
-        }
-
-        .tech-stack {
-            display: flex;
-            gap: 1rem;
-            margin-top: 1rem;
-        }
-
-        .tech-badge {
-            padding: 0.5rem 1rem;
-            background: rgba(99, 102, 241, 0.1);
-            border: 1px solid var(--border);
-            border-radius: 6px;
+        .footer-text {
+            color: var(--text-muted);
             font-size: 0.875rem;
+        }
+
+        .footer-text a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            transition: color 0.3s;
+        }
+
+        .footer-text a:hover {
+            color: var(--primary-light);
         }
 
         /* Responsive */
         @media (max-width: 768px) {
-            h1 {
-                font-size: 2.5rem;
+            .nav-links {
+                display: none;
             }
             
-            .container {
-                padding: 1rem;
+            .hero h1 {
+                font-size: 3rem;
             }
             
-            .features {
+            .comparison-grid {
                 grid-template-columns: 1fr;
             }
             
-            .stats {
-                grid-template-columns: repeat(2, 1fr);
+            .chatbot-container {
+                width: calc(100vw - 2rem);
+                right: 1rem;
+                bottom: 5rem;
+                height: 500px;
             }
+            
+            .capability-cards {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Loading Animation */
+        .loader {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--border);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
         }
     </style>
 </head>
 <body>
-    <div class="gradient-bg"></div>
-    <div class="floating-gradient gradient-1"></div>
-    <div class="floating-gradient gradient-2"></div>
+    <!-- Background -->
+    <div class="bg-wrapper">
+        <div class="grid-bg"></div>
+        <div class="gradient-orb orb-1"></div>
+        <div class="gradient-orb orb-2"></div>
+        <div class="gradient-orb orb-3"></div>
+    </div>
 
-    <div class="container">
-        <!-- Header -->
-        <header class="header">
-            <div class="logo">
-                <div class="logo-icon">
+    <!-- Navigation -->
+    <nav id="navbar">
+        <div class="nav-container">
+            <div class="nav-logo">
+                <i class="fas fa-brain"></i>
+                AI Platform
+            </div>
+            <div class="nav-links">
+                <a href="#architecture">Architecture</a>
+                <a href="#capabilities">Capabilities</a>
+                <a href="#api">API Docs</a>
+                <a href="#" class="try-demo-btn" onclick="toggleChatbot()">Try Demo</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="hero-content">
+            <div class="badge">
+                <i class="fas fa-rocket"></i>
+                Enterprise-Grade AI Infrastructure
+            </div>
+            
+            <h1>Next-Generation AI API Platform</h1>
+            <p class="hero-subtitle">
+                A sophisticated alternative to GPT APIs with advanced file processing, 
+                multi-modal capabilities, and intelligent conversation management
+            </p>
+            
+            <div class="hero-cta">
+                <a href="#api" class="cta-primary">
+                    <i class="fas fa-code"></i>
+                    Explore API
+                </a>
+                <a href="#" class="cta-secondary" onclick="toggleChatbot()">
+                    <i class="fas fa-comments"></i>
+                    Live Demo
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Stats Ticker -->
+    <div class="stats-ticker">
+        <div class="stats-row">
+            <div class="stat-item">
+                <div class="stat-value">GPT-4</div>
+                <div class="stat-label">Powered</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value">15+</div>
+                <div class="stat-label">Endpoints</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value">Multi-Modal</div>
+                <div class="stat-label">Processing</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value">Azure</div>
+                <div class="stat-label">Infrastructure</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value">Enterprise</div>
+                <div class="stat-label">Security</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value">99.9%</div>
+                <div class="stat-label">Uptime</div>
+            </div>
+            <!-- Duplicate for seamless loop -->
+            <div class="stat-item">
+                <div class="stat-value">GPT-4</div>
+                <div class="stat-label">Powered</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value">15+</div>
+                <div class="stat-label">Endpoints</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value">Multi-Modal</div>
+                <div class="stat-label">Processing</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Architecture Section -->
+    <section class="architecture" id="architecture">
+        <div class="section-header">
+            <h2 class="section-title">Technical Architecture</h2>
+            <p class="section-subtitle">Built for scale, designed for intelligence</p>
+        </div>
+        
+        <div class="architecture-diagram">
+            <div class="arch-grid">
+                <div class="arch-component">
+                    <div class="arch-icon">
+                        <i class="fas fa-layer-group"></i>
+                    </div>
+                    <h3>API Gateway</h3>
+                    <p>FastAPI-powered gateway with automatic documentation, request validation, and async processing</p>
+                    <div class="tech-stack-list">
+                        <span class="tech-tag">FastAPI</span>
+                        <span class="tech-tag">Uvicorn</span>
+                        <span class="tech-tag">Pydantic</span>
+                    </div>
+                </div>
+                
+                <div class="arch-component">
+                    <div class="arch-icon">
+                        <i class="fas fa-brain"></i>
+                    </div>
+                    <h3>AI Core</h3>
+                    <p>Azure OpenAI integration with GPT-4, embeddings, and advanced language understanding</p>
+                    <div class="tech-stack-list">
+                        <span class="tech-tag">GPT-4</span>
+                        <span class="tech-tag">LangChain</span>
+                        <span class="tech-tag">Vector DB</span>
+                    </div>
+                </div>
+                
+                <div class="arch-component">
+                    <div class="arch-icon">
+                        <i class="fas fa-database"></i>
+                    </div>
+                    <h3>Data Processing</h3>
+                    <p>Multi-format file handling with pandas integration for advanced data analysis</p>
+                    <div class="tech-stack-list">
+                        <span class="tech-tag">Pandas</span>
+                        <span class="tech-tag">NumPy</span>
+                        <span class="tech-tag">OpenPyXL</span>
+                    </div>
+                </div>
+                
+                <div class="arch-component">
+                    <div class="arch-icon">
+                        <i class="fas fa-shield-alt"></i>
+                    </div>
+                    <h3>Security Layer</h3>
+                    <p>Enterprise-grade security with input validation, rate limiting, and secure file handling</p>
+                    <div class="tech-stack-list">
+                        <span class="tech-tag">OAuth2</span>
+                        <span class="tech-tag">CORS</span>
+                        <span class="tech-tag">Encryption</span>
+                    </div>
+                </div>
+                
+                <div class="arch-component">
+                    <div class="arch-icon">
+                        <i class="fas fa-memory"></i>
+                    </div>
+                    <h3>State Management</h3>
+                    <p>Intelligent conversation memory with thread isolation and context preservation</p>
+                    <div class="tech-stack-list">
+                        <span class="tech-tag">Thread Management</span>
+                        <span class="tech-tag">Vector Store</span>
+                        <span class="tech-tag">Session Control</span>
+                    </div>
+                </div>
+                
+                <div class="arch-component">
+                    <div class="arch-icon">
+                        <i class="fas fa-cloud"></i>
+                    </div>
+                    <h3>Infrastructure</h3>
+                    <p>Scalable Azure cloud deployment with auto-scaling and global CDN</p>
+                    <div class="tech-stack-list">
+                        <span class="tech-tag">Azure App Service</span>
+                        <span class="tech-tag">CDN</span>
+                        <span class="tech-tag">Auto-scaling</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Comparison Section -->
+    <section class="comparison">
+        <div class="section-header">
+            <h2 class="section-title">Platform Comparison</h2>
+            <p class="section-subtitle">See how we stack up against standard GPT APIs</p>
+        </div>
+        
+        <div class="comparison-table">
+            <div class="comparison-grid">
+                <div class="comparison-header feature-name">Feature</div>
+                <div class="comparison-header our-platform">Our Platform</div>
+                <div class="comparison-header">Standard GPT API</div>
+                
+                <div class="comparison-row">
+                    <div class="feature-name">Multi-file Processing</div>
+                    <div><i class="fas fa-check check"></i> Advanced</div>
+                    <div><i class="fas fa-times cross"></i> Limited</div>
+                </div>
+                
+                <div class="comparison-row">
+                    <div class="feature-name">Data Analysis (Pandas)</div>
+                    <div><i class="fas fa-check check"></i> Built-in</div>
+                    <div><i class="fas fa-times cross"></i> Not Available</div>
+                </div>
+                
+                <div class="comparison-row">
+                    <div class="feature-name">Excel/CSV Generation</div>
+                    <div><i class="fas fa-check check"></i> Native</div>
+                    <div><i class="fas fa-times cross"></i> Manual</div>
+                </div>
+                
+                <div class="comparison-row">
+                    <div class="feature-name">Review Extraction</div>
+                    <div><i class="fas fa-check check"></i> Specialized</div>
+                    <div><i class="fas fa-times cross"></i> Generic</div>
+                </div>
+                
+                <div class="comparison-row">
+                    <div class="feature-name">Document Export</div>
+                    <div><i class="fas fa-check check"></i> DOCX/PDF</div>
+                    <div><i class="fas fa-times cross"></i> Text Only</div>
+                </div>
+                
+                <div class="comparison-row">
+                    <div class="feature-name">Conversation Memory</div>
+                    <div><i class="fas fa-check check"></i> Persistent</div>
+                    <div><i class="fas fa-check check"></i> Session-based</div>
+                </div>
+                
+                <div class="comparison-row">
+                    <div class="feature-name">File Downloads</div>
+                    <div><i class="fas fa-check check"></i> Integrated</div>
+                    <div><i class="fas fa-times cross"></i> Not Supported</div>
+                </div>
+                
+                <div class="comparison-row">
+                    <div class="feature-name">Image Analysis</div>
+                    <div><i class="fas fa-check check"></i> Advanced</div>
+                    <div><i class="fas fa-check check"></i> Basic</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Capabilities Section -->
+    <section class="capabilities" id="capabilities">
+        <div class="section-header">
+            <h2 class="section-title">Core Capabilities</h2>
+            <p class="section-subtitle">Everything you need for intelligent automation</p>
+        </div>
+        
+        <div class="capability-cards">
+            <div class="capability-card">
+                <div class="capability-icon">
                     <i class="fas fa-robot"></i>
                 </div>
+                <h3>Intelligent Conversations</h3>
+                <p>Advanced dialogue management with context preservation, multi-turn conversations, and intelligent response generation</p>
+                <ul class="capability-features">
+                    <li>Stateful conversation threads</li>
+                    <li>Context-aware responses</li>
+                    <li>Streaming & non-streaming modes</li>
+                    <li>Custom system prompts</li>
+                </ul>
             </div>
-            <h1>Copilot v2 API</h1>
-            <p class="subtitle">AI-Powered Assistant with Advanced File Processing</p>
             
-            <div class="status-badge">
-                <div class="status-indicator"></div>
-                <span>API Operational</span>
+            <div class="capability-card">
+                <div class="capability-icon">
+                    <i class="fas fa-file-alt"></i>
+                </div>
+                <h3>Document Intelligence</h3>
+                <p>Process any document format with advanced extraction, analysis, and generation capabilities</p>
+                <ul class="capability-features">
+                    <li>PDF, DOCX, TXT processing</li>
+                    <li>Image text extraction</li>
+                    <li>Multi-lingual support</li>
+                    <li>Format preservation</li>
+                </ul>
             </div>
-        </header>
+            
+            <div class="capability-card">
+                <div class="capability-icon">
+                    <i class="fas fa-chart-line"></i>
+                </div>
+                <h3>Data Analytics Engine</h3>
+                <p>Built-in pandas integration for complex data analysis, visualization, and insights generation</p>
+                <ul class="capability-features">
+                    <li>CSV/Excel analysis</li>
+                    <li>Statistical computations</li>
+                    <li>Data transformation</li>
+                    <li>Automated insights</li>
+                </ul>
+            </div>
+            
+            <div class="capability-card">
+                <div class="capability-icon">
+                    <i class="fas fa-magic"></i>
+                </div>
+                <h3>Content Generation</h3>
+                <p>Generate structured content in multiple formats with intelligent formatting and styling</p>
+                <ul class="capability-features">
+                    <li>CSV/Excel generation</li>
+                    <li>DOCX reports</li>
+                    <li>Structured data extraction</li>
+                    <li>Template-based output</li>
+                </ul>
+            </div>
+            
+            <div class="capability-card">
+                <div class="capability-icon">
+                    <i class="fas fa-image"></i>
+                </div>
+                <h3>Multi-Modal Processing</h3>
+                <p>Seamlessly handle text, images, and documents in a single unified interface</p>
+                <ul class="capability-features">
+                    <li>Image understanding</li>
+                    <li>OCR capabilities</li>
+                    <li>Mixed media analysis</li>
+                    <li>Visual question answering</li>
+                </ul>
+            </div>
+            
+            <div class="capability-card">
+                <div class="capability-icon">
+                    <i class="fas fa-lock"></i>
+                </div>
+                <h3>Enterprise Security</h3>
+                <p>Bank-grade security with comprehensive validation, sanitization, and access control</p>
+                <ul class="capability-features">
+                    <li>Input validation</li>
+                    <li>File sanitization</li>
+                    <li>Rate limiting</li>
+                    <li>Audit logging</li>
+                </ul>
+            </div>
+        </div>
+    </section>
 
-        <!-- Quick Start -->
-        <section class="quick-start">
-            <h2><i class="fas fa-rocket"></i> Quick Start</h2>
-            <p>Get started with a simple health check:</p>
-            <div class="command-box">
-                <code>curl https://copilotv2.azurewebsites.net/health</code>
-                <button class="copy-btn" onclick="copyToClipboard('curl https://copilotv2.azurewebsites.net/health')">
-                    <i class="fas fa-copy"></i> Copy
-                </button>
-            </div>
-        </section>
-
-        <!-- Features -->
-        <section class="features">
-            <div class="feature-card">
-                <div class="feature-icon">
-                    <i class="fas fa-comments"></i>
-                </div>
-                <h3>Chat Completions</h3>
-                <p>Stateless AI completions with support for text, images, and documents</p>
-            </div>
-            
-            <div class="feature-card">
-                <div class="feature-icon">
-                    <i class="fas fa-file-csv"></i>
-                </div>
-                <h3>Data Generation</h3>
-                <p>Generate CSV and Excel files from natural language prompts</p>
-            </div>
-            
-            <div class="feature-card">
-                <div class="feature-icon">
-                    <i class="fas fa-star"></i>
-                </div>
-                <h3>Review Extraction</h3>
-                <p>Extract structured review data from unstructured text files</p>
-            </div>
-            
-            <div class="feature-card">
-                <div class="feature-icon">
-                    <i class="fas fa-download"></i>
-                </div>
-                <h3>File Downloads</h3>
-                <p>Secure file generation and download with multiple format support</p>
-            </div>
-            
-            <div class="feature-card">
-                <div class="feature-icon">
-                    <i class="fas fa-brain"></i>
-                </div>
-                <h3>Pandas Agent</h3>
-                <p>Advanced data analysis with pandas integration for CSV/Excel files</p>
-            </div>
-            
-            <div class="feature-card">
-                <div class="feature-icon">
-                    <i class="fas fa-history"></i>
-                </div>
-                <h3>Conversation Memory</h3>
-                <p>Stateful conversations with thread management and context preservation</p>
-            </div>
-        </section>
-
-        <!-- Stats -->
-        <section class="stats">
-            <div class="stat-card">
-                <div class="stat-number">15+</div>
-                <div class="stat-label">API Endpoints</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">GPT-4</div>
-                <div class="stat-label">Powered By</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">100%</div>
-                <div class="stat-label">Azure Hosted</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-number">24/7</div>
-                <div class="stat-label">Availability</div>
-            </div>
-        </section>
-
-        <!-- Endpoints -->
-        <section class="endpoints">
+    <!-- API Documentation -->
+    <section class="api-docs" id="api">
+        <div class="endpoints-container">
             <div class="section-header">
-                <h2>API Endpoints</h2>
+                <h2 class="section-title">API Documentation</h2>
+                <p class="section-subtitle">Complete reference for all endpoints</p>
             </div>
-
-            <!-- Health & Testing -->
-            <div class="endpoint-group">
-                <div class="endpoint-group-header">
-                    <h3><i class="fas fa-heartbeat"></i> Health & Testing</h3>
-                </div>
-                
-                <div class="endpoint-item">
-                    <div class="endpoint-header">
-                        <span class="method-badge method-get">GET</span>
-                        <span class="endpoint-path">/health</span>
+            
+            <!-- Core AI Endpoints -->
+            <div class="endpoint-category">
+                <div class="category-header" onclick="toggleCategory(this)">
+                    <div class="category-title">
+                        <i class="fas fa-brain"></i>
+                        Core AI Endpoints
                     </div>
-                    <p class="endpoint-description">Basic health check for monitoring</p>
-                    <div class="curl-command">curl https://copilotv2.azurewebsites.net/health</div>
+                    <i class="fas fa-chevron-down"></i>
                 </div>
-                
-                <div class="endpoint-item">
-                    <div class="endpoint-header">
-                        <span class="method-badge method-get">GET</span>
-                        <span class="endpoint-path">/health-check</span>
+                <div class="endpoint-list">
+                    <div class="endpoint">
+                        <div class="endpoint-header">
+                            <span class="method method-post">POST</span>
+                            <span class="endpoint-path">/completion</span>
+                        </div>
+                        <p class="endpoint-description">
+                            Stateless AI completion with support for text, images, and documents. 
+                            Generate responses in plain text, CSV, or Excel formats.
+                        </p>
+                        <div class="code-block">
+                            <code>curl -X POST https://copilotv2.azurewebsites.net/completion \
+  -F "prompt=Generate a sales report for Q4" \
+  -F "output_format=excel" \
+  -F "temperature=0.7"</code>
+                            <button class="copy-button" onclick="copyCode(this)">
+                                <i class="fas fa-copy"></i>
+                            </button>
+                        </div>
                     </div>
-                    <p class="endpoint-description">Comprehensive health check with detailed system status</p>
-                    <div class="curl-command">curl https://copilotv2.azurewebsites.net/health-check</div>
-                </div>
-                
-                <div class="endpoint-item">
-                    <div class="endpoint-header">
-                        <span class="method-badge method-get">GET</span>
-                        <span class="endpoint-path">/test-download</span>
+                    
+                    <div class="endpoint">
+                        <div class="endpoint-header">
+                            <span class="method method-post">POST</span>
+                            <span class="endpoint-path">/extract-reviews</span>
+                        </div>
+                        <p class="endpoint-description">
+                            Extract structured review data from unstructured text files. 
+                            Supports custom column mapping and multiple output formats.
+                        </p>
+                        <div class="code-block">
+                            <code>curl -X POST https://copilotv2.azurewebsites.net/extract-reviews \
+  -F "file=@reviews.pdf" \
+  -F "columns=customer,rating,feedback,date" \
+  -F "output_format=excel"</code>
+                            <button class="copy-button" onclick="copyCode(this)">
+                                <i class="fas fa-copy"></i>
+                            </button>
+                        </div>
                     </div>
-                    <p class="endpoint-description">Test file download functionality</p>
-                    <div class="curl-command">curl https://copilotv2.azurewebsites.net/test-download</div>
-                </div>
-            </div>
-
-            <!-- AI Completions -->
-            <div class="endpoint-group">
-                <div class="endpoint-group-header">
-                    <h3><i class="fas fa-magic"></i> AI Completions</h3>
-                </div>
-                
-                <div class="endpoint-item">
-                    <div class="endpoint-header">
-                        <span class="method-badge method-post">POST</span>
-                        <span class="endpoint-path">/completion</span>
-                    </div>
-                    <p class="endpoint-description">Stateless chat completion with file support and optional CSV/Excel output</p>
-                    <div class="curl-command">curl -X POST https://copilotv2.azurewebsites.net/completion \\
-  -F "prompt=Create a sales report" \\
-  -F "output_format=csv"</div>
-                </div>
-                
-                <div class="endpoint-item">
-                    <div class="endpoint-header">
-                        <span class="method-badge method-post">POST</span>
-                        <span class="endpoint-path">/extract-reviews</span>
-                    </div>
-                    <p class="endpoint-description">Extract structured review data from uploaded documents</p>
-                    <div class="curl-command">curl -X POST https://copilotv2.azurewebsites.net/extract-reviews \\
-  -F "file=@reviews.txt" \\
-  -F "output_format=excel"</div>
-                </div>
-            </div>
-
-            <!-- File Operations -->
-            <div class="endpoint-group">
-                <div class="endpoint-group-header">
-                    <h3><i class="fas fa-file-alt"></i> File Operations</h3>
-                </div>
-                
-                <div class="endpoint-item">
-                    <div class="endpoint-header">
-                        <span class="method-badge method-get">GET</span>
-                        <span class="endpoint-path">/download-files/{filename}</span>
-                    </div>
-                    <p class="endpoint-description">Download generated files (CSV, Excel, DOCX)</p>
-                    <div class="curl-command">curl -O https://copilotv2.azurewebsites.net/download-files/generated_data.csv</div>
-                </div>
-                
-                <div class="endpoint-item">
-                    <div class="endpoint-header">
-                        <span class="method-badge method-get">GET</span>
-                        <span class="endpoint-path">/verify-download/{filename}</span>
-                    </div>
-                    <p class="endpoint-description">Verify file availability before download</p>
-                    <div class="curl-command">curl https://copilotv2.azurewebsites.net/verify-download/generated_data.csv</div>
-                </div>
-                
-                <div class="endpoint-item">
-                    <div class="endpoint-header">
-                        <span class="method-badge method-get">GET</span>
-                        <span class="endpoint-path">/download-chat</span>
-                    </div>
-                    <p class="endpoint-description">Export chat conversation as DOCX document</p>
-                    <div class="curl-command">curl "https://copilotv2.azurewebsites.net/download-chat?session=thread_abc123"</div>
                 </div>
             </div>
 
             <!-- Conversation Management -->
-            <div class="endpoint-group">
-                <div class="endpoint-group-header">
-                    <h3><i class="fas fa-comments"></i> Conversation Management</h3>
-                </div>
-                
-                <div class="endpoint-item">
-                    <div class="endpoint-header">
-                        <span class="method-badge method-post">POST</span>
-                        <span class="endpoint-path">/initiate-chat</span>
+            <div class="endpoint-category">
+                <div class="category-header" onclick="toggleCategory(this)">
+                    <div class="category-title">
+                        <i class="fas fa-comments"></i>
+                        Conversation Management
                     </div>
-                    <p class="endpoint-description">Create new assistant, thread, and vector store</p>
-                    <div class="curl-command">curl -X POST https://copilotv2.azurewebsites.net/initiate-chat \\
-  -F "context=Help me analyze data"</div>
+                    <i class="fas fa-chevron-down"></i>
                 </div>
-                
-                <div class="endpoint-item">
-                    <div class="endpoint-header">
-                        <span class="method-badge method-get">GET</span>
-                        <span class="endpoint-path">/conversation</span>
+                <div class="endpoint-list">
+                    <div class="endpoint">
+                        <div class="endpoint-header">
+                            <span class="method method-post">POST</span>
+                            <span class="endpoint-path">/initiate-chat</span>
+                        </div>
+                        <p class="endpoint-description">
+                            Initialize a new conversation session with assistant, thread, and vector store.
+                        </p>
+                        <div class="code-block">
+                            <code>curl -X POST https://copilotv2.azurewebsites.net/initiate-chat \
+  -F "context=I need help analyzing sales data" \
+  -F "file=@initial_data.csv"</code>
+                            <button class="copy-button" onclick="copyCode(this)">
+                                <i class="fas fa-copy"></i>
+                            </button>
+                        </div>
                     </div>
-                    <p class="endpoint-description">Streaming chat responses with assistant</p>
-                    <div class="curl-command">curl -N "https://copilotv2.azurewebsites.net/conversation?session=thread_abc&prompt=Hello&assistant=asst_xyz"</div>
-                </div>
-                
-                <div class="endpoint-item">
-                    <div class="endpoint-header">
-                        <span class="method-badge method-get">GET</span>
-                        <span class="endpoint-path">/chat</span>
+                    
+                    <div class="endpoint">
+                        <div class="endpoint-header">
+                            <span class="method method-get">GET</span>
+                            <span class="endpoint-path">/conversation</span>
+                        </div>
+                        <p class="endpoint-description">
+                            Stream responses from the AI assistant in real-time.
+                        </p>
+                        <div class="code-block">
+                            <code>curl -N "https://copilotv2.azurewebsites.net/conversation?session=thread_abc&prompt=Analyze the uploaded data&assistant=asst_xyz"</code>
+                            <button class="copy-button" onclick="copyCode(this)">
+                                <i class="fas fa-copy"></i>
+                            </button>
+                        </div>
                     </div>
-                    <p class="endpoint-description">Non-streaming chat responses (full JSON response)</p>
-                    <div class="curl-command">curl "https://copilotv2.azurewebsites.net/chat?session=thread_abc&prompt=Hello&assistant=asst_xyz"</div>
-                </div>
-                
-                <div class="endpoint-item">
-                    <div class="endpoint-header">
-                        <span class="method-badge method-post">POST</span>
-                        <span class="endpoint-path">/upload-file</span>
-                    </div>
-                    <p class="endpoint-description">Upload files to assistant (CSV, Excel, PDF, images)</p>
-                    <div class="curl-command">curl -X POST https://copilotv2.azurewebsites.net/upload-file \\
-  -F "file=@data.csv" \\
-  -F "assistant=asst_xyz"</div>
                 </div>
             </div>
-        </section>
 
-        <!-- Footer -->
-        <footer class="footer">
-            <div class="footer-content">
-                <p class="created-by">
-                    Created with <i class="fas fa-heart" style="color: var(--accent);"></i> by 
-                    <a href="#" target="_blank">Abhik</a>
-                </p>
-                <div class="tech-stack">
-                    <span class="tech-badge">FastAPI</span>
-                    <span class="tech-badge">Azure OpenAI</span>
-                    <span class="tech-badge">GPT-4</span>
-                    <span class="tech-badge">Python</span>
+            <!-- File Operations -->
+            <div class="endpoint-category">
+                <div class="category-header" onclick="toggleCategory(this)">
+                    <div class="category-title">
+                        <i class="fas fa-file"></i>
+                        File Operations
+                    </div>
+                    <i class="fas fa-chevron-down"></i>
+                </div>
+                <div class="endpoint-list">
+                    <div class="endpoint">
+                        <div class="endpoint-header">
+                            <span class="method method-post">POST</span>
+                            <span class="endpoint-path">/upload-file</span>
+                        </div>
+                        <p class="endpoint-description">
+                            Upload files for processing. Supports CSV, Excel, PDF, images, and more.
+                        </p>
+                        <div class="code-block">
+                            <code>curl -X POST https://copilotv2.azurewebsites.net/upload-file \
+  -F "file=@data.xlsx" \
+  -F "assistant=asst_xyz" \
+  -F "session=thread_abc"</code>
+                            <button class="copy-button" onclick="copyCode(this)">
+                                <i class="fas fa-copy"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="endpoint">
+                        <div class="endpoint-header">
+                            <span class="method method-get">GET</span>
+                            <span class="endpoint-path">/download-files/{filename}</span>
+                        </div>
+                        <p class="endpoint-description">
+                            Download generated files securely with proper headers.
+                        </p>
+                        <div class="code-block">
+                            <code>curl -O https://copilotv2.azurewebsites.net/download-files/report_20240315.xlsx</code>
+                            <button class="copy-button" onclick="copyCode(this)">
+                                <i class="fas fa-copy"></i>
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
-        </footer>
+
+            <!-- Health & Monitoring -->
+            <div class="endpoint-category">
+                <div class="category-header" onclick="toggleCategory(this)">
+                    <div class="category-title">
+                        <i class="fas fa-heartbeat"></i>
+                        Health & Monitoring
+                    </div>
+                    <i class="fas fa-chevron-down"></i>
+                </div>
+                <div class="endpoint-list">
+                    <div class="endpoint">
+                        <div class="endpoint-header">
+                            <span class="method method-get">GET</span>
+                            <span class="endpoint-path">/health-check</span>
+                        </div>
+                        <p class="endpoint-description">
+                            Comprehensive health check with system status, dependencies, and performance metrics.
+                        </p>
+                        <div class="code-block">
+                            <code>curl https://copilotv2.azurewebsites.net/health-check</code>
+                            <button class="copy-button" onclick="copyCode(this)">
+                                <i class="fas fa-copy"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Chatbot -->
+    <div class="chatbot-toggle" onclick="toggleChatbot()">
+        <i class="fas fa-comments"></i>
+    </div>
+    
+    <div class="chatbot-container" id="chatbot">
+        <div class="chatbot-header">
+            <div class="chatbot-title">AI Assistant Demo</div>
+            <button class="chatbot-close" onclick="toggleChatbot()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        
+        <div class="chatbot-messages" id="chatMessages">
+            <div class="message bot">
+                <p>👋 Hi! I'm a demo of this AI platform. I can help you:</p>
+                <ul style="margin: 0.5rem 0; padding-left: 1.5rem;">
+                    <li>Generate CSV/Excel files</li>
+                    <li>Extract data from text</li>
+                    <li>Answer questions</li>
+                    <li>Analyze information</li>
+                </ul>
+                <p>Try asking me to create a sales report or analyze some data!</p>
+            </div>
+        </div>
+        
+        <div class="chatbot-input-container">
+            <input 
+                type="text" 
+                class="chatbot-input" 
+                id="chatInput"
+                placeholder="Type your message..."
+                onkeypress="handleChatKeyPress(event)"
+            >
+            <button class="chatbot-send" onclick="sendMessage()">
+                <i class="fas fa-paper-plane"></i>
+                Send
+            </button>
+        </div>
     </div>
 
+    <!-- Footer -->
+    <footer>
+        <p class="footer-text">
+            <span style="opacity: 0.5;">created by <a href="#">abhik</a></span>
+        </p>
+    </footer>
+
     <script>
-        function copyToClipboard(text) {
-            navigator.clipboard.writeText(text).then(() => {
-                // Find the button that was clicked
-                event.target.innerHTML = '<i class="fas fa-check"></i> Copied!';
+        // Toggle endpoint categories
+        function toggleCategory(element) {
+            const category = element.parentElement;
+            category.classList.toggle('active');
+            const chevron = element.querySelector('.fa-chevron-down');
+            chevron.style.transform = category.classList.contains('active') ? 'rotate(180deg)' : 'rotate(0)';
+        }
+
+        // Copy code to clipboard
+        function copyCode(button) {
+            const codeBlock = button.parentElement;
+            const code = codeBlock.querySelector('code').textContent;
+            
+            navigator.clipboard.writeText(code).then(() => {
+                const originalHtml = button.innerHTML;
+                button.innerHTML = '<i class="fas fa-check"></i>';
+                button.style.background = 'var(--success)';
+                
                 setTimeout(() => {
-                    event.target.innerHTML = '<i class="fas fa-copy"></i> Copy';
+                    button.innerHTML = originalHtml;
+                    button.style.background = '';
                 }, 2000);
             });
         }
 
-        // Add copy functionality to all curl commands
-        document.querySelectorAll('.curl-command').forEach(elem => {
-            elem.style.cursor = 'pointer';
-            elem.title = 'Click to copy';
-            elem.onclick = function() {
-                const text = this.textContent;
-                navigator.clipboard.writeText(text).then(() => {
-                    const originalBg = this.style.background;
-                    this.style.background = 'rgba(16, 185, 129, 0.1)';
-                    this.style.transition = 'background 0.3s';
-                    setTimeout(() => {
-                        this.style.background = originalBg;
-                    }, 500);
+        // Chatbot functionality
+        let chatbotOpen = false;
+        let sessionId = null;
+        let assistantId = null;
+
+        function toggleChatbot() {
+            const chatbot = document.getElementById('chatbot');
+            chatbotOpen = !chatbotOpen;
+            
+            if (chatbotOpen) {
+                chatbot.classList.add('active');
+                document.getElementById('chatInput').focus();
+                
+                // Initialize session if not already done
+                if (!sessionId) {
+                    initializeChat();
+                }
+            } else {
+                chatbot.classList.remove('active');
+            }
+        }
+
+        async function initializeChat() {
+            try {
+                const response = await fetch('/initiate-chat', {
+                    method: 'POST',
+                    body: new FormData()
                 });
-            };
+                
+                const data = await response.json();
+                sessionId = data.session;
+                assistantId = data.assistant;
+            } catch (error) {
+                console.error('Failed to initialize chat:', error);
+            }
+        }
+
+        function handleChatKeyPress(event) {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('chatInput');
+            const message = input.value.trim();
+            
+            if (!message) return;
+            
+            // Add user message
+            addMessage(message, 'user');
+            input.value = '';
+            
+            // Show typing indicator
+            showTyping();
+            
+            try {
+                // Check if message is asking for file generation
+                const isFileRequest = message.toLowerCase().includes('csv') || 
+                                    message.toLowerCase().includes('excel') || 
+                                    message.toLowerCase().includes('generate') ||
+                                    message.toLowerCase().includes('create');
+                
+                if (isFileRequest) {
+                    // Use completion endpoint for file generation
+                    const formData = new FormData();
+                    formData.append('prompt', message);
+                    formData.append('temperature', '0.7');
+                    
+                    // Determine output format
+                    if (message.toLowerCase().includes('excel')) {
+                        formData.append('output_format', 'excel');
+                    } else if (message.toLowerCase().includes('csv')) {
+                        formData.append('output_format', 'csv');
+                    }
+                    
+                    const response = await fetch('/completion', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    const data = await response.json();
+                    hideTyping();
+                    
+                    let botMessage = data.response;
+                    if (data.download_url) {
+                        botMessage += `\n\n📎 File generated successfully!\n<a href="${data.download_url}" target="_blank" style="color: var(--primary-light); text-decoration: underline;">Download ${data.filename || 'file'}</a>`;
+                    }
+                    
+                    addMessage(botMessage, 'bot');
+                } else {
+                    // Use regular chat endpoint
+                    const response = await fetch(`/chat?session=${sessionId}&assistant=${assistantId}&prompt=${encodeURIComponent(message)}`);
+                    const data = await response.json();
+                    
+                    hideTyping();
+                    addMessage(data.response || 'I encountered an error. Please try again.', 'bot');
+                }
+            } catch (error) {
+                hideTyping();
+                addMessage('Sorry, I encountered an error. Please try again.', 'bot');
+                console.error('Chat error:', error);
+            }
+        }
+
+        function addMessage(content, type) {
+            const messagesContainer = document.getElementById('chatMessages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}`;
+            messageDiv.innerHTML = `<p>${content}</p>`;
+            messagesContainer.appendChild(messageDiv);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        function showTyping() {
+            const messagesContainer = document.getElementById('chatMessages');
+            const typingDiv = document.createElement('div');
+            typingDiv.className = 'message bot';
+            typingDiv.id = 'typingIndicator';
+            typingDiv.innerHTML = `
+                <div class="typing-indicator">
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                </div>
+            `;
+            messagesContainer.appendChild(typingDiv);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        function hideTyping() {
+            const typingIndicator = document.getElementById('typingIndicator');
+            if (typingIndicator) {
+                typingIndicator.remove();
+            }
+        }
+
+        // Navbar scroll effect
+        window.addEventListener('scroll', () => {
+            const navbar = document.getElementById('navbar');
+            if (window.scrollY > 50) {
+                navbar.style.background = 'rgba(3, 7, 18, 0.95)';
+                navbar.style.boxShadow = '0 10px 30px rgba(0, 0, 0, 0.3)';
+            } else {
+                navbar.style.background = 'rgba(3, 7, 18, 0.8)';
+                navbar.style.boxShadow = 'none';
+            }
         });
 
-        // Animate stats on scroll
+        // Smooth scrolling
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            });
+        });
+
+        // Intersection Observer for animations
         const observerOptions = {
-            threshold: 0.5,
+            threshold: 0.1,
             rootMargin: '0px'
         };
 
         const observer = new IntersectionObserver((entries) => {
             entries.forEach(entry => {
                 if (entry.isIntersecting) {
-                    entry.target.style.animation = 'fadeInUp 0.6s ease-out';
+                    entry.target.style.opacity = '1';
+                    entry.target.style.transform = 'translateY(0)';
                 }
             });
         }, observerOptions);
 
-        document.querySelectorAll('.stat-card, .feature-card').forEach(el => {
+        // Observe elements
+        document.querySelectorAll('.arch-component, .capability-card, .endpoint').forEach(el => {
+            el.style.opacity = '0';
+            el.style.transform = 'translateY(30px)';
+            el.style.transition = 'all 0.6s ease-out';
             observer.observe(el);
         });
-
-        // Add fade in animation
-        const style = document.createElement('style');
-        style.textContent = `
-            @keyframes fadeInUp {
-                from {
-                    opacity: 0;
-                    transform: translateY(30px);
-                }
-                to {
-                    opacity: 1;
-                    transform: translateY(0);
-                }
-            }
-        `;
-        document.head.appendChild(style);
     </script>
 </body>
 </html>
     """
     return HTMLResponse(content=html_content)
-
-
 # Optional: Add a favicon endpoint
 @app.get("/favicon.ico")
 async def favicon():
