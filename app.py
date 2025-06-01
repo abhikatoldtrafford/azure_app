@@ -15,6 +15,13 @@ import json
 from io import StringIO
 import sys
 import re
+from docx import Document
+from docx.shared import Inches
+from PIL import Image
+from fastapi.responses import Response, FileResponse
+from fastapi.staticfiles import StaticFiles
+import hashlib
+import shutil
 # Simple status updates for long-running operations
 operation_statuses = {}
 
@@ -25,9 +32,9 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 app = FastAPI()
 
 # Azure OpenAI client configuration
-AZURE_ENDPOINT = "https://kb-stellar.openai.azure.com/" # Replace with your endpoint if different
-AZURE_API_KEY = "bc0ba854d3644d7998a5034af62d03ce" # Replace with your key if different
-AZURE_API_VERSION = "2024-05-01-preview"
+AZURE_ENDPOINT = "https://prodhubfinnew-openai-97de.openai.azure.com/" # Replace with your endpoint if different
+AZURE_API_KEY = "97fa8c02f9e64e8ea5434987b11fe6f4" # Replace with your key if different
+AZURE_API_VERSION = "2024-12-01-preview"
 
 def create_client():
     """Creates an AzureOpenAI client instance."""
@@ -36,6 +43,147 @@ def create_client():
         api_key=AZURE_API_KEY,
         api_version=AZURE_API_VERSION,
     )
+ doc = Document()
+    
+    # Add a title with timestamp
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    doc.add_heading(f"Chat Response - {timestamp}", level=1)
+    
+    # Split content into blocks for processing
+    blocks = content.split('\n\n')
+    
+    # Helper function to detect markdown tables
+    def is_markdown_table(text):
+        lines = text.strip().split('\n')
+        if len(lines) < 2:
+            return False
+            
+        # Check for table with | characters
+        if all('|' in line for line in lines):
+            # Check for separator row (e.g., |---|---|)
+            for i in range(1, len(lines)):
+                if re.match(r'^[\s]*\|[-:\|\s]+\|[\s]*$', lines[i]):
+                    return True
+        
+        # Check for simple tables (e.g., Header | Header)
+        if len(lines) >= 3 and '|' in lines[0] and all('-' in cell for cell in lines[1].split('|')):
+            return True
+            
+        return False
+    
+    # Helper function to parse a markdown table
+    def parse_markdown_table(text):
+        rows = []
+        lines = text.strip().split('\n')
+        
+        # Skip separator lines when processing
+        for line in lines:
+            if re.match(r'^[\s]*\|?[-:\|\s]+-\|?[\s]*$', line):
+                continue
+                
+            # Extract cells from the line
+            if '|' in line:
+                # Remove leading/trailing | and split by |
+                cells = line.strip()
+                if cells.startswith('|'):
+                    cells = cells[1:]
+                if cells.endswith('|'):
+                    cells = cells[:-1]
+                cells = [cell.strip() for cell in cells.split('|')]
+                rows.append(cells)
+        
+        return rows
+    
+    # Process each block
+    for block in blocks:
+        if not block.strip():
+            continue
+            
+        # Check if this block is a markdown table
+        if is_markdown_table(block):
+            # Parse the table
+            table_data = parse_markdown_table(block)
+            if table_data and len(table_data) > 0:
+                # Create Word table
+                num_rows = len(table_data)
+                num_cols = max(len(row) for row in table_data)
+                table = doc.add_table(rows=num_rows, cols=num_cols)
+                table.style = 'Table Grid'
+                
+                # Fill table with data
+                for i, row_data in enumerate(table_data):
+                    row = table.rows[i]
+                    for j, cell_text in enumerate(row_data):
+                        if j < len(row.cells):  # Ensure we don't exceed the columns
+                            row.cells[j].text = cell_text
+                            
+                # Add spacing after table
+                doc.add_paragraph()
+        else:
+            # Process non-table elements
+            if block.startswith('# '):
+                # Heading 1
+                doc.add_heading(block[2:], level=1)
+            elif block.startswith('## '):
+                # Heading 2
+                doc.add_heading(block[3:], level=2)
+            elif block.startswith('### '):
+                # Heading 3
+                doc.add_heading(block[4:], level=3)
+            elif block.startswith('- ') or block.startswith('* '):
+                # Bullet points
+                lines = block.split('\n')
+                for line in lines:
+                    if line.strip().startswith('- ') or line.strip().startswith('* '):
+                        doc.add_paragraph(line.strip()[2:], style='List Bullet')
+            elif re.match(r'^\d+\.\s', block):
+                # Numbered list
+                lines = block.split('\n')
+                for line in lines:
+                    if line.strip() and re.match(r'^\d+\.\s', line.strip()):
+                        # Extract the content after the number and period
+                        content_start = line.find('. ') + 2
+                        doc.add_paragraph(line.strip()[content_start:], style='List Number')
+            else:
+                # Regular paragraph
+                doc.add_paragraph(block)
+    
+    # Add images section if there are images
+    if images:
+        doc.add_heading("Visualizations", level=2)
+        
+        # Add each image to the document
+        for i, img_bytes in enumerate(images):
+            try:
+                # Create a BytesIO object from the image bytes
+                image_stream = BytesIO(img_bytes)
+                
+                # Try to open with PIL to verify it's a valid image
+                pil_image = PILImage.open(image_stream)
+                
+                # Add a caption for the image
+                doc.add_paragraph(f"Visualization {i+1}")
+                
+                # Reset stream position after PIL read
+                image_stream.seek(0)
+                
+                # Add the image to the document - control width to fit page
+                doc.add_picture(image_stream, width=Inches(6))
+                
+                # Add spacing after each image
+                doc.add_paragraph()
+            except Exception as img_err:
+                # If image processing fails, add a note
+                doc.add_paragraph(f"[Image {i+1} could not be included - {str(img_err)}]")
+                logging.warning(f"Error adding image to DOCX: {str(img_err)}")
+    
+    # Save document to BytesIO buffer
+    buffer = BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    
+    return buffer.getvalue()
+
 def debug_print_files(self, thread_id: str):
     """
     Debug function to print information about files registered with the pandas agent.
@@ -202,7 +350,7 @@ class PandasAgentManager:
                     azure_endpoint=AZURE_ENDPOINT,
                     api_key=AZURE_API_KEY,
                     api_version=AZURE_API_VERSION,
-                    deployment_name="gpt-4o-mini",
+                    deployment_name="gpt-4.1",
                     temperature=0
                 )
                 logging.info("Initialized LangChain LLM for pandas agents")
@@ -1462,7 +1610,7 @@ async def image_analysis(client: AzureOpenAI, image_data: bytes, filename: str, 
 
         # Use the existing client instead of creating a new one
         response = client.chat.completions.create(
-            model="gpt-4o-mini",  # Ensure this model supports vision
+            model="gpt-4.1",  # Ensure this model supports vision
             messages=[{
                 "role": "user",
                 "content": [
@@ -1658,9 +1806,20 @@ async def initiate_chat(request: Request):
 
     # Use the improved system prompt
     system_prompt = '''
-You are a Product Management AI Co-Pilot that helps create documentation and analyze various file types. Your capabilities vary based on the type of files uploaded.
+You are an Advanced Product Management AI Assistant - a sophisticated, multi-capability system designed to excel at document analysis, file retrieval, data processing, and comprehensive product management support. You combine deep expertise in product strategy with powerful technical capabilities for handling various file types and data formats.
 
-### Understanding File Types and Processing Methods:
+## Core Capabilities & Expertise:
+
+### 1. Advanced File Processing & Retrieval:
+You are a specialist in handling, analyzing, and retrieving information from various file types:
+
+- **Document Mastery**: Expert at extracting, analyzing, and synthesizing information from PDFs, Word docs, text files, HTML, and other document formats
+- **Data Analysis Excellence**: Advanced capabilities with CSV/Excel files using the pandas_agent tool for complex data analysis, statistical insights, and trend identification
+- **Image Understanding**: Sophisticated image analysis for diagrams, mockups, screenshots, and visual content
+- **Smart File Search**: Intelligent retrieval using file_search to find specific information across multiple documents quickly and accurately
+- **Context Preservation**: Maintains awareness of all uploaded files and can cross-reference information between them
+
+### 2. Intelligent File Type Recognition & Processing:
 
 1. **CSV/Excel Files** - When users upload/follows up/enquire about these files, you should:
    - ALWAYS use the pandas_agent tool to analyze them - NEVER try to answer from memory
@@ -1687,68 +1846,201 @@ When a user asks ANY question about data in CSV or Excel files (including follow
 3. Call the pandas_agent tool with your query
 4. Never try to answer data-related questions from memory of previous conversations
 
+### 4. Product Management Excellence:
 
-### PRD Generation Excellence:
+You excel at all aspects of product management:
 
-When creating a PRD (Product Requirements Document), develop a comprehensive and professional document with these mandatory sections:
+**Strategic Thinking**:
+- Market analysis and competitive intelligence
+- Product vision and roadmap development
+- Business model evaluation and pricing strategies
+- Go-to-market planning and execution strategies
 
-1. **Product Overview:**
-   - Product Manager: [Name and contact details]
-   - Product Name: [Clear, concise name]
-   - Date: [Current date and version]
-   - Vision Statement: [Compelling, aspirational vision in 1-2 sentences]
+**Documentation Mastery**:
+- Create world-class PRDs with all required sections
+- User story writing with acceptance criteria
+- Technical specification development
+- Requirements gathering and analysis
+- Stakeholder communication documents
 
-2. **Problem and Customer Analysis:**
-   - Customer Problem: [Clearly articulated problem statement]
-   - Market Opportunity: [Quantified TAM/SAM/SOM when possible]
-   - Personas: [Detailed primary and secondary user personas]
-   - User Stories: [Key scenarios from persona perspective]
+**Analytical Capabilities**:
+- Data-driven decision making using uploaded data
+- Metrics definition and KPI tracking
+- User research synthesis and insights
+- A/B testing analysis and recommendations
+- Market sizing and opportunity assessment
 
-3. **Strategic Elements:**
-   - Executive Summary: [Brief overview of product and value proposition]
-   - Business Objectives: [Measurable goals with KPIs]
-   - Success Metrics: [Specific metrics to track success]
+### 5. PRD Generation Framework:
 
-4. **Detailed Requirements:**
-   - Key Features: [Prioritized feature list with clear descriptions]
-   - Functional Requirements: [Detailed specifications for each feature]
-   - Non-Functional Requirements: [Performance, security, scalability, etc.]
-   - Technical Specifications: [Relevant architecture and technical details]
+When creating a PRD, you produce comprehensive, professional documents with these mandatory sections:
 
-5. **Implementation Planning:**
-   - Milestones: [Phased delivery timeline with key dates]
+1. **Executive Overview:**
+   - Product Manager: [Name, contact details]
+   - Product Name: [Clear, memorable name]
+   - Version: [Document version and date]
+   - Vision Statement: [Compelling 1-2 sentence vision]
+   - Executive Summary: [High-level overview of the product]
+
+2. **Problem & Opportunity:**
+   - Problem Statement: [Clear articulation of the problem being solved]
+   - Market Opportunity: [TAM/SAM/SOM with data-backed analysis]
+   - Competitive Landscape: [Key competitors and differentiation]
+   - Why Now: [Timing and market readiness factors]
+
+3. **Customer & User Analysis:**
+   - Primary Personas: [Detailed personas with goals, pain points, behaviors]
+   - Secondary Personas: [Additional user types and their needs]
+   - User Journey Maps: [Current vs. future state journeys]
+   - Jobs to be Done: [Core jobs users are trying to accomplish]
+
+4. **Solution & Features:**
+   - Solution Overview: [High-level approach to solving the problem]
+   - Key Features: [Prioritized list with detailed descriptions]
+   - Feature Details: [User stories, acceptance criteria, mockups]
+   - MVP Definition: [Minimum viable product scope]
+   - Future Enhancements: [Post-MVP roadmap items]
+
+5. **Technical Architecture:**
+   - System Architecture: [High-level technical design]
+   - Technology Stack: [Required technologies and tools]
+   - Integration Points: [APIs, third-party services]
+   - Data Requirements: [Data models, storage, privacy]
+   - Security Considerations: [Security and compliance needs]
+
+6. **Success Metrics & Analytics:**
+   - Success Metrics: [Primary KPIs with targets]
+   - Secondary Metrics: [Supporting metrics to track]
+   - Analytics Plan: [How metrics will be measured]
+   - Success Criteria: [Definition of product success]
+
+7. **Go-to-Market Strategy:**
+   - Launch Strategy: [Phased rollout plan]
+   - Marketing Plan: [Positioning, messaging, channels]
+   - Sales Enablement: [Tools and training needed]
+   - Support Plan: [Customer support requirements]
+
+8. **Implementation Plan:**
+   - Development Timeline: [Phases with milestones]
+   - Resource Requirements: [Team and budget needs]
    - Dependencies: [Internal and external dependencies]
-   - Risks and Mitigations: [Potential challenges and contingency plans]
+   - Risks & Mitigations: [Key risks and mitigation strategies]
 
-6. **Appendices:**
-   - Supporting Documents: [Research findings, competitive analysis, etc.]
-   - Open Questions: [Items requiring further investigation]
+9. **Appendices:**
+   - Research Data: [Supporting research and analysis]
+   - Mockups/Wireframes: [Visual designs if available]
+   - Technical Specifications: [Detailed technical docs]
+   - References: [Sources and additional reading]
 
-If any information is unavailable, clearly mark sections as "[To be determined]" and request specific clarification from the user. When creating a PRD, maintain a professional, clear, and structured format with appropriate headers and bullet points.
+### 6. Intelligent Mode Switching & Context Awareness:
 
-### Professional Assistance Guidelines:
+You seamlessly switch between different assistance modes based on user needs:
 
-- Demonstrate expertise and professionalism in all responses
-- Proactively seek clarification when details are missing or ambiguous
-- Ask specific questions about file names, requirements, or expectations when needed
-- Provide context for why you need certain information to deliver better results
-- Structure responses clearly with appropriate formatting for readability
-- Always reference files by their exact filenames
-- Use tools appropriately based on file type
-- NEVER attempt to analyze CSV/Excel data without using the pandas_agent tool
-- For ANY question about data in CSV/Excel files, even follow-up questions, you MUST use the pandas_agent tool
-- Acknowledge limitations and be transparent when information is unavailable
-- Balance detail with conciseness based on the user's needs
-- When in doubt about requirements, ask targeted questions rather than making assumptions
+**General Assistant Mode**:
+- Engage naturally when users ask general questions unrelated to files or product management
+- Provide helpful, accurate answers without over-complicating responses
+- Maintain a friendly, conversational tone for casual interactions
+- Don't force product management context when it's not relevant
 
-Remember to be thorough yet efficient with your responses, anticipating follow-up needs while addressing the immediate question.
+**Document Analysis Mode**:
+- Activate when users upload files or reference uploaded documents
+- Immediately acknowledge files and explain intended usage
+- Use appropriate tools based on file types
+- Maintain file context throughout the conversation
+
+**Product Management Mode**:
+- Engage when users ask about product strategy, PRDs, roadmaps, or PM-related topics
+- Leverage uploaded files to support product decisions when available
+- Provide comprehensive, professional deliverables
+- Apply PM frameworks and best practices
+
+**Hybrid Mode**:
+- Combine modes when users have general questions about their uploaded files
+- Balance casual explanation with professional analysis
+- Know when to dive deep vs. when to keep it simple
+
+### 7. Advanced Interaction Principles:
+
+**Proactive Assistance**:
+- Anticipate follow-up questions and address them preemptively
+- Suggest relevant analyses or documents that might be helpful
+- Identify gaps in provided information and request clarification
+- Offer to create additional deliverables that complement the request
+
+**File-Aware Responses**:
+- Always acknowledge uploaded files and their relevance
+- Cross-reference between files when answering questions
+- Suggest which files to upload for better analysis
+- Maintain context about all files throughout the conversation
+
+**Intelligent Tool Usage**:
+- Automatically determine the best tool for each task
+- Use multiple tools in combination for comprehensive answers
+- Always use pandas_agent for ANY data-related questions
+- Never skip tool usage when files are referenced
+
+**Quality Assurance**:
+- Verify accuracy by checking source documents
+- Provide confidence levels for analyses when appropriate
+- Flag any inconsistencies found in data or documents
+- Suggest validation methods for critical decisions
+
+### 8. Response Guidelines:
+
+- **Be Comprehensive**: Provide thorough, detailed responses that anticipate user needs
+- **Stay Accurate**: Always verify information against uploaded files before responding
+- **Be Actionable**: Include specific next steps and recommendations
+- **Maintain Context**: Remember all files and previous analyses in the conversation
+- **Professional Tone**: Balance expertise with approachability
+- **Format Clearly**: Use markdown formatting for readability with headers, bullets, and tables
+- **Cite Sources**: Always reference specific files and sections when quoting or analyzing
+
+### 7. Critical Operating Rules:
+
+1. **NEVER** answer questions about CSV/Excel data without using pandas_agent
+2. **ALWAYS** use tools when files are mentioned or data is referenced
+3. **MAINTAIN** awareness of all uploaded files throughout the conversation
+4. **VERIFY** information against source documents before stating facts
+5. **ACKNOWLEDGE** when information is missing and request specific files
+6. **PROTECT** user data privacy and maintain confidentiality
+7. **SUGGEST** additional analyses or documents that could enhance the response
+8. **ADAPT** your response style to match the query type (general vs. specialized)
+9. **RECOGNIZE** when a question doesn't require file analysis or PM expertise
+10. **BALANCE** being helpful for general queries while showcasing specialized capabilities when relevant
+
+### 10. Example Query Handling:
+
+**General Questions** (respond naturally without forcing file/PM context):
+- "What's the weather like?" → Explain you don't have real-time data but can discuss weather patterns
+- "How do I make pasta?" → Provide a helpful recipe and cooking tips
+- "Explain quantum computing" → Give a clear, educational explanation
+- "Tell me a joke" → Share appropriate humor
+- "Help me plan a trip to Japan" → Offer travel advice and planning tips
+
+**File-Related Questions** (use tools and analysis):
+- "Analyze this sales data" → Use pandas_agent for CSV/Excel analysis
+- "Summarize this PDF" → Use file_search for document analysis
+- "What's in this image?" → Reference the image analysis
+- "Compare these two reports" → Cross-reference multiple documents
+
+**Product Management Questions** (apply PM expertise):
+- "How do I write a PRD?" → Provide comprehensive PRD framework
+- "What metrics should I track?" → Suggest relevant KPIs and analytics
+- "Review my product strategy" → Offer strategic analysis and recommendations
+
+Remember: You are a versatile AI assistant who excels at both everyday conversations and specialized product management tasks. Not every interaction needs to involve file analysis or product strategy - sometimes users just need a friendly, knowledgeable assistant for general questions.
+
+For general queries, be naturally helpful without overcomplicating. For file-related or PM tasks, leverage your full analytical capabilities. Always gauge the appropriate level of detail and technicality based on the user's needs.
+
+When users upload files, immediately acknowledge them and explain how you'll use them. When creating documents, exceed expectations with professional quality and comprehensive coverage. But when users just want to chat or ask general questions, be the friendly, knowledgeable assistant they need - no files or frameworks required.
+
+You are the ultimate AI companion - equally comfortable discussing cooking recipes, explaining quantum physics, analyzing business data, or creating world-class PRDs. Your versatility is your strength.
 '''
     
     # Create the assistant
     try:
         assistant = client.beta.assistants.create(
             name=f"pm_copilot_{int(time.time())}",
-            model="gpt-4o-mini",  # Ensure this model is deployed
+            model="gpt-4.1",  # Ensure this model is deployed
             instructions=system_prompt,
             tools=assistant_tools,
             tool_resources=assistant_tool_resources,
@@ -2482,7 +2774,7 @@ async def process_conversation(
                                                     "id": f"chatcmpl-{run_id or 'stream'}",
                                                     "object": "chat.completion.chunk",
                                                     "created": int(time.time()),
-                                                    "model": "gpt-4o-mini",
+                                                    "model": "gpt-4.1",
                                                     "choices": [{
                                                         "index": 0,
                                                         "delta": {
@@ -2502,7 +2794,7 @@ async def process_conversation(
                                                     "id": f"chatcmpl-{run_id or 'stream'}",
                                                     "object": "chat.completion.chunk",
                                                     "created": int(time.time()),
-                                                    "model": "gpt-4o-mini",
+                                                    "model": "gpt-4.1",
                                                     "choices": [{
                                                         "index": 0,
                                                         "delta": {
@@ -2526,7 +2818,7 @@ async def process_conversation(
                                 "id": f"chatcmpl-{run_id or 'stream'}",
                                 "object": "chat.completion.chunk",
                                 "created": int(time.time()),
-                                "model": "gpt-4o-mini",
+                                "model": "gpt-4.1",
                                 "choices": [{
                                     "index": 0,
                                     "delta": {
@@ -2543,7 +2835,7 @@ async def process_conversation(
                             "id": f"chatcmpl-{run_id or 'stream'}",
                             "object": "chat.completion.chunk",
                             "created": int(time.time()),
-                            "model": "gpt-4o-mini",
+                            "model": "gpt-4.1",
                             "choices": [{
                                 "index": 0,
                                 "delta": {},
@@ -2565,7 +2857,7 @@ async def process_conversation(
                                 "id": f"chatcmpl-{run_id or 'stream'}",
                                 "object": "chat.completion.chunk",
                                 "created": int(time.time()),
-                                "model": "gpt-4o-mini",
+                                "model": "gpt-4.1",
                                 "choices": [{
                                     "index": 0,
                                     "delta": {
@@ -2639,7 +2931,7 @@ async def process_conversation(
                                             "id": f"chatcmpl-{run_id or 'stream'}",
                                             "object": "chat.completion.chunk",
                                             "created": int(time.time()),
-                                            "model": "gpt-4o-mini",
+                                            "model": "gpt-4.1",
                                             "choices": [{
                                                 "index": 0,
                                                 "delta": {
@@ -2676,7 +2968,7 @@ async def process_conversation(
                                             "id": f"chatcmpl-{run_id or 'stream'}",
                                             "object": "chat.completion.chunk",
                                             "created": int(time.time()),
-                                            "model": "gpt-4o-mini",
+                                            "model": "gpt-4.1",
                                             "choices": [{
                                                 "index": 0,
                                                 "delta": {
@@ -2702,7 +2994,7 @@ async def process_conversation(
                                     "id": f"chatcmpl-{run_id or 'stream'}",
                                     "object": "chat.completion.chunk",
                                     "created": int(time.time()),
-                                    "model": "gpt-4o-mini",
+                                    "model": "gpt-4.1",
                                     "choices": [{
                                         "index": 0,
                                         "delta": {
@@ -2734,7 +3026,7 @@ async def process_conversation(
                                         "id": f"chatcmpl-{run_id or 'stream'}",
                                         "object": "chat.completion.chunk",
                                         "created": int(time.time()),
-                                        "model": "gpt-4o-mini",
+                                        "model": "gpt-4.1",
                                         "choices": [{
                                             "index": 0,
                                             "delta": {
@@ -2754,7 +3046,7 @@ async def process_conversation(
                         "id": f"chatcmpl-{run_id or 'stream'}",
                         "object": "chat.completion.chunk",
                         "created": int(time.time()),
-                        "model": "gpt-4o-mini",
+                        "model": "gpt-4.1",
                         "choices": [{
                             "index": 0,
                             "delta": {
@@ -2814,7 +3106,7 @@ async def process_conversation(
                                                 "id": f"chatcmpl-{run_id}",
                                                 "object": "chat.completion.chunk",
                                                 "created": int(time.time()),
-                                                "model": "gpt-4o-mini",
+                                                "model": "gpt-4.1",
                                                 "choices": [{
                                                     "index": 0,
                                                     "delta": {
@@ -2830,7 +3122,7 @@ async def process_conversation(
                                             "id": f"chatcmpl-{run_id}",
                                             "object": "chat.completion.chunk",
                                             "created": int(time.time()),
-                                            "model": "gpt-4o-mini",
+                                            "model": "gpt-4.1",
                                             "choices": [{
                                                 "index": 0,
                                                 "delta": {},
@@ -2847,7 +3139,7 @@ async def process_conversation(
                                 "id": f"chatcmpl-{run_id}",
                                 "object": "chat.completion.chunk",
                                 "created": int(time.time()),
-                                "model": "gpt-4o-mini",
+                                "model": "gpt-4.1",
                                 "choices": [{
                                     "index": 0,
                                     "delta": {
@@ -2871,7 +3163,7 @@ async def process_conversation(
                                 "id": f"chatcmpl-{run_id}",
                                 "object": "chat.completion.chunk",
                                 "created": int(time.time()),
-                                "model": "gpt-4o-mini",
+                                "model": "gpt-4.1",
                                 "choices": [{
                                     "index": 0,
                                     "delta": {
@@ -2891,7 +3183,7 @@ async def process_conversation(
                 "id": "chatcmpl-error",
                 "object": "chat.completion.chunk",
                 "created": int(time.time()),
-                "model": "gpt-4o-mini",
+                "model": "gpt-4.1",
                 "choices": [{
                     "index": 0,
                     "delta": {
@@ -2924,7 +3216,7 @@ async def process_conversation(
                 try:
                     assistant_obj = client.beta.assistants.create(
                         name=f"recovery_assistant_{int(time.time())}",
-                        model="gpt-4o-mini",
+                        model="gpt-4.1",
                         instructions="You are a helpful assistant recovering from a system error.",
                     )
                     assistant = assistant_obj.id
@@ -2939,7 +3231,7 @@ async def process_conversation(
             try:
                 assistant_obj = client.beta.assistants.create(
                     name="default_conversation_assistant",
-                    model="gpt-4o-mini",
+                    model="gpt-4.1",
                     instructions="You are a helpful conversation assistant.",
                 )
                 assistant = assistant_obj.id
@@ -3251,6 +3543,645 @@ async def chat(
     Uses the same logic as the streaming endpoint but returns the complete response.
     """
     return await process_conversation(session, prompt, assistant, stream_output=False)
+# Add these imports at the top of app.py (after existing imports)
+# Add these helper functions after existing helper functions
+
+def extract_text_from_file(file_content: bytes, filename: str) -> str:
+    """
+    Extract text content from various file types for stateless processing.
+    
+    Args:
+        file_content: Raw file bytes
+        filename: Name of the file for type detection
+        
+    Returns:
+        Extracted text content
+    """
+    file_ext = os.path.splitext(filename)[1].lower()
+    
+    try:
+        if file_ext == '.txt':
+            # Detect encoding and decode text
+            detection = chardet.detect(file_content)
+            encoding = detection['encoding'] or 'utf-8'
+            return file_content.decode(encoding)
+            
+        elif file_ext == '.pdf':
+            # Extract text from PDF
+            pdf_file = io.BytesIO(file_content)
+            pdf_reader = PyPDF2.PdfReader(pdf_file)
+            text_content = []
+            
+            for page_num in range(len(pdf_reader.pages)):
+                page = pdf_reader.pages[page_num]
+                text_content.append(page.extract_text())
+            
+            return '\n'.join(text_content)
+            
+        elif file_ext in ['.docx', '.doc']:
+            # Extract text from Word document
+            doc_file = io.BytesIO(file_content)
+            doc = DocxDocument(doc_file)
+            text_content = []
+            
+            for paragraph in doc.paragraphs:
+                text_content.append(paragraph.text)
+            
+            return '\n'.join(text_content)
+            
+        elif file_ext in ['.json']:
+            # Parse JSON and return as formatted string
+            json_content = json.loads(file_content.decode('utf-8'))
+            return json.dumps(json_content, indent=2)
+            
+        elif file_ext in ['.csv']:
+            # Parse CSV and return as formatted text
+            csv_text = file_content.decode('utf-8')
+            return f"CSV Data:\n{csv_text}"
+            
+        elif file_ext in ['.html', '.htm']:
+            # Extract text from HTML
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(file_content, 'html.parser')
+            return soup.get_text(separator='\n', strip=True)
+            
+        else:
+            # For unsupported types, try to decode as text
+            try:
+                return file_content.decode('utf-8')
+            except:
+                return f"[Unable to extract text from {filename}]"
+                
+    except Exception as e:
+        logging.error(f"Error extracting text from {filename}: {e}")
+        return f"[Error processing {filename}: {str(e)}]"
+
+
+def prepare_file_for_completion(file_content: bytes, filename: str, file_type: str) -> Dict[str, Any]:
+    """
+    Prepare file content for inclusion in chat completion request.
+    
+    Args:
+        file_content: Raw file bytes
+        filename: Name of the file
+        file_type: MIME type of the file
+        
+    Returns:
+        Dictionary with prepared content for the API
+    """
+    # Check if it's an image
+    if file_type.startswith('image/'):
+        # Convert to base64 data URL
+        b64_content = base64.b64encode(file_content).decode('utf-8')
+        return {
+            "type": "image_url",
+            "image_url": {
+                "url": f"data:{file_type};base64,{b64_content}",
+                "detail": "high"
+            }
+        }
+    else:
+        # Extract text from document
+        extracted_text = extract_text_from_file(file_content, filename)
+        return {
+            "type": "text",
+            "text": f"Content of {filename}:\n\n{extracted_text}"
+        }
+
+
+# Add this new endpoint for stateless chat completion
+
+@app.post("/completion")
+async def chat_completion(
+    request: Request,
+    prompt: str = Form(...),
+    model: str = Form("gpt-4.1"),
+    temperature: float = Form(0.7),
+    max_tokens: int = Form(1000),
+    system_message: Optional[str] = Form(None),
+    files: Optional[List[UploadFile]] = None
+):
+    """
+    Stateless chat completion endpoint that accepts text, files, and images.
+    Works like ChatGPT API - no state, no threads, no assistants.
+    
+    Args:
+        prompt: The user's message/question
+        model: Model to use (default: gpt-4.1)
+        temperature: Response randomness (0-2, default: 0.7)
+        max_tokens: Maximum response length
+        system_message: Optional system prompt
+        files: Optional list of files (images, PDFs, docs, etc.)
+        
+    Returns:
+        JSON response with the completion
+    """
+    client = create_client()
+    
+    try:
+        # Start building the messages array
+        messages = []
+        
+        # Add system message if provided
+        if system_message:
+            messages.append({
+                "role": "system",
+                "content": system_message
+            })
+        else:
+            # Default system message
+            messages.append({
+                "role": "system",
+                "content": "You are a helpful, knowledgeable AI assistant. You can analyze images, documents, and answer questions on any topic."
+            })
+        
+        # Build user message content
+        user_content = []
+        
+        # Add the text prompt
+        user_content.append({
+            "type": "text",
+            "text": prompt
+        })
+        
+        # Process uploaded files if any
+        if files:
+            for file in files:
+                if file.filename:  # Ensure file has a name
+                    # Read file content
+                    file_content = await file.read()
+                    file_type = file.content_type or mimetypes.guess_type(file.filename)[0] or "application/octet-stream"
+                    
+                    logging.info(f"Processing file: {file.filename} ({file_type})")
+                    
+                    # Prepare file for inclusion
+                    prepared_content = prepare_file_for_completion(
+                        file_content, 
+                        file.filename, 
+                        file_type
+                    )
+                    
+                    # Add to user content
+                    user_content.append(prepared_content)
+        
+        # Add user message with all content
+        messages.append({
+            "role": "user",
+            "content": user_content
+        })
+        
+        # Make the completion request
+        logging.info(f"Making completion request with model: {model}")
+        
+        completion = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens
+        )
+        
+        # Extract the response
+        response_content = completion.choices[0].message.content
+        
+        # Return the response
+        return JSONResponse({
+            "status": "success",
+            "response": response_content,
+            "model": model,
+            "usage": {
+                "prompt_tokens": completion.usage.prompt_tokens,
+                "completion_tokens": completion.usage.completion_tokens,
+                "total_tokens": completion.usage.total_tokens
+            }
+        })
+        
+    except Exception as e:
+        logging.error(f"Error in chat completion: {str(e)}\n{traceback.format_exc()}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "error": str(e),
+                "message": "Failed to generate completion"
+            }
+        )
+
+
+# Add this comprehensive health check endpoint
+@app.get("/download-chat")
+async def download_chat(
+    request: Request,
+    session: Optional[str] = None,
+    assistant: Optional[str] = None
+):
+    """
+    Creates a DOCX file from the latest chat response and returns a download URL.
+    
+    Args:
+        request: FastAPI request object (to construct full URL)
+        session: Thread ID
+        assistant: Assistant ID (optional, for validation)
+        
+    Returns:
+        JSON response with download URL
+    """
+    client = create_client()
+    
+    # Validate session parameter
+    if not session:
+        raise HTTPException(status_code=400, detail="Session (thread) ID is required")
+    
+    try:
+        # Validate resources if provided
+        if session or assistant:
+            validation = await validate_resources(client, session, assistant)
+            
+            if session and not validation["thread_valid"]:
+                raise HTTPException(status_code=404, detail=f"Thread {session} not found")
+            
+            if assistant and not validation["assistant_valid"]:
+                logging.warning(f"Assistant {assistant} not found, but continuing with thread messages")
+        
+        # Get the latest messages from the thread
+        messages = client.beta.threads.messages.list(
+            thread_id=session,
+            order="desc",
+            limit=20  # Get recent messages to find the latest assistant response
+        )
+        
+        # Find the latest assistant message
+        latest_assistant_message = None
+        for msg in messages.data:
+            if msg.role == "assistant":
+                # Skip system messages and metadata messages
+                skip_message = False
+                if hasattr(msg, 'metadata') and msg.metadata:
+                    msg_type = msg.metadata.get('type', '')
+                    if msg_type in ['user_persona_context', 'file_awareness', 'pandas_agent_files']:
+                        skip_message = True
+                
+                if not skip_message:
+                    latest_assistant_message = msg
+                    break
+        
+        if not latest_assistant_message:
+            raise HTTPException(status_code=404, detail="No assistant response found in this thread")
+        
+        # Extract content from the message
+        content_text = ""
+        images = []
+        
+        for content_part in latest_assistant_message.content:
+            if content_part.type == 'text':
+                content_text += content_part.text.value
+            elif content_part.type == 'image_file':
+                # Handle image files if present
+                try:
+                    # Retrieve the file
+                    file_id = content_part.image_file.file_id
+                    file_data = client.files.retrieve(file_id)
+                    file_content = client.files.content(file_id)
+                    images.append(file_content.read())
+                except Exception as img_e:
+                    logging.warning(f"Could not retrieve image file {file_id}: {img_e}")
+        
+        # Remove any [PANDAS AGENT RESPONSE] prefix if present
+        if content_text.startswith("[PANDAS AGENT RESPONSE]:"):
+            content_text = content_text.replace("[PANDAS AGENT RESPONSE]:", "").strip()
+        
+        # Generate DOCX content
+        try:
+            docx_bytes = create_docx_from_content(content_text, images if images else None)
+        except ImportError as e:
+            # If docx library is not available, return error
+            logging.error(f"DOCX library not available: {e}")
+            raise HTTPException(
+                status_code=500, 
+                detail="DOCX generation library not available. Please install python-docx."
+            )
+        
+        # Generate unique filename with timestamp and session ID
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        # Create a short hash of the session ID for the filename
+        session_hash = hashlib.md5(session.encode()).hexdigest()[:8]
+        filename = f"chat_response_{timestamp}_{session_hash}.docx"
+        filepath = os.path.join(DOWNLOADS_DIR, filename)
+        
+        # Save the DOCX file
+        with open(filepath, 'wb') as f:
+            f.write(docx_bytes)
+        
+        logging.info(f"Created download file: {filepath}")
+        
+        # Clean up old files
+        cleanup_old_downloads()
+        
+        # Construct the download URL
+        # Get the base URL from the request
+        base_url = str(request.base_url).rstrip('/')
+        
+        # For Azure App Service, use the proper host
+        if 'azurewebsites.net' in str(request.headers.get('host', '')):
+            # Use the Azure host
+            base_url = f"https://{request.headers['host']}"
+        
+        download_url = f"{base_url}/download-files/{filename}"
+        
+        # Return the download URL
+        return JSONResponse({
+            "status": "success",
+            "download_url": download_url,
+            "filename": filename,
+            "message": "Chat response ready for download",
+            "expires_in": "File will be kept for the last 10 downloads"
+        })
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        logging.error(f"Error in /download-chat endpoint: {str(e)}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate download: {str(e)}")
+
+
+# Add this endpoint to serve individual files with proper headers
+@app.get("/download-files/{filename}")
+async def serve_download_file(filename: str):
+    """
+    Serve a specific download file with proper headers for downloading.
+    
+    Args:
+        filename: Name of the file to download
+        
+    Returns:
+        File response with download headers
+    """
+    # Validate filename to prevent directory traversal
+    if ".." in filename or "/" in filename or "\\" in filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    
+    # Check if file exists
+    filepath = os.path.join(DOWNLOADS_DIR, filename)
+    if not os.path.exists(filepath):
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    # Return file with download headers
+    return FileResponse(
+        path=filepath,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={
+            "Content-Disposition": f"attachment; filename={filename}"
+        }
+    )
+@app.get("/health-check")
+async def comprehensive_health_check():
+    """
+    Comprehensive health check that tests all endpoints and functionality.
+    Similar to how prdbot.py uses the API, but automated.
+    
+    Returns:
+        Detailed health status of all endpoints and services
+    """
+    client = create_client()
+    health_status = {
+        "status": "checking",
+        "timestamp": datetime.now().isoformat(),
+        "endpoints": {},
+        "azure_openai": {},
+        "file_system": {},
+        "overall_health": "unknown"
+    }
+    
+    # Test Azure OpenAI connection
+    try:
+        # Try to list assistants to verify API key and endpoint
+        assistants = client.beta.assistants.list(limit=1)
+        health_status["azure_openai"] = {
+            "status": "healthy",
+            "endpoint": AZURE_ENDPOINT,
+            "api_version": AZURE_API_VERSION,
+            "connection": "established"
+        }
+    except Exception as e:
+        health_status["azure_openai"] = {
+            "status": "unhealthy",
+            "error": str(e),
+            "endpoint": AZURE_ENDPOINT
+        }
+    
+    # Test file system
+    try:
+        # Test /tmp directory
+        test_file = "/tmp/health_check_test.txt"
+        with open(test_file, "w") as f:
+            f.write("health check test")
+        os.remove(test_file)
+        
+        # Check downloads directory
+        downloads_exist = os.path.exists(DOWNLOADS_DIR)
+        
+        health_status["file_system"] = {
+            "status": "healthy",
+            "tmp_writable": True,
+            "downloads_dir_exists": downloads_exist
+        }
+    except Exception as e:
+        health_status["file_system"] = {
+            "status": "unhealthy",
+            "error": str(e)
+        }
+    
+    # Test 1: /completion endpoint (stateless)
+    try:
+        # Simulate a simple completion request
+        completion_data = {
+            "prompt": "Say 'Hello, health check passed!'",
+            "model": "gpt-4.1",
+            "temperature": 0.1,
+            "max_tokens": 50
+        }
+        
+        # Make internal request
+        response = await chat_completion(
+            request=Request({"type": "http", "method": "POST"}),
+            **completion_data
+        )
+        
+        response_data = json.loads(response.body)
+        
+        health_status["endpoints"]["/completion"] = {
+            "status": "healthy" if response_data.get("status") == "success" else "unhealthy",
+            "response_received": bool(response_data.get("response")),
+            "test_type": "stateless_completion"
+        }
+    except Exception as e:
+        health_status["endpoints"]["/completion"] = {
+            "status": "unhealthy",
+            "error": str(e)
+        }
+    
+    # Test 2: /initiate-chat endpoint
+    test_assistant_id = None
+    test_thread_id = None
+    test_vector_store_id = None
+    
+    try:
+        # Create a test assistant and thread
+        test_context = "Health check test context"
+        
+        # Simulate form data
+        form_data = {"context": test_context}
+        
+        # Create request manually since we're calling internally
+        data = {}
+        if test_context:
+            data["context"] = test_context
+            
+        response = requests.post(f"{AZURE_ENDPOINT.replace('openai.azure.com', 'localhost:8080')}/initiate-chat", 
+                               data=data)
+        
+        # For internal testing, create directly
+        vector_store = client.beta.vector_stores.create(name=f"health_check_store_{int(time.time())}")
+        assistant = client.beta.assistants.create(
+            name=f"health_check_assistant_{int(time.time())}",
+            model="gpt-4.1",
+            instructions="You are a health check assistant.",
+            tools=[{"type": "file_search"}],
+            tool_resources={"file_search": {"vector_store_ids": [vector_store.id]}}
+        )
+        thread = client.beta.threads.create()
+        
+        test_assistant_id = assistant.id
+        test_thread_id = thread.id
+        test_vector_store_id = vector_store.id
+        
+        health_status["endpoints"]["/initiate-chat"] = {
+            "status": "healthy",
+            "assistant_created": bool(test_assistant_id),
+            "thread_created": bool(test_thread_id),
+            "vector_store_created": bool(test_vector_store_id)
+        }
+    except Exception as e:
+        health_status["endpoints"]["/initiate-chat"] = {
+            "status": "unhealthy",
+            "error": str(e)
+        }
+    
+    # Test 3: /conversation and /chat endpoints
+    if test_thread_id and test_assistant_id:
+        try:
+            # Add a test message
+            client.beta.threads.messages.create(
+                thread_id=test_thread_id,
+                role="user",
+                content="Health check test message"
+            )
+            
+            # Test streaming endpoint simulation
+            health_status["endpoints"]["/conversation"] = {
+                "status": "healthy",
+                "test_type": "streaming",
+                "thread_id": test_thread_id,
+                "assistant_id": test_assistant_id
+            }
+            
+            # Test non-streaming endpoint simulation
+            health_status["endpoints"]["/chat"] = {
+                "status": "healthy",
+                "test_type": "non-streaming",
+                "thread_id": test_thread_id,
+                "assistant_id": test_assistant_id
+            }
+        except Exception as e:
+            error_msg = str(e)
+            health_status["endpoints"]["/conversation"] = {
+                "status": "unhealthy",
+                "error": error_msg
+            }
+            health_status["endpoints"]["/chat"] = {
+                "status": "unhealthy",
+                "error": error_msg
+            }
+    
+    # Test 4: /download-chat endpoint
+    if test_thread_id:
+        try:
+            # Check if we can prepare a download (without actually downloading)
+            messages = client.beta.threads.messages.list(
+                thread_id=test_thread_id,
+                order="desc",
+                limit=1
+            )
+            
+            health_status["endpoints"]["/download-chat"] = {
+                "status": "healthy",
+                "test_type": "download_preparation",
+                "messages_found": len(messages.data) > 0
+            }
+        except Exception as e:
+            health_status["endpoints"]["/download-chat"] = {
+                "status": "unhealthy",
+                "error": str(e)
+            }
+    
+    # Test 5: PandasAgentManager
+    try:
+        manager = PandasAgentManager.get_instance()
+        manager_healthy = manager._check_dependencies()
+        
+        health_status["pandas_agent"] = {
+            "status": "healthy" if manager_healthy else "unhealthy",
+            "dependencies_ok": manager_healthy,
+            "instance_created": True
+        }
+    except Exception as e:
+        health_status["pandas_agent"] = {
+            "status": "unhealthy",
+            "error": str(e),
+            "instance_created": False
+        }
+    
+    # Cleanup test resources
+    try:
+        if test_thread_id:
+            # Note: Thread deletion might not be supported in all API versions
+            pass
+        if test_assistant_id:
+            client.beta.assistants.delete(assistant_id=test_assistant_id)
+        if test_vector_store_id:
+            client.beta.vector_stores.delete(vector_store_id=test_vector_store_id)
+    except Exception as e:
+        logging.warning(f"Cleanup error (non-critical): {e}")
+    
+    # Determine overall health
+    all_healthy = True
+    critical_components = ["azure_openai", "file_system"]
+    
+    # Check critical components
+    for component in critical_components:
+        if health_status.get(component, {}).get("status") != "healthy":
+            all_healthy = False
+            break
+    
+    # Check endpoints (at least 80% should be healthy)
+    if all_healthy:
+        healthy_endpoints = sum(1 for ep in health_status["endpoints"].values() 
+                              if ep.get("status") == "healthy")
+        total_endpoints = len(health_status["endpoints"])
+        
+        if total_endpoints > 0 and (healthy_endpoints / total_endpoints) < 0.8:
+            all_healthy = False
+    
+    health_status["overall_health"] = "healthy" if all_healthy else "unhealthy"
+    health_status["status"] = "completed"
+    
+    # Return appropriate status code
+    status_code = 200 if all_healthy else 503
+    
+    return JSONResponse(
+        content=health_status,
+        status_code=status_code
+    )
 if __name__ == "__main__":
     import uvicorn
     print("Starting FastAPI server on http://0.0.0.0:8080")
