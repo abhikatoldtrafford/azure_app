@@ -4765,7 +4765,7 @@ async def comprehensive_health_check():
         "version": "1.0.0",  # Add your app version
         "environment": {
             "python_version": sys.version.split()[0],
-            "fastapi_version": fastapi.__version__,
+            "fastapi_version": FastAPI.__version__,
         },
         "checks": {
             "azure_openai": {"status": "pending"},
