@@ -5927,7 +5927,7 @@ async def root():
             transform: scale(1.05);
         }
 
-        /* Chatbot */
+        /* Chatbot - Fixed positioning */
         .chatbot-toggle {
             position: fixed;
             bottom: 2rem;
@@ -5952,9 +5952,10 @@ async def root():
 
         .chatbot-container {
             position: fixed;
-            bottom: 6rem;
+            bottom: 2rem;  /* Aligned with toggle button */
             right: 2rem;
             width: 400px;
+            max-height: calc(100vh - 8rem);  /* Leave space from top */
             height: 600px;
             background: var(--bg-card);
             border: 1px solid var(--border);
@@ -5968,6 +5969,18 @@ async def root():
 
         .chatbot-container.active {
             display: flex;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
         .chatbot-header {
@@ -5976,6 +5989,7 @@ async def root():
             display: flex;
             justify-content: space-between;
             align-items: center;
+            flex-shrink: 0;
         }
 
         .chatbot-title {
@@ -6009,6 +6023,25 @@ async def root():
             display: flex;
             flex-direction: column;
             gap: 1rem;
+            min-height: 0;  /* Important for flex scrolling */
+        }
+
+        /* Custom scrollbar for messages */
+        .chatbot-messages::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .chatbot-messages::-webkit-scrollbar-track {
+            background: var(--bg-elevated);
+        }
+
+        .chatbot-messages::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 3px;
+        }
+
+        .chatbot-messages::-webkit-scrollbar-thumb:hover {
+            background: var(--primary);
         }
 
         .message {
@@ -6016,6 +6049,7 @@ async def root():
             padding: 1rem;
             border-radius: 12px;
             animation: messageSlide 0.3s ease-out;
+            word-wrap: break-word;
         }
 
         @keyframes messageSlide {
@@ -6042,11 +6076,87 @@ async def root():
             align-self: flex-start;
         }
 
+        /* Markdown table styles */
+        .message table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+            font-size: 0.9rem;
+            overflow: auto;
+            display: block;
+        }
+
+        .message th,
+        .message td {
+            border: 1px solid var(--border);
+            padding: 0.5rem;
+            text-align: left;
+        }
+
+        .message th {
+            background: var(--bg-card);
+            font-weight: 600;
+            color: var(--primary-light);
+        }
+
+        .message tr:nth-child(even) {
+            background: rgba(124, 58, 237, 0.05);
+        }
+
+        .message tr:hover {
+            background: rgba(124, 58, 237, 0.1);
+        }
+
+        /* Code blocks in messages */
+        .message code {
+            background: var(--bg-card);
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+        }
+
+        .message pre {
+            background: var(--bg-card);
+            padding: 1rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 0.5rem 0;
+        }
+
+        .message pre code {
+            background: none;
+            padding: 0;
+        }
+
+        /* Lists in messages */
+        .message ul,
+        .message ol {
+            margin: 0.5rem 0;
+            padding-left: 1.5rem;
+        }
+
+        .message li {
+            margin: 0.25rem 0;
+        }
+
+        /* Links in messages */
+        .message a {
+            color: var(--primary-light);
+            text-decoration: underline;
+            transition: color 0.3s;
+        }
+
+        .message a:hover {
+            color: var(--secondary);
+        }
+
         .chatbot-input-container {
             padding: 1.5rem;
             border-top: 1px solid var(--border);
             display: flex;
             gap: 1rem;
+            flex-shrink: 0;
         }
 
         .chatbot-input {
@@ -6082,6 +6192,12 @@ async def root():
         .chatbot-send:hover {
             background: var(--primary-dark);
             transform: scale(1.05);
+        }
+
+        .chatbot-send:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: scale(1);
         }
 
         .typing-indicator {
@@ -6157,12 +6273,24 @@ async def root():
             .chatbot-container {
                 width: calc(100vw - 2rem);
                 right: 1rem;
-                bottom: 5rem;
-                height: 500px;
+                bottom: 1rem;
+                height: calc(100vh - 6rem);
+                max-height: 600px;
+            }
+            
+            .chatbot-toggle {
+                bottom: 1rem;
+                right: 1rem;
             }
             
             .capability-cards {
                 grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-height: 700px) {
+            .chatbot-container {
+                height: calc(100vh - 4rem);
             }
         }
 
@@ -6824,11 +6952,141 @@ async def root():
             }
         }
 
+        // Enhanced message rendering with markdown support
+        function addMessage(content, type) {
+            const messagesContainer = document.getElementById('chatMessages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}`;
+            
+            // Parse and render markdown tables and other formatting
+            const formattedContent = parseMarkdown(content);
+            messageDiv.innerHTML = formattedContent;
+            
+            messagesContainer.appendChild(messageDiv);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        function parseMarkdown(text) {
+            // Escape HTML first
+            let html = text.replace(/[&<>"']/g, (match) => {
+                const escapeMap = {
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    '"': '&quot;',
+                    "'": '&#39;'
+                };
+                return escapeMap[match];
+            });
+
+            // Parse markdown tables
+            html = parseMarkdownTables(html);
+            
+            // Parse code blocks
+            html = html.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
+            
+            // Parse inline code
+            html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+            
+            // Parse bold
+            html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+            
+            // Parse italic
+            html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+            
+            // Parse links (but preserve download links)
+            html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+            
+            // Parse line breaks
+            html = html.replace(/\n/g, '<br>');
+            
+            // Restore download links that were already in HTML format
+            html = html.replace(/&lt;a href="([^"]+)"([^&]*)&gt;([^&]+)&lt;\/a&gt;/g, '<a href="$1"$2>$3</a>');
+            
+            // Wrap in paragraph if not already structured
+            if (!html.includes('<table') && !html.includes('<pre>') && !html.includes('<ul>') && !html.includes('<ol>')) {
+                html = `<p>${html}</p>`;
+            }
+            
+            return html;
+        }
+
+        function parseMarkdownTables(text) {
+            // Split text into lines
+            const lines = text.split('\\n');
+            let inTable = false;
+            let tableHtml = '';
+            let result = '';
+            
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].trim();
+                
+                // Check if this line is a table row
+                if (line.includes('|')) {
+                    // Check if next line is separator (header row)
+                    const nextLine = i + 1 < lines.length ? lines[i + 1].trim() : '';
+                    const isHeaderSeparator = nextLine.match(/^\\|?[\\s-:|]+\\|?$/);
+                    
+                    if (!inTable) {
+                        inTable = true;
+                        tableHtml = '<table>\\n';
+                        
+                        if (isHeaderSeparator) {
+                            // This is a header row
+                            const headers = line.split('|').filter(cell => cell.trim());
+                            tableHtml += '<thead><tr>';
+                            headers.forEach(header => {
+                                tableHtml += `<th>${header.trim()}</th>`;
+                            });
+                            tableHtml += '</tr></thead>\\n<tbody>';
+                            i++; // Skip separator line
+                        } else {
+                            // No header, start with body
+                            tableHtml += '<tbody>';
+                        }
+                    }
+                    
+                    if (inTable && !isHeaderSeparator) {
+                        // Regular table row
+                        const cells = line.split('|').filter(cell => cell.trim());
+                        tableHtml += '<tr>';
+                        cells.forEach(cell => {
+                            tableHtml += `<td>${cell.trim()}</td>`;
+                        });
+                        tableHtml += '</tr>';
+                    }
+                } else {
+                    // Not a table line
+                    if (inTable) {
+                        // Close the table
+                        tableHtml += '</tbody></table>\\n';
+                        result += tableHtml;
+                        inTable = false;
+                        tableHtml = '';
+                    }
+                    result += line + '\\n';
+                }
+            }
+            
+            // Close table if still open
+            if (inTable) {
+                tableHtml += '</tbody></table>\\n';
+                result += tableHtml;
+            }
+            
+            return result;
+        }
+
         async function sendMessage() {
             const input = document.getElementById('chatInput');
+            const sendButton = document.querySelector('.chatbot-send');
             const message = input.value.trim();
             
             if (!message) return;
+            
+            // Disable input while sending
+            input.disabled = true;
+            sendButton.disabled = true;
             
             // Add user message
             addMessage(message, 'user');
@@ -6842,7 +7100,8 @@ async def root():
                 const isFileRequest = message.toLowerCase().includes('csv') || 
                                     message.toLowerCase().includes('excel') || 
                                     message.toLowerCase().includes('generate') ||
-                                    message.toLowerCase().includes('create');
+                                    message.toLowerCase().includes('create') ||
+                                    message.toLowerCase().includes('table');
                 
                 if (isFileRequest) {
                     // Use completion endpoint for file generation
@@ -6867,12 +7126,16 @@ async def root():
                     
                     let botMessage = data.response;
                     if (data.download_url) {
-                        botMessage += `\n\n📎 File generated successfully!\n<a href="${data.download_url}" target="_blank" style="color: var(--primary-light); text-decoration: underline;">Download ${data.filename || 'file'}</a>`;
+                        botMessage += `\\n\\n📎 **File generated successfully!**\\n[Download ${data.filename || 'file'}](${data.download_url})`;
                     }
                     
                     addMessage(botMessage, 'bot');
                 } else {
                     // Use regular chat endpoint
+                    if (!sessionId) {
+                        await initializeChat();
+                    }
+                    
                     const response = await fetch(`/chat?session=${sessionId}&assistant=${assistantId}&prompt=${encodeURIComponent(message)}`);
                     const data = await response.json();
                     
@@ -6883,16 +7146,12 @@ async def root():
                 hideTyping();
                 addMessage('Sorry, I encountered an error. Please try again.', 'bot');
                 console.error('Chat error:', error);
+            } finally {
+                // Re-enable input
+                input.disabled = false;
+                sendButton.disabled = false;
+                input.focus();
             }
-        }
-
-        function addMessage(content, type) {
-            const messagesContainer = document.getElementById('chatMessages');
-            const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${type}`;
-            messageDiv.innerHTML = `<p>${content}</p>`;
-            messagesContainer.appendChild(messageDiv);
-            messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }
 
         function showTyping() {
@@ -6968,6 +7227,7 @@ async def root():
 </html>
     """
     return HTMLResponse(content=html_content)
+
 # Optional: Add a favicon endpoint
 @app.get("/favicon.ico")
 async def favicon():
