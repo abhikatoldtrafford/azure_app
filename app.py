@@ -8,7 +8,7 @@ import mimetypes
 from openai import AzureOpenAI
 from typing import Optional, List, Dict, Any, Tuple
 import os
-import datetime
+from datetime import datetime
 import time
 import base64
 import mimetypes
