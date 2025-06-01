@@ -104,7 +104,7 @@ def create_client():
         api_key=AZURE_API_KEY,
         api_version=AZURE_API_VERSION,
     )
- def save_download_file(content: bytes, filename: str) -> str:
+def save_download_file(content: bytes, filename: str) -> str:
     """
     Save a file for download with proper permissions.
     
