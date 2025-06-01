@@ -4763,10 +4763,6 @@ async def comprehensive_health_check():
         "status": "checking",
         "timestamp": datetime.now().isoformat(),
         "version": "1.0.0",  # Add your app version
-        "environment": {
-            "python_version": sys.version.split()[0],
-            "fastapi_version": FastAPI.__version__,
-        },
         "checks": {
             "azure_openai": {"status": "pending"},
             "file_system": {"status": "pending"},
