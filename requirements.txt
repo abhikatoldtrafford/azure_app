@@ -12,3 +12,4 @@ langchain_experimental
 tabulate
 tables
 openpyxl
+python-docx
