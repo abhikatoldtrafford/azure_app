@@ -14,3 +14,7 @@ tables
 openpyxl
 python-docx
 Pillow
+PyPDF2>=3.0.0
+chardet>=5.0.0
+beautifulsoup4>=4.12.0
+
