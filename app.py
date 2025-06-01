@@ -1917,8 +1917,8 @@ You are the ultimate AI companion - equally comfortable discussing cooking recip
         logging.error(f"An error occurred while creating the assistant: {e}")
         # Attempt to clean up vector store if assistant creation fails
         try:
-           client.vector_stores.delete(vector_store_id=vector_store.id)
-           logging.info(f"Cleaned up vector store {vector_store.id} after assistant creation failure.")
+            client.vector_stores.delete(vector_store_id=vector_store.id)
+            logging.info(f"Cleaned up vector store {vector_store.id} after assistant creation failure.")
         except Exception as cleanup_e:
             logging.error(f"Failed to cleanup vector store {vector_store.id} after error: {cleanup_e}")
         raise HTTPException(status_code=500, detail=f"An error occurred while creating assistant: {e}")
@@ -1936,7 +1936,7 @@ You are the ultimate AI companion - equally comfortable discussing cooking recip
         except Exception as cleanup_e:
             logging.error(f"Failed to cleanup assistant {assistant.id} after error: {cleanup_e}")
         try:
-           client.vector_stores.delete(vector_store_id=vector_store.id)
+            client.vector_stores.delete(vector_store_id=vector_store.id)
             logging.info(f"Cleaned up vector store {vector_store.id} after thread creation failure.")
         except Exception as cleanup_e:
             logging.error(f"Failed to cleanup vector store {vector_store.id} after error: {cleanup_e}")
@@ -2097,7 +2097,7 @@ async def co_pilot(request: Request):
         # Verify the vector store exists
         try:
             # Just try to retrieve it to verify it exists
-           client.vector_stores.retrieve(vector_store_id=vector_store_id)
+            client.vector_stores.retrieve(vector_store_id=vector_store_id)
             logging.info(f"Using existing vector store: {vector_store_id}")
         except Exception as e:
             logging.error(f"Error retrieving vector store {vector_store_id}: {e}")
@@ -4206,7 +4206,7 @@ async def comprehensive_health_check():
         if test_assistant_id:
             client.beta.assistants.delete(assistant_id=test_assistant_id)
         if test_vector_store_id:
-           client.vector_stores.delete(vector_store_id=test_vector_store_id)
+            client.vector_stores.delete(vector_store_id=test_vector_store_id)
     except Exception as e:
         logging.warning(f"Cleanup error (non-critical): {e}")
     
