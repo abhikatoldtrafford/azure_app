@@ -35,7 +35,14 @@ app = FastAPI()
 AZURE_ENDPOINT = "https://prodhubfinnew-openai-97de.openai.azure.com/" # Replace with your endpoint if different
 AZURE_API_KEY = "97fa8c02f9e64e8ea5434987b11fe6f4" # Replace with your key if different
 AZURE_API_VERSION = "2024-12-01-preview"
+DOWNLOADS_DIR = "/tmp/chat_downloads"  # Use /tmp for Azure App Service
+MAX_DOWNLOAD_FILES = 10  # Keep only 10 most recent files
 
+# Create downloads directory if it doesn't exist
+os.makedirs(DOWNLOADS_DIR, exist_ok=True)
+
+# Mount static files directory for serving downloads
+app.mount("/download-files", StaticFiles(directory=DOWNLOADS_DIR), name="download-files")
 def create_client():
     """Creates an AzureOpenAI client instance."""
     return AzureOpenAI(
@@ -43,147 +50,7 @@ def create_client():
         api_key=AZURE_API_KEY,
         api_version=AZURE_API_VERSION,
     )
- doc = Document()
-    
-    # Add a title with timestamp
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    doc.add_heading(f"Chat Response - {timestamp}", level=1)
-    
-    # Split content into blocks for processing
-    blocks = content.split('\n\n')
-    
-    # Helper function to detect markdown tables
-    def is_markdown_table(text):
-        lines = text.strip().split('\n')
-        if len(lines) < 2:
-            return False
-            
-        # Check for table with | characters
-        if all('|' in line for line in lines):
-            # Check for separator row (e.g., |---|---|)
-            for i in range(1, len(lines)):
-                if re.match(r'^[\s]*\|[-:\|\s]+\|[\s]*$', lines[i]):
-                    return True
-        
-        # Check for simple tables (e.g., Header | Header)
-        if len(lines) >= 3 and '|' in lines[0] and all('-' in cell for cell in lines[1].split('|')):
-            return True
-            
-        return False
-    
-    # Helper function to parse a markdown table
-    def parse_markdown_table(text):
-        rows = []
-        lines = text.strip().split('\n')
-        
-        # Skip separator lines when processing
-        for line in lines:
-            if re.match(r'^[\s]*\|?[-:\|\s]+-\|?[\s]*$', line):
-                continue
-                
-            # Extract cells from the line
-            if '|' in line:
-                # Remove leading/trailing | and split by |
-                cells = line.strip()
-                if cells.startswith('|'):
-                    cells = cells[1:]
-                if cells.endswith('|'):
-                    cells = cells[:-1]
-                cells = [cell.strip() for cell in cells.split('|')]
-                rows.append(cells)
-        
-        return rows
-    
-    # Process each block
-    for block in blocks:
-        if not block.strip():
-            continue
-            
-        # Check if this block is a markdown table
-        if is_markdown_table(block):
-            # Parse the table
-            table_data = parse_markdown_table(block)
-            if table_data and len(table_data) > 0:
-                # Create Word table
-                num_rows = len(table_data)
-                num_cols = max(len(row) for row in table_data)
-                table = doc.add_table(rows=num_rows, cols=num_cols)
-                table.style = 'Table Grid'
-                
-                # Fill table with data
-                for i, row_data in enumerate(table_data):
-                    row = table.rows[i]
-                    for j, cell_text in enumerate(row_data):
-                        if j < len(row.cells):  # Ensure we don't exceed the columns
-                            row.cells[j].text = cell_text
-                            
-                # Add spacing after table
-                doc.add_paragraph()
-        else:
-            # Process non-table elements
-            if block.startswith('# '):
-                # Heading 1
-                doc.add_heading(block[2:], level=1)
-            elif block.startswith('## '):
-                # Heading 2
-                doc.add_heading(block[3:], level=2)
-            elif block.startswith('### '):
-                # Heading 3
-                doc.add_heading(block[4:], level=3)
-            elif block.startswith('- ') or block.startswith('* '):
-                # Bullet points
-                lines = block.split('\n')
-                for line in lines:
-                    if line.strip().startswith('- ') or line.strip().startswith('* '):
-                        doc.add_paragraph(line.strip()[2:], style='List Bullet')
-            elif re.match(r'^\d+\.\s', block):
-                # Numbered list
-                lines = block.split('\n')
-                for line in lines:
-                    if line.strip() and re.match(r'^\d+\.\s', line.strip()):
-                        # Extract the content after the number and period
-                        content_start = line.find('. ') + 2
-                        doc.add_paragraph(line.strip()[content_start:], style='List Number')
-            else:
-                # Regular paragraph
-                doc.add_paragraph(block)
-    
-    # Add images section if there are images
-    if images:
-        doc.add_heading("Visualizations", level=2)
-        
-        # Add each image to the document
-        for i, img_bytes in enumerate(images):
-            try:
-                # Create a BytesIO object from the image bytes
-                image_stream = BytesIO(img_bytes)
-                
-                # Try to open with PIL to verify it's a valid image
-                pil_image = PILImage.open(image_stream)
-                
-                # Add a caption for the image
-                doc.add_paragraph(f"Visualization {i+1}")
-                
-                # Reset stream position after PIL read
-                image_stream.seek(0)
-                
-                # Add the image to the document - control width to fit page
-                doc.add_picture(image_stream, width=Inches(6))
-                
-                # Add spacing after each image
-                doc.add_paragraph()
-            except Exception as img_err:
-                # If image processing fails, add a note
-                doc.add_paragraph(f"[Image {i+1} could not be included - {str(img_err)}]")
-                logging.warning(f"Error adding image to DOCX: {str(img_err)}")
-    
-    # Save document to BytesIO buffer
-    buffer = BytesIO()
-    doc.save(buffer)
-    buffer.seek(0)
-    
-    return buffer.getvalue()
-
+ 
 def debug_print_files(self, thread_id: str):
     """
     Debug function to print information about files registered with the pandas agent.
@@ -1765,7 +1632,7 @@ async def initiate_chat(request: Request):
 
     # Create a vector store up front
     try:
-        vector_store = client.beta.vector_stores.create(name=f"chat_init_store_{int(time.time())}")
+        vector_store =client.vector_stores.create(name=f"chat_init_store_{int(time.time())}")
         logging.info(f"Vector store created: {vector_store.id}")
     except Exception as e:
         logging.error(f"Failed to create vector store: {e}")
@@ -2050,7 +1917,7 @@ You are the ultimate AI companion - equally comfortable discussing cooking recip
         logging.error(f"An error occurred while creating the assistant: {e}")
         # Attempt to clean up vector store if assistant creation fails
         try:
-            client.beta.vector_stores.delete(vector_store_id=vector_store.id)
+           client.vector_stores.delete(vector_store_id=vector_store.id)
             logging.info(f"Cleaned up vector store {vector_store.id} after assistant creation failure.")
         except Exception as cleanup_e:
             logging.error(f"Failed to cleanup vector store {vector_store.id} after error: {cleanup_e}")
@@ -2069,7 +1936,7 @@ You are the ultimate AI companion - equally comfortable discussing cooking recip
         except Exception as cleanup_e:
             logging.error(f"Failed to cleanup assistant {assistant.id} after error: {cleanup_e}")
         try:
-            client.beta.vector_stores.delete(vector_store_id=vector_store.id)
+           client.vector_stores.delete(vector_store_id=vector_store.id)
             logging.info(f"Cleaned up vector store {vector_store.id} after thread creation failure.")
         except Exception as cleanup_e:
             logging.error(f"Failed to cleanup vector store {vector_store.id} after error: {cleanup_e}")
@@ -2143,7 +2010,7 @@ You are the ultimate AI companion - equally comfortable discussing cooking recip
             elif is_document or not (is_csv or is_excel or is_image):
                 # Upload to vector store
                 with open(file_path, "rb") as file_stream:
-                    file_batch = client.beta.vector_stores.file_batches.upload_and_poll(
+                    file_batch =client.vector_stores.file_batches.upload_and_poll(
                         vector_store_id=vector_store.id,
                         files=[file_stream]
                     )
@@ -2230,7 +2097,7 @@ async def co_pilot(request: Request):
         # Verify the vector store exists
         try:
             # Just try to retrieve it to verify it exists
-            client.beta.vector_stores.retrieve(vector_store_id=vector_store_id)
+           client.vector_stores.retrieve(vector_store_id=vector_store_id)
             logging.info(f"Using existing vector store: {vector_store_id}")
         except Exception as e:
             logging.error(f"Error retrieving vector store {vector_store_id}: {e}")
@@ -2572,14 +2439,14 @@ async def upload_file(
             # Ensure a vector store is linked or create one
             if not vector_store_ids:
                 logging.info(f"No vector store linked to assistant {assistant}. Creating and linking a new one.")
-                vector_store = client.beta.vector_stores.create(name=f"Assistant_{assistant}_Store")
+                vector_store =client.vector_stores.create(name=f"Assistant_{assistant}_Store")
                 vector_store_ids = [vector_store.id]
 
             vector_store_id_to_use = vector_store_ids[0]  # Use the first linked store
 
             # Upload to vector store
             with open(file_path, "rb") as file_stream:
-                file_batch = client.beta.vector_stores.file_batches.upload_and_poll(
+                file_batch =client.vector_stores.file_batches.upload_and_poll(
                     vector_store_id=vector_store_id_to_use,
                     files=[file_stream]
                 )
@@ -3766,8 +3633,198 @@ async def chat_completion(
             }
         )
 
+def cleanup_old_downloads():
+    """
+    Remove old download files, keeping only the most recent MAX_DOWNLOAD_FILES.
+    """
+    try:
+        # Get all .docx files in the downloads directory
+        files = []
+        for filename in os.listdir(DOWNLOADS_DIR):
+            if filename.endswith('.docx'):
+                filepath = os.path.join(DOWNLOADS_DIR, filename)
+                # Get file creation time
+                file_time = os.path.getctime(filepath)
+                files.append((filepath, file_time))
+        
+        # Sort by creation time (oldest first)
+        files.sort(key=lambda x: x[1])
+        
+        # Remove oldest files if we exceed the limit
+        while len(files) > MAX_DOWNLOAD_FILES:
+            old_file = files.pop(0)
+            try:
+                os.remove(old_file[0])
+                logging.info(f"Removed old download file: {old_file[0]}")
+            except Exception as e:
+                logging.error(f"Error removing old file {old_file[0]}: {e}")
+                
+    except Exception as e:
+        logging.error(f"Error during download cleanup: {e}")
 
-# Add this comprehensive health check endpoint
+
+def create_docx_from_content(content: str, images: Optional[List[bytes]] = None) -> bytes:
+    """
+    Convert chat content to DOCX format with proper Markdown table conversion.
+    
+    Args:
+        content: Text content to convert (may include Markdown)
+        images: Optional list of image bytes to include
+        
+    Returns:
+        DOCX file as bytes
+    """
+    from docx import Document
+    from docx.shared import Inches
+    from io import BytesIO
+    import re
+    from PIL import Image as PILImage
+    
+    # Create document
+    doc = Document()
+    
+    # Add a title with timestamp
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    doc.add_heading(f"Chat Response - {timestamp}", level=1)
+    
+    # Split content into blocks for processing
+    blocks = content.split('\n\n')
+    
+    # Helper function to detect markdown tables
+    def is_markdown_table(text):
+        lines = text.strip().split('\n')
+        if len(lines) < 2:
+            return False
+            
+        # Check for table with | characters
+        if all('|' in line for line in lines):
+            # Check for separator row (e.g., |---|---|)
+            for i in range(1, len(lines)):
+                if re.match(r'^[\s]*\|[-:\|\s]+\|[\s]*$', lines[i]):
+                    return True
+        
+        # Check for simple tables (e.g., Header | Header)
+        if len(lines) >= 3 and '|' in lines[0] and all('-' in cell for cell in lines[1].split('|')):
+            return True
+            
+        return False
+    
+    # Helper function to parse a markdown table
+    def parse_markdown_table(text):
+        rows = []
+        lines = text.strip().split('\n')
+        
+        # Skip separator lines when processing
+        for line in lines:
+            if re.match(r'^[\s]*\|?[-:\|\s]+-\|?[\s]*$', line):
+                continue
+                
+            # Extract cells from the line
+            if '|' in line:
+                # Remove leading/trailing | and split by |
+                cells = line.strip()
+                if cells.startswith('|'):
+                    cells = cells[1:]
+                if cells.endswith('|'):
+                    cells = cells[:-1]
+                cells = [cell.strip() for cell in cells.split('|')]
+                rows.append(cells)
+        
+        return rows
+    
+    # Process each block
+    for block in blocks:
+        if not block.strip():
+            continue
+            
+        # Check if this block is a markdown table
+        if is_markdown_table(block):
+            # Parse the table
+            table_data = parse_markdown_table(block)
+            if table_data and len(table_data) > 0:
+                # Create Word table
+                num_rows = len(table_data)
+                num_cols = max(len(row) for row in table_data)
+                table = doc.add_table(rows=num_rows, cols=num_cols)
+                table.style = 'Table Grid'
+                
+                # Fill table with data
+                for i, row_data in enumerate(table_data):
+                    row = table.rows[i]
+                    for j, cell_text in enumerate(row_data):
+                        if j < len(row.cells):  # Ensure we don't exceed the columns
+                            row.cells[j].text = cell_text
+                            
+                # Add spacing after table
+                doc.add_paragraph()
+        else:
+            # Process non-table elements
+            if block.startswith('# '):
+                # Heading 1
+                doc.add_heading(block[2:], level=1)
+            elif block.startswith('## '):
+                # Heading 2
+                doc.add_heading(block[3:], level=2)
+            elif block.startswith('### '):
+                # Heading 3
+                doc.add_heading(block[4:], level=3)
+            elif block.startswith('- ') or block.startswith('* '):
+                # Bullet points
+                lines = block.split('\n')
+                for line in lines:
+                    if line.strip().startswith('- ') or line.strip().startswith('* '):
+                        doc.add_paragraph(line.strip()[2:], style='List Bullet')
+            elif re.match(r'^\d+\.\s', block):
+                # Numbered list
+                lines = block.split('\n')
+                for line in lines:
+                    if line.strip() and re.match(r'^\d+\.\s', line.strip()):
+                        # Extract the content after the number and period
+                        content_start = line.find('. ') + 2
+                        doc.add_paragraph(line.strip()[content_start:], style='List Number')
+            else:
+                # Regular paragraph
+                doc.add_paragraph(block)
+    
+    # Add images section if there are images
+    if images:
+        doc.add_heading("Visualizations", level=2)
+        
+        # Add each image to the document
+        for i, img_bytes in enumerate(images):
+            try:
+                # Create a BytesIO object from the image bytes
+                image_stream = BytesIO(img_bytes)
+                
+                # Try to open with PIL to verify it's a valid image
+                pil_image = PILImage.open(image_stream)
+                
+                # Add a caption for the image
+                doc.add_paragraph(f"Visualization {i+1}")
+                
+                # Reset stream position after PIL read
+                image_stream.seek(0)
+                
+                # Add the image to the document - control width to fit page
+                doc.add_picture(image_stream, width=Inches(6))
+                
+                # Add spacing after each image
+                doc.add_paragraph()
+            except Exception as img_err:
+                # If image processing fails, add a note
+                doc.add_paragraph(f"[Image {i+1} could not be included - {str(img_err)}]")
+                logging.warning(f"Error adding image to DOCX: {str(img_err)}")
+    
+    # Save document to BytesIO buffer
+    buffer = BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    
+    return buffer.getvalue()
+
+
+# Add this new endpoint after the existing endpoints in app.py
+
 @app.get("/download-chat")
 async def download_chat(
     request: Request,
@@ -4041,7 +4098,7 @@ async def comprehensive_health_check():
                                data=data)
         
         # For internal testing, create directly
-        vector_store = client.beta.vector_stores.create(name=f"health_check_store_{int(time.time())}")
+        vector_store =client.vector_stores.create(name=f"health_check_store_{int(time.time())}")
         assistant = client.beta.assistants.create(
             name=f"health_check_assistant_{int(time.time())}",
             model="gpt-4.1",
@@ -4149,7 +4206,7 @@ async def comprehensive_health_check():
         if test_assistant_id:
             client.beta.assistants.delete(assistant_id=test_assistant_id)
         if test_vector_store_id:
-            client.beta.vector_stores.delete(vector_store_id=test_vector_store_id)
+           client.vector_stores.delete(vector_store_id=test_vector_store_id)
     except Exception as e:
         logging.warning(f"Cleanup error (non-critical): {e}")
     
