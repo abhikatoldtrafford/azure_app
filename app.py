@@ -125,35 +125,7 @@ def create_client():
         api_key=AZURE_API_KEY,
         api_version=AZURE_API_VERSION,
     )
-def save_download_file(content: bytes, filename: str) -> str:
-    """
-    Save a file for download with proper permissions.
-    
-    Args:
-        content: File content as bytes
-        filename: Desired filename
-        
-    Returns:
-        Full path to the saved file
-    """
-    # Sanitize filename
-    safe_filename = secure_filename(filename)
-    filepath = os.path.join(DOWNLOADS_DIR, safe_filename)
-    
-    try:
-        # Write file with explicit permissions
-        with open(filepath, 'wb') as f:
-            f.write(content)
-        
-        # Set file permissions to be readable by the web server
-        os.chmod(filepath, 0o644)
-        
-        logging.info(f"Saved download file: {filepath} ({len(content)} bytes)")
-        return filepath
-        
-    except Exception as e:
-        logging.error(f"Failed to save download file {filename}: {e}")
-        raise
+
 def construct_download_url(request: Request, filename: str) -> str:
     """
     Construct the download URL for a file.
@@ -178,9 +150,40 @@ def construct_download_url(request: Request, filename: str) -> str:
         base_url = f"http://{host}"
     
     return f"{base_url}/download-files/{filename}"
+def save_download_file(content: bytes, filename: str) -> str:
+    """
+    Save a file for download with proper permissions.
+    
+    Args:
+        content: File content as bytes
+        filename: Desired filename
+        
+    Returns:
+        Actual filename used (may be modified for uniqueness)
+    """
+    # Sanitize filename
+    safe_filename = secure_filename(filename)
+    filepath = os.path.join(DOWNLOADS_DIR, safe_filename)
+    
+    try:
+        # Write file with explicit permissions
+        with open(filepath, 'wb') as f:
+            f.write(content)
+        
+        # Set file permissions to be readable by the web server
+        os.chmod(filepath, 0o644)
+        
+        logging.info(f"Saved download file: {filepath} ({len(content)} bytes)")
+        return safe_filename  # Return the actual filename used
+        
+    except Exception as e:
+        logging.error(f"Failed to save download file {filename}: {e}")
+        raise
+
 def secure_filename(filename: str) -> str:
     """
     Sanitize a filename to be safe for filesystem storage.
+    Only adds timestamp if filename doesn't already have one.
     
     Args:
         filename: Original filename
@@ -201,11 +204,17 @@ def secure_filename(filename: str) -> str:
     if '.' not in filename:
         filename += '.bin'
     
-    # Add timestamp to ensure uniqueness
+    # Check if filename already has a timestamp pattern (YYYYMMDD_HHMMSS)
     name, ext = os.path.splitext(filename)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp_pattern = r'_\d{8}_\d{6}$'
     
-    return f"{name}_{timestamp}{ext}"
+    if re.search(timestamp_pattern, name):
+        # Filename already has timestamp, don't add another
+        return filename
+    else:
+        # Add timestamp to ensure uniqueness
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        return f"{name}_{timestamp}{ext}"
 def extract_csv_from_content(content: str) -> str:
     """
     Extract CSV content from AI response, handling various formats.
@@ -3880,6 +3889,8 @@ async def test_download_functionality():
             "downloads_directory": DOWNLOADS_DIR
         }, status_code=500)
 # Add this new endpoint for stateless chat completion
+# Complete replacement for the /completion endpoint in app.py
+
 @app.post("/completion")
 async def chat_completion(
     request: Request,
@@ -3893,7 +3904,7 @@ async def chat_completion(
 ):
     """
     Enhanced stateless chat completion endpoint - Business document generation.
-    Fixed version with proper import handling and error recovery.
+    Fixed version with proper filename handling.
     """
     # Import all required modules at the top level to avoid scoping issues
     import pandas as pd
@@ -3960,7 +3971,7 @@ async def chat_completion(
                 }
             )
         
-        # Comprehensive system message with library-specific formatting
+        # Comprehensive system message (keeping existing system message)
         if not system_message:
             system_message = '''
 You are a specialized business document generation AI. You create ONLY business, product, technical, and professional content. You understand the exact format requirements for each output type based on the parsing libraries used.
@@ -4189,6 +4200,7 @@ Before generating any content, verify:
 
 Remember: You are a business document specialist. Every output must be professional, data-driven, and suitable for corporate use. No exceptions to the business content rule.
 '''
+        
         # Build messages
         messages = [{"role": "system", "content": system_message}]
         
@@ -4475,9 +4487,10 @@ Remember: You are a business document specialist. Every output must be professio
                 
                 # Save file if generation succeeded
                 if file_bytes and filename:
-                    filepath = save_download_file(file_bytes, filename)
-                    generated_filename = filename
-                    download_url = construct_download_url(request, filename)
+                    # Use the fixed save_download_file function that returns actual filename
+                    actual_filename = save_download_file(file_bytes, filename)
+                    generated_filename = actual_filename  # Use the actual filename returned
+                    download_url = construct_download_url(request, actual_filename)
                     
                     # Cleanup
                     cleanup_old_downloads()
@@ -4514,6 +4527,9 @@ Remember: You are a business document specialist. Every output must be professio
         )
 
 # Add this endpoint for review extraction
+
+# Complete /extract-reviews endpoint for app.py
+# Replace the existing /extract-reviews endpoint with this complete version
 
 @app.post("/extract-reviews")
 async def extract_reviews(
@@ -4732,16 +4748,14 @@ Remember: Output ONLY the CSV data, nothing else. Start with the header row."""
             file_bytes = csv_content.encode('utf-8')
             output_format = 'csv'
         
-        # Save file
-        filepath = os.path.join(DOWNLOADS_DIR, filename)
-        with open(filepath, 'wb') as f:
-            f.write(file_bytes)
+        # Save file using the fixed function that returns actual filename
+        actual_filename = save_download_file(file_bytes, filename)
         
         # Clean up old downloads
         cleanup_old_downloads()
         
-        # Generate download URL
-        download_url = construct_download_url(request, filename)
+        # Generate download URL using actual filename
+        download_url = construct_download_url(request, actual_filename)
         
         # Count extracted reviews
         review_count = len(rows) - 1  # Subtract header row
@@ -4750,7 +4764,7 @@ Remember: Output ONLY the CSV data, nothing else. Start with the header row."""
             "status": "success",
             "message": f"Successfully extracted {review_count} reviews",
             "download_url": download_url,
-            "filename": filename,
+            "filename": actual_filename,  # Use actual filename
             "columns": column_list,
             "output_format": output_format,
             "review_count": review_count,
