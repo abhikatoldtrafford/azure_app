@@ -3650,16 +3650,7 @@ async def process_conversation(
         raise HTTPException(status_code=500, detail=f"Failed to process {endpoint_type} request: {str(e)}")
 
 
-@app.get("/conversation")
-async def conversation(
-    session: Optional[str] = None,
-    prompt: Optional[str] = None,
-    assistant: Optional[str] = None
-):
-    """
-    Handles conversation queries with streaming response.
-    """
-    return await process_conversation(session, prompt, assistant, stream_output=True)
+
 
 @app.get("/chat")
 async def chat(
@@ -3959,58 +3950,22 @@ DATA GENERATION GUIDELINES:
 IMPORTANT: The user wants EXTENSIVE data. Don't hold back. Generate comprehensive, production-ready datasets."""
 
             elif output_format == 'excel':
-                system_message = """You are an Excel data generator that outputs ONLY valid JSON.
+                system_message = """You are a data generator that outputs ONLY valid JSON arrays.
 
 CRITICAL RULES:
-1. Output ONLY valid JSON - no markdown, no explanations, no text before/after
-2. Keep JSON concise - use short property names when possible
-3. For large datasets (500+ rows), generate a representative sample of 100-200 rows and note this
-4. ALWAYS ensure JSON is complete - better to have fewer rows than broken JSON
-5. Numbers without quotes, strings with quotes
-6. NO trailing commas in arrays or objects
+1. Output ONLY a JSON array of objects - nothing else
+2. Each object represents one row of data
+3. Use simple, consistent property names
+4. No analysis, no summaries, no statistics - just raw data
+5. Keep it simple and clean
 
-EXCEL JSON STRUCTURE:
-{
-  "SheetName1": [
-    {"col1": "value1", "col2": 123, "col3": "value3"},
-    {"col1": "value2", "col2": 456, "col3": "value4"}
-  ],
-  "SheetName2": [
-    {"id": 1, "data": "example"},
-    {"id": 2, "data": "sample"}
-  ]
-}
+Example for reviews:
+[
+  {"id": 1, "user": "john_doe", "rating": 5, "review": "Great app!", "date": "2024-06-01", "platform": "iOS"},
+  {"id": 2, "user": "jane_smith", "rating": 3, "review": "Needs work", "date": "2024-06-02", "platform": "Android"}
+]
 
-For reviews, use this structure:
-{
-  "Reviews": [
-    {
-      "id": 1,
-      "user": "username",
-      "rating": 5,
-      "title": "Great app!",
-      "comment": "Love it",
-      "date": "2024-06-01",
-      "device": "iPhone",
-      "pros": "Fast, easy",
-      "cons": "None",
-      "verified": true,
-      "helpful": 45,
-      "feature_requests": "More avatars"
-    }
-  ],
-  "Summary": [
-    {"metric": "Total Reviews", "value": 1000},
-    {"metric": "Average Rating", "value": 4.2},
-    {"metric": "5 Star %", "value": 45}
-  ]
-}
-
-IMPORTANT: 
-- For requests of 1000+ items, generate 100-200 representative samples
-- Include a Summary sheet with statistics about the full dataset
-- Ensure ALL JSON is valid and complete
-- Use concise property names to save tokens"""
+IMPORTANT: Generate ONLY the data array. No explanations, no markdown, no extra text."""
 
             elif output_format == 'docx':
                 system_message = """You are a professional document generator creating comprehensive, publication-ready documents.
@@ -4100,15 +4055,14 @@ Remember: You are a GENERATIVE AI. Be creative, thorough, and produce substantia
             if number_match:
                 requested_count = int(number_match.group(1))
                 if requested_count >= 500:
-                    # For large requests, ask for a representative sample
-                    enhanced_prompt += f"\n\nIMPORTANT: Generate a representative sample of 100-200 {number_match.group(2)} that covers all scenarios (positive, negative, feature requests, bugs, etc.). Include a Summary sheet with statistics about what the full {requested_count} dataset would look like."
-                    enhanced_prompt += f"\n\nUse this exact format - keep property names short to save space:\n{{'Reviews': [100-200 diverse review objects], 'Summary': [statistics about the full {requested_count} reviews]}}"
+                    # For large requests, we'll use chunking
+                    enhanced_prompt += f"\n\nNOTE: For {requested_count} rows, we'll generate data in chunks of 100 and combine them."
                 else:
-                    enhanced_prompt += f"\n\nGenerate EXACTLY {requested_count} complete data rows. Output ONLY valid JSON."
+                    enhanced_prompt += f"\n\nGenerate EXACTLY {requested_count} rows of data. Output as a JSON array."
             else:
-                enhanced_prompt += "\n\nIMPORTANT: Create multiple sheets with substantial data (100-200 rows each). Output ONLY valid JSON."
+                enhanced_prompt += "\n\nGenerate data rows. Output as a JSON array or object with arrays."
             
-            enhanced_prompt += "\n\nCRITICAL: Ensure JSON is complete and valid. Better to have fewer complete rows than broken JSON. Your JSON will be parsed with Python's json.loads()."
+            enhanced_prompt += "\n\nKEEP IT SIMPLE: Just generate the raw data table. No analysis, no summaries, no statistics - just the data rows."
         
         elif output_format == 'docx':
             if 'page' not in prompt.lower() and 'comprehensive' not in prompt.lower():
@@ -4161,6 +4115,16 @@ Remember: You are a GENERATIVE AI. Be creative, thorough, and produce substantia
             # For Excel, be more conservative with tokens to ensure complete JSON
             number_match = re.search(r'(\d{3,})\+?\s*(reviews?|records?|rows?|entries|items?|products?|customers?|transactions?)', prompt.lower())
             if number_match and int(number_match.group(1)) >= 500:
+                actual_max_tokens = 6000  # For chunked generation, each chunk needs less
+            else:
+                actual_max_tokens = max(max_tokens, 8000)
+        elif output_format == 'docx':
+            actual_max_tokens = max(max_tokens, 12000)
+        elif output_format == 'csv':
+            actual_max_tokens = max(max_tokens, 10000)
+        else:
+            actual_max_tokens = max(max_tokens, 4000)())
+            if number_match and int(number_match.group(1)) >= 500:
                 actual_max_tokens = 8000  # Enough for 100-200 detailed rows
             else:
                 actual_max_tokens = max(max_tokens, 8000)
@@ -4177,89 +4141,190 @@ Remember: You are a GENERATIVE AI. Be creative, thorough, and produce substantia
         completion = None
         original_format = output_format
         
-        for retry in range(max_retries):
-            try:
-                # Prepare request parameters
-                request_params = {
-                    "model": model,
-                    "messages": messages,
-                    "temperature": 0.5 if output_format in ['csv', 'excel'] else temperature,
-                    "max_tokens": actual_max_tokens
-                }
+        # Special handling for large Excel requests - chunk generation
+        if output_format == 'excel':
+            number_match = re.search(r'(\d{3,})\+?\s*(reviews?|records?|rows?|entries|items?|products?|customers?|transactions?)', prompt.lower())
+            if number_match and int(number_match.group(1)) >= 500:
+                requested_count = int(number_match.group(1))
+                item_type = number_match.group(2)
                 
-                # Add response_format for Excel to ensure valid JSON
-                if output_format == 'excel':
-                    request_params["response_format"] = {"type": "json_object"}
+                logging.info(f"Large Excel request: {requested_count} {item_type} - using chunked generation")
                 
-                # Make API call
-                completion = client.chat.completions.create(**request_params)
-                response_content = completion.choices[0].message.content
+                # Generate data in chunks
+                all_rows = []
+                chunk_size = 100
+                chunks_needed = min((requested_count + chunk_size - 1) // chunk_size, 10)  # Max 10 chunks = 1000 rows
                 
-                # For CSV/Excel, trust GPT more - minimal validation
-                if output_format == 'csv':
-                    # Just basic cleanup
-                    csv_test = response_content.strip()
-                    # Remove any markdown if present
-                    csv_test = re.sub(r'```[a-zA-Z]*\n?', '', csv_test)
-                    csv_test = re.sub(r'```', '', csv_test).strip()
+                # Simplified chunk generation
+                for chunk_num in range(chunks_needed):
+                    chunk_start = chunk_num * chunk_size
+                    chunk_end = min((chunk_num + 1) * chunk_size, requested_count)
+                    actual_chunk_size = chunk_end - chunk_start
                     
-                    # Very basic check
-                    if ',' in csv_test and '\n' in csv_test:
-                        response_content = csv_test
+                    chunk_prompt = f"""Generate EXACTLY {actual_chunk_size} {item_type} as a JSON array.
+
+Original request: {prompt}
+
+Start IDs from {chunk_start + 1}. Include diverse, realistic data.
+
+For reviews, use simple format:
+- id: unique number
+- user: username
+- rating: 1-5
+- title: short review title
+- review: the actual review text
+- date: YYYY-MM-DD format
+- platform: iOS/Android/Web
+- verified: true/false
+- helpful_votes: number
+- issue_type: none/crash/lag/feature_request/other
+
+Output ONLY the JSON array, no other text. Example:
+[
+  {{"id": {chunk_start + 1}, "user": "user123", "rating": 4, "title": "Good app", "review": "Works well but...", "date": "2024-06-01", "platform": "iOS", "verified": true, "helpful_votes": 12, "issue_type": "feature_request"}},
+  ...
+]"""
+                    
+                    chunk_messages = [
+                        {"role": "system", "content": "Output ONLY a valid JSON array. No explanations, no markdown."},
+                        {"role": "user", "content": chunk_prompt}
+                    ]
+                    
+                    # Try to generate this chunk
+                    for retry in range(2):
+                        try:
+                            chunk_completion = client.chat.completions.create(
+                                model=model,
+                                messages=chunk_messages,
+                                temperature=0.8,
+                                max_tokens=5000
+                            )
+                            
+                            chunk_response = chunk_completion.choices[0].message.content.strip()
+                            
+                            # Clean up the response
+                            chunk_response = re.sub(r'```[a-zA-Z]*\n?', '', chunk_response)
+                            chunk_response = re.sub(r'```', '', chunk_response).strip()
+                            
+                            # Parse the JSON array
+                            chunk_data = json.loads(chunk_response)
+                            
+                            if isinstance(chunk_data, list) and len(chunk_data) > 0:
+                                all_rows.extend(chunk_data)
+                                logging.info(f"Chunk {chunk_num + 1}/{chunks_needed} successful - {len(chunk_data)} items")
+                                break
+                            else:
+                                raise ValueError("Invalid chunk data - not an array or empty")
+                                
+                        except Exception as e:
+                            logging.warning(f"Chunk {chunk_num + 1} attempt {retry + 1} failed: {e}")
+                            if retry == 1:
+                                logging.error(f"Failed to generate chunk {chunk_num + 1} - skipping")
+                
+                # If we got some data, format it for Excel
+                if all_rows:
+                    # Create a simple single-sheet Excel structure
+                    excel_data = {
+                        "Reviews": all_rows[:requested_count]  # Ensure we don't exceed requested count
+                    }
+                    
+                    response_content = json.dumps(excel_data)
+                    logging.info(f"Chunked generation complete: {len(all_rows)} items generated")
+                else:
+                    # Fallback if all chunks failed
+                    raise Exception("Chunked generation failed - no data generated")
+                    
+        # If chunking failed or not applicable, continue with normal flow
+            else:
+                # Regular generation for smaller requests
+                for retry in range(max_retries):
+                    try:
+                        request_params = {
+                            "model": model,
+                            "messages": messages,
+                            "temperature": 0.7,
+                            "max_tokens": actual_max_tokens
+                        }
+                        
+                        completion = client.chat.completions.create(**request_params)
+                        response_content = completion.choices[0].message.content
+                        
+                        # Clean and validate
+                        json_test = response_content.strip()
+                        json_test = re.sub(r'```[a-zA-Z]*\n?', '', json_test)
+                        json_test = re.sub(r'```', '', json_test).strip()
+                        
+                        # Try to parse
+                        parsed = json.loads(json_test)
+                        
+                        # If it's a raw array, wrap it in a sheet
+                        if isinstance(parsed, list):
+                            excel_data = {"Data": parsed}
+                            response_content = json.dumps(excel_data)
+                        
                         break  # Success
-                    else:
-                        raise ValueError("No comma-separated values found")
                         
-                elif output_format == 'excel':
-                    # Just check if it's valid JSON
-                    json.loads(response_content)
-                    break  # If it parsed, we're good
-                else:
-                    break  # No validation needed for other formats
+                    except Exception as e:
+                        logging.warning(f"Attempt {retry + 1} failed: {str(e)}")
+                        if retry < max_retries - 1:
+                            messages[-1]["content"][0]["text"] = enhanced_prompt + f"\n\nRETRY {retry + 1}: Output ONLY valid JSON. An array is fine."
+                            continue
+                        else:
+                            # Final fallback
+                            raise Exception("Excel generation failed after retries")
+        else:
+            # Non-Excel formats - use existing logic
+            for retry in range(max_retries):
+                try:
+                    request_params = {
+                        "model": model,
+                        "messages": messages,
+                        "temperature": 0.5 if output_format == 'csv' else temperature,
+                        "max_tokens": actual_max_tokens
+                    }
                     
-            except Exception as e:
-                logging.warning(f"Attempt {retry + 1} failed: {str(e)}")
-                if retry < max_retries - 1:
-                    # Modify prompt for retry
+                    completion = client.chat.completions.create(**request_params)
+                    response_content = completion.choices[0].message.content
+                    
                     if output_format == 'csv':
-                        messages[-1]["content"][0]["text"] = enhanced_prompt + f"\n\nRETRY {retry + 1}: Output ONLY CSV data. No markdown. Start with headers immediately."
-                    elif output_format == 'excel':
-                        messages[-1]["content"][0]["text"] = enhanced_prompt + f"\n\nRETRY {retry + 1}: Output ONLY valid JSON. Ensure it's complete - reduce rows if needed to fit. For 1000+ requests, 100-200 samples is perfect."
-                    continue
-                else:
-                    # Final retry failed - use GPT to convert to markdown/docx
-                    if output_format == 'csv':
-                        logging.info("CSV generation failed - using GPT to convert to document format")
+                        csv_test = response_content.strip()
+                        csv_test = re.sub(r'```[a-zA-Z]*\n?', '', csv_test)
+                        csv_test = re.sub(r'```', '', csv_test).strip()
                         
-                        # Ask GPT to convert the data to a well-formatted document
-                        fallback_messages = [
-                            {"role": "system", "content": """You are a data presentation expert. Convert the requested data into a well-formatted markdown document suitable for DOCX conversion.
-
-Create a comprehensive report with:
-1. Executive summary of the data
-2. Detailed data tables in markdown format
-3. Analysis and insights
-4. All the data the user requested, organized in readable sections
-
-Use proper markdown formatting with headers, tables, lists, and emphasis."""},
-                            {"role": "user", "content": f"The user requested: {prompt}\n\nPlease create a comprehensive document with all the requested data in a well-organized format. Include data tables, analysis, and make it suitable for a professional report."}
-                        ]
-                        
-                        fallback_completion = client.chat.completions.create(
-                            model=model,
-                            messages=fallback_messages,
-                            temperature=0.7,
-                            max_tokens=12000
-                        )
-                        
-                        response_content = fallback_completion.choices[0].message.content
-                        output_format = 'docx'
-                        logging.info("Successfully converted to document format")
+                        if ',' in csv_test and '\n' in csv_test:
+                            response_content = csv_test
+                            break
+                        else:
+                            raise ValueError("No comma-separated values found")
+                    else:
                         break
-                    elif output_format == 'excel':
-                        logging.error(f"All retries failed for Excel")
-                        # Try to salvage what we can
-                        response_content = response_content or "Generation failed"
+                        
+                except Exception as e:
+                    logging.warning(f"Attempt {retry + 1} failed: {str(e)}")
+                    if retry < max_retries - 1:
+                        if output_format == 'csv':
+                            messages[-1]["content"][0]["text"] = enhanced_prompt + f"\n\nRETRY {retry + 1}: Output ONLY CSV data. No markdown. Start with headers immediately."
+                        continue
+                    else:
+                        # Final fallback to document
+                        if output_format in ['csv', 'excel']:
+                            logging.info(f"{output_format.upper()} generation failed - converting to document")
+                            
+                            fallback_messages = [
+                                {"role": "system", "content": "Create a comprehensive document with the requested data in table format."},
+                                {"role": "user", "content": f"The user requested: {prompt}\n\nCreate a document with the data in well-formatted tables."}
+                            ]
+                            
+                            fallback_completion = client.chat.completions.create(
+                                model=model,
+                                messages=fallback_messages,
+                                temperature=0.7,
+                                max_tokens=12000
+                            )
+                            
+                            response_content = fallback_completion.choices[0].message.content
+                            output_format = 'docx'
+                            break
         
         # Generate file if format specified
         download_url = None
@@ -4532,11 +4597,16 @@ Use proper markdown formatting with headers, tables, lists, and emphasis."""},
         # Return response
         response_data = {
             "status": "success",
-            "response": response_content if len(response_content) < 5000 else response_content[:5000] + "...[truncated]",
             "model": model
         }
         
-        # Add usage stats
+        # For large responses, just show a summary
+        if response_content and len(response_content) > 5000:
+            response_data["response"] = f"Generated {output_format.upper()} file with data. Download to view."
+        else:
+            response_data["response"] = response_content
+        
+        # Add usage stats if available
         if completion:
             response_data["usage"] = {
                 "prompt_tokens": completion.usage.prompt_tokens,
@@ -4556,26 +4626,17 @@ Use proper markdown formatting with headers, tables, lists, and emphasis."""},
         if download_url:
             response_data["generation_metadata"] = {
                 "format": output_format,
-                "requested_format": original_format,
                 "timestamp": timestamp,
-                "model_temperature": temperature,
-                "max_tokens_used": actual_max_tokens
+                "model_temperature": temperature
             }
             
-            # Add fallback info if format changed
-            if original_format != output_format:
-                response_data["generation_metadata"]["fallback_used"] = True
-                response_data["generation_metadata"]["fallback_reason"] = f"Original {original_format} generation failed"
+            # Add info about chunked generation
+            if output_format == 'excel' and 'chunks' in str(response_content):
+                response_data["generation_metadata"]["method"] = "chunked"
         
         # Add warnings if any
         if generation_errors:
             response_data["warnings"] = generation_errors
-        
-        # Add note about sampling for large Excel requests
-        if output_format == 'excel' and download_url:
-            number_match = re.search(r'(\d{3,})\+?\s*(reviews?|records?|rows?|entries|items?|products?|customers?|transactions?)', prompt.lower())
-            if number_match and int(number_match.group(1)) >= 500:
-                response_data["note"] = f"Generated a representative sample of 100-200 {number_match.group(2)} with comprehensive coverage. Check the Summary sheet for statistics about the full dataset."
         
         return JSONResponse(response_data)
         
@@ -5732,46 +5793,111 @@ from fastapi.responses import HTMLResponse
 async def root():
     """
     Serve an advanced portfolio-style landing page with integrated chatbot.
+    Enhanced for mobile, advertising, and modern UI/UX.
     """
     html_content = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Advanced AI API Platform - Next-Gen Intelligence Infrastructure</title>
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="description" content="Enterprise AI Platform - Advanced GPT-4 powered API with file processing, data analytics, and intelligent automation. Try our AI assistant now!">
+    <meta name="keywords" content="AI API, GPT-4, Machine Learning, Data Analytics, Enterprise AI, Document Processing">
+    <meta property="og:title" content="Next-Gen AI Platform - Enterprise Intelligence">
+    <meta property="og:description" content="Transform your business with our advanced AI platform. GPT-4 powered, multi-modal processing, enterprise security.">
+    <meta property="og:image" content="/api/og-image">
+    <meta name="twitter:card" content="summary_large_image">
+    
+    <title>AI Platform Pro - Enterprise AI Solutions | GPT-4 Powered API</title>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Poppins:wght@600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
     <style>
         :root {
-            --primary: #7c3aed;
-            --primary-light: #a78bfa;
-            --primary-dark: #5b21b6;
-            --secondary: #06b6d4;
+            --primary: #6366f1;
+            --primary-light: #818cf8;
+            --primary-dark: #4f46e5;
+            --secondary: #14b8a6;
             --accent: #f59e0b;
-            --success: #10b981;
-            --bg-main: #030712;
-            --bg-card: #111827;
-            --bg-elevated: #1f2937;
-            --text-primary: #f9fafb;
-            --text-secondary: #9ca3af;
+            --success: #22c55e;
+            --danger: #ef4444;
+            --warning: #f97316;
+            --bg-main: #0f0f1e;
+            --bg-card: #1a1a2e;
+            --bg-elevated: #252542;
+            --bg-hover: #2d2d4a;
+            --text-primary: #ffffff;
+            --text-secondary: #a8a8b8;
             --text-muted: #6b7280;
-            --border: #374151;
-            --glow: rgba(124, 58, 237, 0.5);
+            --border: #2d2d4a;
+            --border-light: #3d3d5a;
+            --gradient-1: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --gradient-2: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            --gradient-3: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            --gradient-hero: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+            --shadow-sm: 0 2px 4px rgba(0,0,0,0.1);
+            --shadow-md: 0 4px 6px rgba(0,0,0,0.15);
+            --shadow-lg: 0 10px 25px rgba(0,0,0,0.2);
+            --shadow-xl: 0 20px 40px rgba(0,0,0,0.3);
+            --shadow-glow: 0 0 20px rgba(99, 102, 241, 0.5);
         }
 
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        html {
+            scroll-behavior: smooth;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
         }
 
         body {
-            font-family: 'Inter', -apple-system, sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
             background: var(--bg-main);
             color: var(--text-primary);
             overflow-x: hidden;
             position: relative;
+            line-height: 1.6;
+        }
+
+        /* Loading Screen */
+        .loading-screen {
+            position: fixed;
+            inset: 0;
+            background: var(--bg-main);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+            transition: opacity 0.5s, visibility 0.5s;
+        }
+
+        .loading-screen.hidden {
+            opacity: 0;
+            visibility: hidden;
+        }
+
+        .loader-container {
+            text-align: center;
+        }
+
+        .loader {
+            width: 60px;
+            height: 60px;
+            border: 3px solid var(--border);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
         }
 
         /* Advanced Background */
@@ -5779,184 +5905,368 @@ async def root():
             position: fixed;
             inset: 0;
             z-index: -1;
+            overflow: hidden;
         }
 
-        .grid-bg {
+        .bg-gradient {
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(ellipse at top, rgba(99, 102, 241, 0.1), transparent 50%),
+                        radial-gradient(ellipse at bottom, rgba(168, 85, 247, 0.1), transparent 50%),
+                        var(--bg-main);
+        }
+
+        .bg-pattern {
             position: absolute;
             inset: 0;
             background-image: 
-                linear-gradient(rgba(124, 58, 237, 0.03) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(124, 58, 237, 0.03) 1px, transparent 1px);
-            background-size: 50px 50px;
-            animation: grid-move 20s linear infinite;
-        }
-
-        @keyframes grid-move {
-            0% { transform: translate(0, 0); }
-            100% { transform: translate(50px, 50px); }
-        }
-
-        .gradient-orb {
-            position: absolute;
-            border-radius: 50%;
-            filter: blur(80px);
-            opacity: 0.5;
+                radial-gradient(circle at 25% 25%, rgba(99, 102, 241, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 75% 75%, rgba(168, 85, 247, 0.1) 0%, transparent 50%);
             animation: float 20s infinite ease-in-out;
         }
 
-        .orb-1 {
-            width: 600px;
-            height: 600px;
-            background: radial-gradient(circle, var(--primary), transparent);
-            top: -300px;
-            left: -300px;
-        }
-
-        .orb-2 {
-            width: 800px;
-            height: 800px;
-            background: radial-gradient(circle, var(--secondary), transparent);
-            bottom: -400px;
-            right: -400px;
-            animation-delay: 10s;
-        }
-
-        .orb-3 {
-            width: 500px;
-            height: 500px;
-            background: radial-gradient(circle, var(--accent), transparent);
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            animation-delay: 5s;
-        }
-
         @keyframes float {
-            0%, 100% { transform: translate(0, 0) scale(1); }
-            25% { transform: translate(50px, -50px) scale(1.1); }
-            50% { transform: translate(-30px, 30px) scale(0.9); }
-            75% { transform: translate(30px, 50px) scale(1.05); }
+            0%, 100% { transform: translate(0, 0) rotate(0deg); }
+            33% { transform: translate(30px, -30px) rotate(120deg); }
+            66% { transform: translate(-20px, 20px) rotate(240deg); }
         }
 
-        /* Navigation */
+        .particles {
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+        }
+
+        .particle {
+            position: absolute;
+            width: 2px;
+            height: 2px;
+            background: var(--primary);
+            border-radius: 50%;
+            opacity: 0.5;
+            animation: particle-float 10s infinite linear;
+        }
+
+        @keyframes particle-float {
+            from {
+                transform: translateY(100vh) translateX(0);
+                opacity: 0;
+            }
+            10% {
+                opacity: 0.5;
+            }
+            90% {
+                opacity: 0.5;
+            }
+            to {
+                transform: translateY(-100vh) translateX(100px);
+                opacity: 0;
+            }
+        }
+
+        /* Navigation - Enhanced Mobile */
         nav {
             position: fixed;
             top: 0;
             width: 100%;
-            background: rgba(3, 7, 18, 0.8);
-            backdrop-filter: blur(20px);
+            background: rgba(15, 15, 30, 0.9);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
             border-bottom: 1px solid var(--border);
-            z-index: 100;
+            z-index: 1000;
             transition: all 0.3s;
+        }
+
+        nav.scrolled {
+            background: rgba(15, 15, 30, 0.98);
+            box-shadow: var(--shadow-lg);
         }
 
         .nav-container {
             max-width: 1400px;
             margin: 0 auto;
-            padding: 1rem 2rem;
+            padding: 1rem 1.5rem;
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
 
         .nav-logo {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
             font-size: 1.5rem;
-            font-weight: 700;
-            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            font-weight: 800;
+            font-family: 'Poppins', sans-serif;
+            background: var(--gradient-1);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
+            text-decoration: none;
+            transition: transform 0.3s;
         }
 
-        .nav-links {
+        .nav-logo:hover {
+            transform: scale(1.05);
+        }
+
+        .nav-logo i {
+            font-size: 1.8rem;
+        }
+
+        .nav-menu {
             display: flex;
+            align-items: center;
             gap: 2rem;
-            align-items: center;
+            list-style: none;
         }
 
-        .nav-links a {
+        .nav-item a {
             color: var(--text-secondary);
             text-decoration: none;
-            transition: color 0.3s;
             font-weight: 500;
+            transition: all 0.3s;
+            position: relative;
+            padding: 0.5rem 0;
         }
 
-        .nav-links a:hover {
+        .nav-item a::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 0;
+            height: 2px;
+            background: var(--primary);
+            transition: width 0.3s;
+        }
+
+        .nav-item a:hover {
             color: var(--primary-light);
         }
 
-        .try-demo-btn {
-            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
-            color: white;
+        .nav-item a:hover::after {
+            width: 100%;
+        }
+
+        .nav-cta {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .nav-btn {
             padding: 0.75rem 1.5rem;
-            border-radius: 8px;
-            text-decoration: none;
+            border-radius: 10px;
             font-weight: 600;
+            text-decoration: none;
             transition: all 0.3s;
-            box-shadow: 0 4px 15px var(--glow);
         }
 
-        .try-demo-btn:hover {
+        .nav-btn-primary {
+            background: var(--gradient-1);
+            color: white;
+            box-shadow: var(--shadow-md);
+        }
+
+        .nav-btn-primary:hover {
             transform: translateY(-2px);
-            box-shadow: 0 6px 20px var(--glow);
+            box-shadow: var(--shadow-lg), var(--shadow-glow);
         }
 
-        /* Hero Section */
+        .nav-btn-secondary {
+            background: transparent;
+            color: var(--text-primary);
+            border: 2px solid var(--border);
+        }
+
+        .nav-btn-secondary:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        /* Mobile Menu */
+        .mobile-menu-toggle {
+            display: none;
+            background: none;
+            border: none;
+            color: var(--text-primary);
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0.5rem;
+            transition: transform 0.3s;
+        }
+
+        .mobile-menu-toggle:hover {
+            transform: scale(1.1);
+        }
+
+        .mobile-menu {
+            position: fixed;
+            top: 0;
+            right: -100%;
+            width: 85%;
+            max-width: 400px;
+            height: 100vh;
+            background: var(--bg-card);
+            transition: right 0.3s ease-in-out;
+            z-index: 1001;
+            overflow-y: auto;
+            box-shadow: -5px 0 20px rgba(0, 0, 0, 0.5);
+        }
+
+        .mobile-menu.active {
+            right: 0;
+        }
+
+        .mobile-menu-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .mobile-menu-close {
+            background: none;
+            border: none;
+            color: var(--text-primary);
+            font-size: 1.5rem;
+            cursor: pointer;
+        }
+
+        .mobile-menu-nav {
+            padding: 2rem 1.5rem;
+        }
+
+        .mobile-menu-nav li {
+            list-style: none;
+            margin-bottom: 1.5rem;
+        }
+
+        .mobile-menu-nav a {
+            color: var(--text-primary);
+            text-decoration: none;
+            font-size: 1.1rem;
+            font-weight: 500;
+            display: block;
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            transition: all 0.3s;
+        }
+
+        .mobile-menu-nav a:hover {
+            background: var(--bg-hover);
+            color: var(--primary);
+            transform: translateX(5px);
+        }
+
+        .mobile-menu-cta {
+            padding: 0 1.5rem 2rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .mobile-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s;
+            z-index: 999;
+        }
+
+        .mobile-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        /* Hero Section - Enhanced */
         .hero {
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 6rem 2rem 4rem;
+            padding: 6rem 1.5rem 4rem;
             position: relative;
+            overflow: hidden;
         }
 
         .hero-content {
             max-width: 1200px;
+            width: 100%;
             text-align: center;
             position: relative;
             z-index: 1;
         }
 
-        .badge {
+        .hero-badge {
             display: inline-flex;
             align-items: center;
             gap: 0.5rem;
-            background: rgba(124, 58, 237, 0.1);
+            background: rgba(99, 102, 241, 0.1);
             border: 1px solid var(--primary);
-            padding: 0.5rem 1rem;
+            padding: 0.75rem 1.5rem;
             border-radius: 50px;
-            font-size: 0.875rem;
+            font-size: 0.9rem;
             color: var(--primary-light);
             margin-bottom: 2rem;
+            animation: pulse-border 2s infinite;
+        }
+
+        @keyframes pulse-border {
+            0%, 100% {
+                border-color: var(--primary);
+                box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.5);
+            }
+            50% {
+                border-color: var(--primary-light);
+                box-shadow: 0 0 0 10px rgba(99, 102, 241, 0);
+            }
+        }
+
+        .hero-badge i {
+            color: var(--accent);
+            animation: bounce 2s infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-5px); }
         }
 
         .hero h1 {
-            font-family: 'Space Grotesk', sans-serif;
-            font-size: clamp(3rem, 8vw, 5rem);
-            font-weight: 700;
+            font-family: 'Poppins', sans-serif;
+            font-size: clamp(2.5rem, 8vw, 5.5rem);
+            font-weight: 800;
             line-height: 1.1;
             margin-bottom: 1.5rem;
-            background: linear-gradient(135deg, var(--text-primary), var(--primary-light), var(--secondary));
+            background: var(--gradient-hero);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             animation: gradient-shift 8s ease infinite;
         }
 
         @keyframes gradient-shift {
-            0%, 100% { background-position: 0% 50%; }
-            50% { background-position: 100% 50%; }
+            0%, 100% {
+                background-position: 0% 50%;
+                filter: hue-rotate(0deg);
+            }
+            50% {
+                background-position: 100% 50%;
+                filter: hue-rotate(30deg);
+            }
         }
 
         .hero-subtitle {
-            font-size: 1.5rem;
+            font-size: clamp(1.1rem, 3vw, 1.5rem);
             color: var(--text-secondary);
             margin-bottom: 3rem;
             max-width: 800px;
             margin-left: auto;
             margin-right: auto;
+            line-height: 1.7;
         }
 
         .hero-cta {
@@ -5964,93 +6274,153 @@ async def root():
             gap: 1rem;
             justify-content: center;
             flex-wrap: wrap;
+            margin-bottom: 3rem;
+        }
+
+        .cta-btn {
+            padding: 1rem 2rem;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 1.1rem;
+            text-decoration: none;
+            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            position: relative;
+            overflow: hidden;
         }
 
         .cta-primary {
-            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            background: var(--gradient-1);
             color: white;
-            padding: 1rem 2rem;
-            border-radius: 12px;
-            text-decoration: none;
-            font-weight: 600;
-            font-size: 1.1rem;
-            transition: all 0.3s;
-            box-shadow: 0 4px 20px var(--glow);
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
+            box-shadow: var(--shadow-lg);
+        }
+
+        .cta-primary::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.2);
+            transition: left 0.5s;
+        }
+
+        .cta-primary:hover::before {
+            left: 100%;
         }
 
         .cta-primary:hover {
             transform: translateY(-3px);
-            box-shadow: 0 8px 30px var(--glow);
+            box-shadow: var(--shadow-xl), var(--shadow-glow);
         }
 
         .cta-secondary {
-            background: transparent;
+            background: rgba(255, 255, 255, 0.05);
             color: var(--text-primary);
-            padding: 1rem 2rem;
-            border-radius: 12px;
-            text-decoration: none;
-            font-weight: 600;
-            font-size: 1.1rem;
-            transition: all 0.3s;
             border: 2px solid var(--border);
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
+            backdrop-filter: blur(10px);
         }
 
         .cta-secondary:hover {
             border-color: var(--primary);
-            color: var(--primary-light);
+            color: var(--primary);
+            background: rgba(99, 102, 241, 0.1);
             transform: translateY(-3px);
         }
 
-        /* Stats Ticker */
-        .stats-ticker {
+        /* Trust Indicators */
+        .trust-indicators {
+            display: flex;
+            justify-content: center;
+            gap: 3rem;
+            flex-wrap: wrap;
+            margin-top: 2rem;
+        }
+
+        .trust-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .trust-item i {
+            color: var(--success);
+            font-size: 1.2rem;
+        }
+
+        /* Stats Section - Animated */
+        .stats-section {
+            padding: 4rem 1.5rem;
             background: var(--bg-card);
-            border: 1px solid var(--border);
-            padding: 1.5rem;
-            margin: 4rem auto;
-            max-width: 1200px;
-            border-radius: 16px;
+            border-top: 1px solid var(--border);
+            border-bottom: 1px solid var(--border);
+            position: relative;
             overflow: hidden;
         }
 
-        .stats-row {
-            display: flex;
-            gap: 3rem;
-            animation: scroll 20s linear infinite;
+        .stats-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 2rem;
         }
 
-        @keyframes scroll {
-            0% { transform: translateX(0); }
-            100% { transform: translateX(-50%); }
+        .stat-card {
+            text-align: center;
+            padding: 2rem;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            transition: all 0.3s;
+            position: relative;
+            overflow: hidden;
         }
 
-        .stat-item {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            white-space: nowrap;
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: var(--gradient-1);
+            transform: scaleX(0);
+            transition: transform 0.3s;
         }
 
-        .stat-value {
-            font-size: 2rem;
-            font-weight: 700;
-            background: linear-gradient(135deg, var(--primary), var(--secondary));
+        .stat-card:hover {
+            transform: translateY(-5px);
+            background: rgba(255, 255, 255, 0.05);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .stat-card:hover::before {
+            transform: scaleX(1);
+        }
+
+        .stat-number {
+            font-size: 3rem;
+            font-weight: 800;
+            background: var(--gradient-1);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
+            margin-bottom: 0.5rem;
         }
 
         .stat-label {
             color: var(--text-secondary);
+            font-size: 1.1rem;
         }
 
-        /* Architecture Section */
-        .architecture {
-            padding: 6rem 2rem;
+        /* Features Grid - Modern Cards */
+        .features-section {
+            padding: 6rem 1.5rem;
             max-width: 1400px;
             margin: 0 auto;
         }
@@ -6060,10 +6430,21 @@ async def root():
             margin-bottom: 4rem;
         }
 
+        .section-badge {
+            display: inline-block;
+            background: rgba(99, 102, 241, 0.1);
+            color: var(--primary);
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+
         .section-title {
-            font-family: 'Space Grotesk', sans-serif;
-            font-size: 3rem;
-            font-weight: 700;
+            font-family: 'Poppins', sans-serif;
+            font-size: clamp(2rem, 5vw, 3.5rem);
+            font-weight: 800;
             margin-bottom: 1rem;
             background: linear-gradient(135deg, var(--text-primary), var(--primary-light));
             -webkit-background-clip: text;
@@ -6073,158 +6454,17 @@ async def root():
         .section-subtitle {
             font-size: 1.25rem;
             color: var(--text-secondary);
-        }
-
-        .architecture-diagram {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 24px;
-            padding: 3rem;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .arch-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 2rem;
-        }
-
-        .arch-component {
-            background: var(--bg-elevated);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 2rem;
-            position: relative;
-            transition: all 0.3s;
-        }
-
-        .arch-component:hover {
-            transform: translateY(-5px);
-            border-color: var(--primary);
-            box-shadow: 0 10px 30px rgba(124, 58, 237, 0.2);
-        }
-
-        .arch-icon {
-            width: 60px;
-            height: 60px;
-            background: linear-gradient(135deg, var(--primary), var(--secondary));
-            border-radius: 16px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.5rem;
-            margin-bottom: 1rem;
-        }
-
-        .arch-component h3 {
-            font-size: 1.5rem;
-            margin-bottom: 1rem;
-        }
-
-        .arch-component p {
-            color: var(--text-secondary);
-            line-height: 1.6;
-        }
-
-        .tech-stack-list {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0.5rem;
-            margin-top: 1rem;
-        }
-
-        .tech-tag {
-            background: rgba(124, 58, 237, 0.1);
-            color: var(--primary-light);
-            padding: 0.25rem 0.75rem;
-            border-radius: 20px;
-            font-size: 0.875rem;
-            border: 1px solid transparent;
-            transition: all 0.3s;
-        }
-
-        .tech-tag:hover {
-            border-color: var(--primary);
-            transform: scale(1.05);
-        }
-
-        /* Features Comparison */
-        .comparison {
-            padding: 6rem 2rem;
-            background: var(--bg-card);
-            position: relative;
-        }
-
-        .comparison-table {
-            max-width: 1200px;
-            margin: 0 auto;
-            background: var(--bg-elevated);
-            border-radius: 24px;
-            padding: 2rem;
-            overflow: hidden;
-        }
-
-        .comparison-grid {
-            display: grid;
-            grid-template-columns: 2fr 1fr 1fr;
-            gap: 1rem;
-        }
-
-        .comparison-header {
-            font-weight: 600;
-            padding: 1rem;
-            background: var(--bg-card);
-            border-radius: 12px;
-            text-align: center;
-        }
-
-        .comparison-row {
-            display: contents;
-        }
-
-        .comparison-row > div {
-            padding: 1rem;
-            border-bottom: 1px solid var(--border);
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .feature-name {
-            color: var(--text-secondary);
-        }
-
-        .check {
-            color: var(--success);
-            font-size: 1.2rem;
-        }
-
-        .cross {
-            color: var(--text-muted);
-            font-size: 1.2rem;
-        }
-
-        .our-platform {
-            background: linear-gradient(135deg, rgba(124, 58, 237, 0.1), rgba(6, 182, 212, 0.1));
-            border: 1px solid var(--primary);
-        }
-
-        /* Capabilities */
-        .capabilities {
-            padding: 6rem 2rem;
-            max-width: 1400px;
+            max-width: 600px;
             margin: 0 auto;
         }
 
-        .capability-cards {
+        .features-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
             gap: 2rem;
-            margin-top: 3rem;
         }
 
-        .capability-card {
+        .feature-card {
             background: var(--bg-card);
             border: 1px solid var(--border);
             border-radius: 20px;
@@ -6232,236 +6472,588 @@ async def root():
             position: relative;
             overflow: hidden;
             transition: all 0.3s;
+            cursor: pointer;
         }
 
-        .capability-card::before {
+        .feature-card::before {
             content: '';
             position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 4px;
-            background: linear-gradient(90deg, var(--primary), var(--secondary));
-            transform: scaleX(0);
-            transition: transform 0.3s;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, var(--primary) 0%, transparent 70%);
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
         }
 
-        .capability-card:hover::before {
-            transform: scaleX(1);
+        .feature-card:hover::before {
+            opacity: 0.1;
         }
 
-        .capability-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+        .feature-card:hover {
+            transform: translateY(-10px);
+            border-color: var(--primary);
+            box-shadow: var(--shadow-xl);
         }
 
-        .capability-icon {
-            width: 70px;
-            height: 70px;
-            background: linear-gradient(135deg, var(--primary), var(--secondary));
+        .feature-icon {
+            width: 80px;
+            height: 80px;
+            background: var(--gradient-1);
             border-radius: 20px;
             display: flex;
             align-items: center;
             justify-content: center;
             font-size: 2rem;
+            color: white;
             margin-bottom: 1.5rem;
-            box-shadow: 0 10px 30px rgba(124, 58, 237, 0.3);
+            box-shadow: var(--shadow-lg);
+            transition: all 0.3s;
         }
 
-        .capability-card h3 {
-            font-size: 1.75rem;
+        .feature-card:hover .feature-icon {
+            transform: scale(1.1) rotate(5deg);
+        }
+
+        .feature-card h3 {
+            font-size: 1.5rem;
             margin-bottom: 1rem;
-            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 700;
         }
 
-        .capability-card p {
+        .feature-card p {
             color: var(--text-secondary);
             line-height: 1.6;
             margin-bottom: 1.5rem;
         }
 
-        .capability-features {
+        .feature-list {
             list-style: none;
         }
 
-        .capability-features li {
-            color: var(--text-secondary);
+        .feature-list li {
             padding: 0.5rem 0;
-            padding-left: 1.5rem;
-            position: relative;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
         }
 
-        .capability-features li::before {
-            content: '▸';
-            position: absolute;
-            left: 0;
-            color: var(--primary);
+        .feature-list li i {
+            color: var(--success);
+            font-size: 0.9rem;
         }
 
-        /* API Documentation */
-        .api-docs {
-            padding: 6rem 2rem;
+        /* Testimonials Section */
+        .testimonials-section {
+            padding: 6rem 1.5rem;
             background: var(--bg-card);
+            position: relative;
+            overflow: hidden;
         }
 
-        .endpoints-container {
+        .testimonials-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .testimonials-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 2rem;
+            margin-top: 3rem;
+        }
+
+        .testimonial-card {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 2rem;
+            position: relative;
+            transition: all 0.3s;
+        }
+
+        .testimonial-card:hover {
+            transform: translateY(-5px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .testimonial-content {
+            font-size: 1.1rem;
+            line-height: 1.7;
+            margin-bottom: 1.5rem;
+            color: var(--text-primary);
+        }
+
+        .testimonial-author {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .author-avatar {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: var(--gradient-1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            color: white;
+        }
+
+        .author-info h4 {
+            font-size: 1rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .author-info p {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        .testimonial-rating {
+            position: absolute;
+            top: 2rem;
+            right: 2rem;
+            color: var(--accent);
+        }
+
+        /* Pricing Section */
+        .pricing-section {
+            padding: 6rem 1.5rem;
             max-width: 1400px;
             margin: 0 auto;
         }
 
-        .endpoint-category {
-            background: var(--bg-elevated);
-            border: 1px solid var(--border);
+        .pricing-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 2rem;
+            margin-top: 3rem;
+        }
+
+        .pricing-card {
+            background: var(--bg-card);
+            border: 2px solid var(--border);
+            border-radius: 24px;
+            padding: 2.5rem;
+            position: relative;
+            transition: all 0.3s;
+            text-align: center;
+        }
+
+        .pricing-card.featured {
+            border-color: var(--primary);
+            transform: scale(1.05);
+            box-shadow: var(--shadow-xl), var(--shadow-glow);
+        }
+
+        .pricing-card.featured::before {
+            content: 'MOST POPULAR';
+            position: absolute;
+            top: -12px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--gradient-1);
+            color: white;
+            padding: 0.5rem 1.5rem;
             border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 700;
+        }
+
+        .pricing-card:hover {
+            transform: translateY(-10px);
+            box-shadow: var(--shadow-xl);
+        }
+
+        .pricing-card.featured:hover {
+            transform: scale(1.05) translateY(-10px);
+        }
+
+        .pricing-tier {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            color: var(--primary);
+        }
+
+        .pricing-price {
+            font-size: 3rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: baseline;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .pricing-price small {
+            font-size: 1.2rem;
+            color: var(--text-secondary);
+            font-weight: 400;
+        }
+
+        .pricing-description {
+            color: var(--text-secondary);
             margin-bottom: 2rem;
+        }
+
+        .pricing-features {
+            list-style: none;
+            margin-bottom: 2rem;
+            text-align: left;
+        }
+
+        .pricing-features li {
+            padding: 0.75rem 0;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .pricing-features li:last-child {
+            border-bottom: none;
+        }
+
+        .pricing-features li i {
+            color: var(--success);
+            font-size: 1.2rem;
+        }
+
+        .pricing-cta {
+            display: block;
+            width: 100%;
+            padding: 1rem;
+            border-radius: 12px;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.3s;
+            text-align: center;
+        }
+
+        .pricing-card.featured .pricing-cta {
+            background: var(--gradient-1);
+            color: white;
+            box-shadow: var(--shadow-md);
+        }
+
+        .pricing-card.featured .pricing-cta:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .pricing-card:not(.featured) .pricing-cta {
+            background: transparent;
+            color: var(--primary);
+            border: 2px solid var(--primary);
+        }
+
+        .pricing-card:not(.featured) .pricing-cta:hover {
+            background: var(--primary);
+            color: white;
+        }
+
+        /* CTA Section */
+        .cta-section {
+            padding: 6rem 1.5rem;
+            background: var(--gradient-1);
+            text-align: center;
+            position: relative;
             overflow: hidden;
         }
 
-        .category-header {
-            background: linear-gradient(135deg, rgba(124, 58, 237, 0.1), transparent);
-            padding: 2rem;
-            cursor: pointer;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            transition: all 0.3s;
+        .cta-section::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, transparent 50%);
+            animation: rotate 30s linear infinite;
         }
 
-        .category-header:hover {
-            background: linear-gradient(135deg, rgba(124, 58, 237, 0.2), transparent);
+        @keyframes rotate {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
         }
 
-        .category-title {
+        .cta-content {
+            max-width: 800px;
+            margin: 0 auto;
+            position: relative;
+            z-index: 1;
+        }
+
+        .cta-content h2 {
+            font-size: clamp(2rem, 5vw, 3rem);
+            font-weight: 800;
+            margin-bottom: 1rem;
+            color: white;
+        }
+
+        .cta-content p {
+            font-size: 1.25rem;
+            margin-bottom: 2rem;
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .cta-buttons {
             display: flex;
-            align-items: center;
             gap: 1rem;
-            font-size: 1.5rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .cta-btn-white {
+            background: white;
+            color: var(--primary);
+            padding: 1rem 2rem;
+            border-radius: 12px;
             font-weight: 600;
+            text-decoration: none;
+            transition: all 0.3s;
+            box-shadow: var(--shadow-lg);
         }
 
-        .endpoint-list {
-            padding: 2rem;
-            display: none;
+        .cta-btn-white:hover {
+            transform: translateY(-3px);
+            box-shadow: var(--shadow-xl);
         }
 
-        .endpoint-category.active .endpoint-list {
-            display: block;
-        }
-
-        .endpoint {
+        /* Newsletter Section */
+        .newsletter-section {
+            padding: 4rem 1.5rem;
             background: var(--bg-card);
+            border-top: 1px solid var(--border);
+        }
+
+        .newsletter-container {
+            max-width: 600px;
+            margin: 0 auto;
+            text-align: center;
+        }
+
+        .newsletter-form {
+            display: flex;
+            gap: 1rem;
+            margin-top: 2rem;
+            flex-wrap: wrap;
+        }
+
+        .newsletter-input {
+            flex: 1;
+            min-width: 250px;
+            padding: 1rem 1.5rem;
+            background: var(--bg-elevated);
             border: 1px solid var(--border);
             border-radius: 12px;
-            padding: 1.5rem;
-            margin-bottom: 1rem;
+            color: var(--text-primary);
+            font-size: 1rem;
             transition: all 0.3s;
         }
 
-        .endpoint:hover {
+        .newsletter-input:focus {
+            outline: none;
             border-color: var(--primary);
-            transform: translateX(5px);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
         }
 
-        .endpoint-header {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            margin-bottom: 1rem;
-        }
-
-        .method {
-            padding: 0.5rem 1rem;
-            border-radius: 8px;
+        .newsletter-btn {
+            padding: 1rem 2rem;
+            background: var(--gradient-1);
+            color: white;
+            border: none;
+            border-radius: 12px;
             font-weight: 600;
-            font-size: 0.875rem;
-            font-family: 'JetBrains Mono', monospace;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: var(--shadow-md);
         }
 
-        .method-get {
-            background: rgba(16, 185, 129, 0.2);
-            color: var(--success);
+        .newsletter-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
         }
 
-        .method-post {
-            background: rgba(124, 58, 237, 0.2);
-            color: var(--primary-light);
+        /* Footer - Enhanced */
+        footer {
+            padding: 4rem 1.5rem 2rem;
+            background: var(--bg-main);
+            border-top: 1px solid var(--border);
         }
 
-        .endpoint-path {
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 1.1rem;
+        .footer-container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .footer-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 3rem;
+            margin-bottom: 3rem;
+        }
+
+        .footer-column h3 {
+            font-size: 1.2rem;
+            margin-bottom: 1.5rem;
             color: var(--text-primary);
         }
 
-        .endpoint-description {
+        .footer-column ul {
+            list-style: none;
+        }
+
+        .footer-column ul li {
+            margin-bottom: 0.75rem;
+        }
+
+        .footer-column ul li a {
             color: var(--text-secondary);
-            margin-bottom: 1rem;
+            text-decoration: none;
+            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
         }
 
-        .code-block {
-            background: var(--bg-main);
+        .footer-column ul li a:hover {
+            color: var(--primary);
+            transform: translateX(5px);
+        }
+
+        .footer-social {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+
+        .social-link {
+            width: 40px;
+            height: 40px;
+            background: var(--bg-card);
             border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 1rem;
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.875rem;
-            overflow-x: auto;
-            position: relative;
-        }
-
-        .copy-button {
-            position: absolute;
-            top: 0.5rem;
-            right: 0.5rem;
-            background: var(--primary);
-            color: white;
-            border: none;
-            padding: 0.5rem 1rem;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 0.875rem;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--text-secondary);
             transition: all 0.3s;
         }
 
-        .copy-button:hover {
-            background: var(--primary-dark);
-            transform: scale(1.05);
+        .social-link:hover {
+            background: var(--primary);
+            color: white;
+            transform: translateY(-3px);
+            box-shadow: var(--shadow-md);
         }
 
-        /* Chatbot - Fixed positioning */
+        .footer-bottom {
+            padding-top: 2rem;
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .footer-copy {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        .footer-links {
+            display: flex;
+            gap: 2rem;
+        }
+
+        .footer-links a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.9rem;
+            transition: color 0.3s;
+        }
+
+        .footer-links a:hover {
+            color: var(--primary);
+        }
+
+        /* Chatbot - Enhanced */
         .chatbot-toggle {
             position: fixed;
             bottom: 2rem;
             right: 2rem;
-            width: 60px;
-            height: 60px;
-            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            width: 65px;
+            height: 65px;
+            background: var(--gradient-1);
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            box-shadow: 0 10px 30px rgba(124, 58, 237, 0.4);
+            box-shadow: var(--shadow-xl);
             transition: all 0.3s;
-            z-index: 1000;
+            z-index: 998;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.7);
+            }
+            70% {
+                box-shadow: 0 0 0 20px rgba(99, 102, 241, 0);
+            }
+            100% {
+                box-shadow: 0 0 0 0 rgba(99, 102, 241, 0);
+            }
         }
 
         .chatbot-toggle:hover {
             transform: scale(1.1);
-            box-shadow: 0 15px 40px rgba(124, 58, 237, 0.5);
+            animation: none;
+        }
+
+        .chatbot-toggle i {
+            font-size: 1.5rem;
+            color: white;
+        }
+
+        .chatbot-badge {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            width: 20px;
+            height: 20px;
+            background: var(--danger);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            font-weight: 700;
+            color: white;
         }
 
         .chatbot-container {
             position: fixed;
-            bottom: 2rem;  /* Aligned with toggle button */
+            bottom: 2rem;
             right: 2rem;
-            width: 400px;
-            max-height: calc(100vh - 8rem);  /* Leave space from top */
-            height: 600px;
+            width: 420px;
+            height: 650px;
             background: var(--bg-card);
             border: 1px solid var(--border);
-            border-radius: 20px;
-            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+            border-radius: 24px;
+            box-shadow: var(--shadow-xl);
             display: none;
             flex-direction: column;
             z-index: 999;
@@ -6470,13 +7062,13 @@ async def root():
 
         .chatbot-container.active {
             display: flex;
-            animation: slideIn 0.3s ease-out;
+            animation: slideInUp 0.3s ease-out;
         }
 
-        @keyframes slideIn {
+        @keyframes slideInUp {
             from {
                 opacity: 0;
-                transform: translateY(20px);
+                transform: translateY(30px);
             }
             to {
                 opacity: 1;
@@ -6485,7 +7077,7 @@ async def root():
         }
 
         .chatbot-header {
-            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            background: var(--gradient-1);
             padding: 1.5rem;
             display: flex;
             justify-content: space-between;
@@ -6494,22 +7086,48 @@ async def root():
         }
 
         .chatbot-title {
-            font-weight: 600;
-            font-size: 1.1rem;
+            font-weight: 700;
+            font-size: 1.2rem;
+            color: white;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .chatbot-status {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.9rem;
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--success);
+            border-radius: 50%;
+            animation: blink 2s infinite;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
         }
 
         .chatbot-close {
             background: rgba(255, 255, 255, 0.2);
             border: none;
             color: white;
-            width: 30px;
-            height: 30px;
+            width: 35px;
+            height: 35px;
             border-radius: 50%;
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
             transition: all 0.3s;
+            font-size: 1.2rem;
         }
 
         .chatbot-close:hover {
@@ -6524,16 +7142,16 @@ async def root():
             display: flex;
             flex-direction: column;
             gap: 1rem;
-            min-height: 0;  /* Important for flex scrolling */
+            min-height: 0;
+            background: var(--bg-elevated);
         }
 
-        /* Custom scrollbar for messages */
         .chatbot-messages::-webkit-scrollbar {
             width: 6px;
         }
 
         .chatbot-messages::-webkit-scrollbar-track {
-            background: var(--bg-elevated);
+            background: var(--bg-card);
         }
 
         .chatbot-messages::-webkit-scrollbar-thumb {
@@ -6546,11 +7164,12 @@ async def root():
         }
 
         .message {
-            max-width: 80%;
-            padding: 1rem;
-            border-radius: 12px;
+            max-width: 85%;
+            padding: 1rem 1.25rem;
+            border-radius: 16px;
             animation: messageSlide 0.3s ease-out;
             word-wrap: break-word;
+            position: relative;
         }
 
         @keyframes messageSlide {
@@ -6565,19 +7184,27 @@ async def root():
         }
 
         .message.user {
-            background: var(--primary);
+            background: var(--gradient-1);
             color: white;
             align-self: flex-end;
             margin-left: auto;
+            border-bottom-right-radius: 4px;
         }
 
         .message.bot {
-            background: var(--bg-elevated);
+            background: var(--bg-card);
             border: 1px solid var(--border);
             align-self: flex-start;
+            border-bottom-left-radius: 4px;
         }
 
-        /* Markdown table styles */
+        .message-time {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 0.5rem;
+            opacity: 0.7;
+        }
+
         .message table {
             width: 100%;
             border-collapse: collapse;
@@ -6595,22 +7222,17 @@ async def root():
         }
 
         .message th {
-            background: var(--bg-card);
+            background: var(--bg-elevated);
             font-weight: 600;
             color: var(--primary-light);
         }
 
         .message tr:nth-child(even) {
-            background: rgba(124, 58, 237, 0.05);
+            background: rgba(99, 102, 241, 0.05);
         }
 
-        .message tr:hover {
-            background: rgba(124, 58, 237, 0.1);
-        }
-
-        /* Code blocks in messages */
         .message code {
-            background: var(--bg-card);
+            background: var(--bg-elevated);
             padding: 0.2rem 0.4rem;
             border-radius: 4px;
             font-family: 'JetBrains Mono', monospace;
@@ -6618,34 +7240,16 @@ async def root():
         }
 
         .message pre {
-            background: var(--bg-card);
+            background: var(--bg-elevated);
             padding: 1rem;
             border-radius: 8px;
             overflow-x: auto;
             margin: 0.5rem 0;
         }
 
-        .message pre code {
-            background: none;
-            padding: 0;
-        }
-
-        /* Lists in messages */
-        .message ul,
-        .message ol {
-            margin: 0.5rem 0;
-            padding-left: 1.5rem;
-        }
-
-        .message li {
-            margin: 0.25rem 0;
-        }
-
-        /* Links in messages */
         .message a {
             color: var(--primary-light);
             text-decoration: underline;
-            transition: color 0.3s;
         }
 
         .message a:hover {
@@ -6658,6 +7262,7 @@ async def root():
             display: flex;
             gap: 1rem;
             flex-shrink: 0;
+            background: var(--bg-card);
         }
 
         .chatbot-input {
@@ -6666,7 +7271,7 @@ async def root():
             border: 1px solid var(--border);
             color: var(--text-primary);
             padding: 0.75rem 1rem;
-            border-radius: 8px;
+            border-radius: 12px;
             font-size: 0.95rem;
             transition: all 0.3s;
         }
@@ -6674,31 +7279,32 @@ async def root():
         .chatbot-input:focus {
             outline: none;
             border-color: var(--primary);
-            box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.2);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
         }
 
         .chatbot-send {
-            background: var(--primary);
+            background: var(--gradient-1);
             color: white;
             border: none;
             padding: 0.75rem 1.5rem;
-            border-radius: 8px;
+            border-radius: 12px;
             cursor: pointer;
             transition: all 0.3s;
             display: flex;
             align-items: center;
             gap: 0.5rem;
+            font-weight: 600;
+            box-shadow: var(--shadow-md);
         }
 
-        .chatbot-send:hover {
-            background: var(--primary-dark);
+        .chatbot-send:hover:not(:disabled) {
             transform: scale(1.05);
+            box-shadow: var(--shadow-lg);
         }
 
         .chatbot-send:disabled {
             opacity: 0.6;
             cursor: not-allowed;
-            transform: scale(1);
         }
 
         .typing-indicator {
@@ -6734,616 +7340,696 @@ async def root():
             }
         }
 
-        /* Footer */
-        footer {
-            padding: 2rem;
-            text-align: center;
+        /* Quick Actions */
+        .quick-actions {
+            padding: 1rem;
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
             border-top: 1px solid var(--border);
-            margin-top: 6rem;
         }
 
-        .footer-text {
-            color: var(--text-muted);
-            font-size: 0.875rem;
-        }
-
-        .footer-text a {
+        .quick-action-btn {
+            padding: 0.5rem 1rem;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 20px;
             color: var(--text-secondary);
-            text-decoration: none;
-            transition: color 0.3s;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.3s;
         }
 
-        .footer-text a:hover {
-            color: var(--primary-light);
+        .quick-action-btn:hover {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+            transform: scale(1.05);
         }
 
-        /* Responsive */
-        @media (max-width: 768px) {
-            .nav-links {
+        /* Responsive Design */
+        @media (max-width: 1024px) {
+            .nav-menu {
                 display: none;
             }
             
-            .hero h1 {
-                font-size: 3rem;
+            .nav-cta {
+                display: none;
             }
             
-            .comparison-grid {
-                grid-template-columns: 1fr;
+            .mobile-menu-toggle {
+                display: block;
+            }
+            
+            .features-grid,
+            .testimonials-grid,
+            .pricing-grid {
+                grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            }
+            
+            .footer-grid {
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            }
+        }
+
+        @media (max-width: 768px) {
+            .hero {
+                padding: 5rem 1rem 3rem;
+            }
+            
+            .hero h1 {
+                font-size: 2.5rem;
+            }
+            
+            .hero-subtitle {
+                font-size: 1.1rem;
+            }
+            
+            .stats-container {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .trust-indicators {
+                gap: 1.5rem;
+            }
+            
+            .trust-item {
+                font-size: 0.8rem;
             }
             
             .chatbot-container {
                 width: calc(100vw - 2rem);
-                right: 1rem;
-                bottom: 1rem;
                 height: calc(100vh - 6rem);
                 max-height: 600px;
+                right: 1rem;
+                bottom: 1rem;
             }
             
             .chatbot-toggle {
                 bottom: 1rem;
                 right: 1rem;
+                width: 55px;
+                height: 55px;
             }
             
-            .capability-cards {
+            .section-title {
+                font-size: 2rem;
+            }
+            
+            .footer-bottom {
+                flex-direction: column;
+                text-align: center;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .hero-cta {
+                flex-direction: column;
+                width: 100%;
+            }
+            
+            .cta-btn {
+                width: 100%;
+                justify-content: center;
+            }
+            
+            .stats-container {
                 grid-template-columns: 1fr;
             }
-        }
-
-        @media (max-height: 700px) {
-            .chatbot-container {
-                height: calc(100vh - 4rem);
+            
+            .features-grid,
+            .testimonials-grid,
+            .pricing-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .newsletter-form {
+                flex-direction: column;
+            }
+            
+            .newsletter-input {
+                width: 100%;
+            }
+            
+            .chatbot-messages {
+                padding: 1rem;
+            }
+            
+            .message {
+                max-width: 90%;
             }
         }
 
-        /* Loading Animation */
-        .loader {
-            width: 40px;
-            height: 40px;
-            border: 3px solid var(--border);
-            border-top-color: var(--primary);
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
+        /* Print Styles */
+        @media print {
+            nav,
+            .chatbot-toggle,
+            .chatbot-container,
+            .mobile-menu,
+            .cta-section,
+            .newsletter-section {
+                display: none !important;
+            }
+            
+            body {
+                background: white;
+                color: black;
+            }
+            
+            .hero,
+            .features-section,
+            .pricing-section {
+                page-break-after: always;
+            }
         }
 
-        @keyframes spin {
-            to { transform: rotate(360deg); }
+        /* Accessibility */
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border-width: 0;
+        }
+
+        /* Focus Styles */
+        *:focus-visible {
+            outline: 2px solid var(--primary);
+            outline-offset: 2px;
+        }
+
+        /* Reduced Motion */
+        @media (prefers-reduced-motion: reduce) {
+            *,
+            *::before,
+            *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+                scroll-behavior: auto !important;
+            }
         }
     </style>
 </head>
 <body>
+    <!-- Loading Screen -->
+    <div class="loading-screen" id="loadingScreen">
+        <div class="loader-container">
+            <div class="loader"></div>
+            <p style="color: var(--text-secondary);">Initializing AI Platform...</p>
+        </div>
+    </div>
+
     <!-- Background -->
     <div class="bg-wrapper">
-        <div class="grid-bg"></div>
-        <div class="gradient-orb orb-1"></div>
-        <div class="gradient-orb orb-2"></div>
-        <div class="gradient-orb orb-3"></div>
+        <div class="bg-gradient"></div>
+        <div class="bg-pattern"></div>
+        <div class="particles" id="particles"></div>
     </div>
 
     <!-- Navigation -->
     <nav id="navbar">
         <div class="nav-container">
+            <a href="#" class="nav-logo">
+                <i class="fas fa-brain"></i>
+                AI Platform Pro
+            </a>
+            
+            <ul class="nav-menu">
+                <li class="nav-item"><a href="#features">Features</a></li>
+                <li class="nav-item"><a href="#testimonials">Testimonials</a></li>
+                <li class="nav-item"><a href="#pricing">Pricing</a></li>
+                <li class="nav-item"><a href="#api">API Docs</a></li>
+                <li class="nav-item"><a href="#contact">Contact</a></li>
+            </ul>
+            
+            <div class="nav-cta">
+                <a href="#pricing" class="nav-btn nav-btn-secondary">Sign In</a>
+                <a href="#" class="nav-btn nav-btn-primary" onclick="toggleChatbot()">Try Demo</a>
+            </div>
+            
+            <button class="mobile-menu-toggle" onclick="toggleMobileMenu()">
+                <i class="fas fa-bars"></i>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Mobile Menu -->
+    <div class="mobile-menu" id="mobileMenu">
+        <div class="mobile-menu-header">
             <div class="nav-logo">
                 <i class="fas fa-brain"></i>
                 AI Platform
             </div>
-            <div class="nav-links">
-                <a href="#architecture">Architecture</a>
-                <a href="#capabilities">Capabilities</a>
-                <a href="#api">API Docs</a>
-                <a href="#" class="try-demo-btn" onclick="toggleChatbot()">Try Demo</a>
-            </div>
+            <button class="mobile-menu-close" onclick="toggleMobileMenu()">
+                <i class="fas fa-times"></i>
+            </button>
         </div>
-    </nav>
+        <ul class="mobile-menu-nav">
+            <li><a href="#features" onclick="toggleMobileMenu()">Features</a></li>
+            <li><a href="#testimonials" onclick="toggleMobileMenu()">Testimonials</a></li>
+            <li><a href="#pricing" onclick="toggleMobileMenu()">Pricing</a></li>
+            <li><a href="#api" onclick="toggleMobileMenu()">API Docs</a></li>
+            <li><a href="#contact" onclick="toggleMobileMenu()">Contact</a></li>
+        </ul>
+        <div class="mobile-menu-cta">
+            <a href="#pricing" class="nav-btn nav-btn-secondary" onclick="toggleMobileMenu()">Sign In</a>
+            <a href="#" class="nav-btn nav-btn-primary" onclick="toggleMobileMenu(); toggleChatbot()">Try Demo</a>
+        </div>
+    </div>
+    <div class="mobile-overlay" id="mobileOverlay" onclick="toggleMobileMenu()"></div>
 
     <!-- Hero Section -->
     <section class="hero">
         <div class="hero-content">
-            <div class="badge">
-                <i class="fas fa-rocket"></i>
-                Enterprise-Grade AI Infrastructure
+            <div class="hero-badge">
+                <i class="fas fa-sparkles"></i>
+                <span>Powered by GPT-4 & Advanced AI</span>
             </div>
             
-            <h1>Next-Generation AI API Platform</h1>
+            <h1>Transform Your Business with Enterprise AI</h1>
             <p class="hero-subtitle">
-                A sophisticated alternative to GPT APIs with advanced file processing, 
-                multi-modal capabilities, and intelligent conversation management
+                The most advanced AI platform for intelligent automation, data processing, 
+                and conversational AI. Build powerful applications with our comprehensive API.
             </p>
             
             <div class="hero-cta">
-                <a href="#api" class="cta-primary">
-                    <i class="fas fa-code"></i>
-                    Explore API
+                <a href="#" class="cta-btn cta-primary" onclick="toggleChatbot()">
+                    <i class="fas fa-rocket"></i>
+                    Start Free Trial
                 </a>
-                <a href="#" class="cta-secondary" onclick="toggleChatbot()">
+                <a href="#pricing" class="cta-btn cta-secondary">
+                    <i class="fas fa-tag"></i>
+                    View Pricing
+                </a>
+            </div>
+            
+            <div class="trust-indicators">
+                <div class="trust-item">
+                    <i class="fas fa-shield-alt"></i>
+                    <span>Enterprise Security</span>
+                </div>
+                <div class="trust-item">
+                    <i class="fas fa-bolt"></i>
+                    <span>99.9% Uptime</span>
+                </div>
+                <div class="trust-item">
+                    <i class="fas fa-globe"></i>
+                    <span>Global CDN</span>
+                </div>
+                <div class="trust-item">
+                    <i class="fas fa-headset"></i>
+                    <span>24/7 Support</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Stats Section -->
+    <section class="stats-section">
+        <div class="stats-container">
+            <div class="stat-card">
+                <div class="stat-number" data-count="50000">0</div>
+                <div class="stat-label">API Calls/Day</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" data-count="1200">0</div>
+                <div class="stat-label">Happy Customers</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" data-count="99.9">0</div>
+                <div class="stat-label">Uptime %</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" data-count="15">0</div>
+                <div class="stat-label">AI Models</div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section class="features-section" id="features">
+        <div class="section-header">
+            <span class="section-badge">FEATURES</span>
+            <h2 class="section-title">Everything You Need for AI Success</h2>
+            <p class="section-subtitle">
+                Comprehensive tools and capabilities to power your AI applications
+            </p>
+        </div>
+        
+        <div class="features-grid">
+            <div class="feature-card">
+                <div class="feature-icon">
                     <i class="fas fa-comments"></i>
-                    Live Demo
-                </a>
-            </div>
-        </div>
-    </section>
-
-    <!-- Stats Ticker -->
-    <div class="stats-ticker">
-        <div class="stats-row">
-            <div class="stat-item">
-                <div class="stat-value">GPT-4</div>
-                <div class="stat-label">Powered</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-value">15+</div>
-                <div class="stat-label">Endpoints</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-value">Multi-Modal</div>
-                <div class="stat-label">Processing</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-value">Azure</div>
-                <div class="stat-label">Infrastructure</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-value">Enterprise</div>
-                <div class="stat-label">Security</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-value">99.9%</div>
-                <div class="stat-label">Uptime</div>
-            </div>
-            <!-- Duplicate for seamless loop -->
-            <div class="stat-item">
-                <div class="stat-value">GPT-4</div>
-                <div class="stat-label">Powered</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-value">15+</div>
-                <div class="stat-label">Endpoints</div>
-            </div>
-            <div class="stat-item">
-                <div class="stat-value">Multi-Modal</div>
-                <div class="stat-label">Processing</div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Architecture Section -->
-    <section class="architecture" id="architecture">
-        <div class="section-header">
-            <h2 class="section-title">Technical Architecture</h2>
-            <p class="section-subtitle">Built for scale, designed for intelligence</p>
-        </div>
-        
-        <div class="architecture-diagram">
-            <div class="arch-grid">
-                <div class="arch-component">
-                    <div class="arch-icon">
-                        <i class="fas fa-layer-group"></i>
-                    </div>
-                    <h3>API Gateway</h3>
-                    <p>FastAPI-powered gateway with automatic documentation, request validation, and async processing</p>
-                    <div class="tech-stack-list">
-                        <span class="tech-tag">FastAPI</span>
-                        <span class="tech-tag">Uvicorn</span>
-                        <span class="tech-tag">Pydantic</span>
-                    </div>
                 </div>
-                
-                <div class="arch-component">
-                    <div class="arch-icon">
-                        <i class="fas fa-brain"></i>
-                    </div>
-                    <h3>AI Core</h3>
-                    <p>Azure OpenAI integration with GPT-4, embeddings, and advanced language understanding</p>
-                    <div class="tech-stack-list">
-                        <span class="tech-tag">GPT-4</span>
-                        <span class="tech-tag">LangChain</span>
-                        <span class="tech-tag">Vector DB</span>
-                    </div>
-                </div>
-                
-                <div class="arch-component">
-                    <div class="arch-icon">
-                        <i class="fas fa-database"></i>
-                    </div>
-                    <h3>Data Processing</h3>
-                    <p>Multi-format file handling with pandas integration for advanced data analysis</p>
-                    <div class="tech-stack-list">
-                        <span class="tech-tag">Pandas</span>
-                        <span class="tech-tag">NumPy</span>
-                        <span class="tech-tag">OpenPyXL</span>
-                    </div>
-                </div>
-                
-                <div class="arch-component">
-                    <div class="arch-icon">
-                        <i class="fas fa-shield-alt"></i>
-                    </div>
-                    <h3>Security Layer</h3>
-                    <p>Enterprise-grade security with input validation, rate limiting, and secure file handling</p>
-                    <div class="tech-stack-list">
-                        <span class="tech-tag">OAuth2</span>
-                        <span class="tech-tag">CORS</span>
-                        <span class="tech-tag">Encryption</span>
-                    </div>
-                </div>
-                
-                <div class="arch-component">
-                    <div class="arch-icon">
-                        <i class="fas fa-memory"></i>
-                    </div>
-                    <h3>State Management</h3>
-                    <p>Intelligent conversation memory with thread isolation and context preservation</p>
-                    <div class="tech-stack-list">
-                        <span class="tech-tag">Thread Management</span>
-                        <span class="tech-tag">Vector Store</span>
-                        <span class="tech-tag">Session Control</span>
-                    </div>
-                </div>
-                
-                <div class="arch-component">
-                    <div class="arch-icon">
-                        <i class="fas fa-cloud"></i>
-                    </div>
-                    <h3>Infrastructure</h3>
-                    <p>Scalable Azure cloud deployment with auto-scaling and global CDN</p>
-                    <div class="tech-stack-list">
-                        <span class="tech-tag">Azure App Service</span>
-                        <span class="tech-tag">CDN</span>
-                        <span class="tech-tag">Auto-scaling</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- Comparison Section -->
-    <section class="comparison">
-        <div class="section-header">
-            <h2 class="section-title">Platform Comparison</h2>
-            <p class="section-subtitle">See how we stack up against standard GPT APIs</p>
-        </div>
-        
-        <div class="comparison-table">
-            <div class="comparison-grid">
-                <div class="comparison-header feature-name">Feature</div>
-                <div class="comparison-header our-platform">Our Platform</div>
-                <div class="comparison-header">Standard GPT API</div>
-                
-                <div class="comparison-row">
-                    <div class="feature-name">Multi-file Processing</div>
-                    <div><i class="fas fa-check check"></i> Advanced</div>
-                    <div><i class="fas fa-times cross"></i> Limited</div>
-                </div>
-                
-                <div class="comparison-row">
-                    <div class="feature-name">Data Analysis (Pandas)</div>
-                    <div><i class="fas fa-check check"></i> Built-in</div>
-                    <div><i class="fas fa-times cross"></i> Not Available</div>
-                </div>
-                
-                <div class="comparison-row">
-                    <div class="feature-name">Excel/CSV Generation</div>
-                    <div><i class="fas fa-check check"></i> Native</div>
-                    <div><i class="fas fa-times cross"></i> Manual</div>
-                </div>
-                
-                <div class="comparison-row">
-                    <div class="feature-name">Review Extraction</div>
-                    <div><i class="fas fa-check check"></i> Specialized</div>
-                    <div><i class="fas fa-times cross"></i> Generic</div>
-                </div>
-                
-                <div class="comparison-row">
-                    <div class="feature-name">Document Export</div>
-                    <div><i class="fas fa-check check"></i> DOCX/PDF</div>
-                    <div><i class="fas fa-times cross"></i> Text Only</div>
-                </div>
-                
-                <div class="comparison-row">
-                    <div class="feature-name">Conversation Memory</div>
-                    <div><i class="fas fa-check check"></i> Persistent</div>
-                    <div><i class="fas fa-check check"></i> Session-based</div>
-                </div>
-                
-                <div class="comparison-row">
-                    <div class="feature-name">File Downloads</div>
-                    <div><i class="fas fa-check check"></i> Integrated</div>
-                    <div><i class="fas fa-times cross"></i> Not Supported</div>
-                </div>
-                
-                <div class="comparison-row">
-                    <div class="feature-name">Image Analysis</div>
-                    <div><i class="fas fa-check check"></i> Advanced</div>
-                    <div><i class="fas fa-check check"></i> Basic</div>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- Capabilities Section -->
-    <section class="capabilities" id="capabilities">
-        <div class="section-header">
-            <h2 class="section-title">Core Capabilities</h2>
-            <p class="section-subtitle">Everything you need for intelligent automation</p>
-        </div>
-        
-        <div class="capability-cards">
-            <div class="capability-card">
-                <div class="capability-icon">
-                    <i class="fas fa-robot"></i>
-                </div>
-                <h3>Intelligent Conversations</h3>
-                <p>Advanced dialogue management with context preservation, multi-turn conversations, and intelligent response generation</p>
-                <ul class="capability-features">
-                    <li>Stateful conversation threads</li>
-                    <li>Context-aware responses</li>
-                    <li>Streaming & non-streaming modes</li>
-                    <li>Custom system prompts</li>
+                <h3>Advanced Conversations</h3>
+                <p>State-of-the-art dialogue management with context preservation and multi-turn support</p>
+                <ul class="feature-list">
+                    <li><i class="fas fa-check"></i> Streaming responses</li>
+                    <li><i class="fas fa-check"></i> Context memory</li>
+                    <li><i class="fas fa-check"></i> Custom prompts</li>
+                    <li><i class="fas fa-check"></i> Thread management</li>
                 </ul>
             </div>
             
-            <div class="capability-card">
-                <div class="capability-icon">
+            <div class="feature-card">
+                <div class="feature-icon">
                     <i class="fas fa-file-alt"></i>
                 </div>
                 <h3>Document Intelligence</h3>
-                <p>Process any document format with advanced extraction, analysis, and generation capabilities</p>
-                <ul class="capability-features">
-                    <li>PDF, DOCX, TXT processing</li>
-                    <li>Image text extraction</li>
-                    <li>Multi-lingual support</li>
-                    <li>Format preservation</li>
+                <p>Process any document format with AI-powered extraction and analysis</p>
+                <ul class="feature-list">
+                    <li><i class="fas fa-check"></i> PDF & Word processing</li>
+                    <li><i class="fas fa-check"></i> OCR capabilities</li>
+                    <li><i class="fas fa-check"></i> Multi-language</li>
+                    <li><i class="fas fa-check"></i> Smart extraction</li>
                 </ul>
             </div>
             
-            <div class="capability-card">
-                <div class="capability-icon">
+            <div class="feature-card">
+                <div class="feature-icon">
                     <i class="fas fa-chart-line"></i>
                 </div>
-                <h3>Data Analytics Engine</h3>
-                <p>Built-in pandas integration for complex data analysis, visualization, and insights generation</p>
-                <ul class="capability-features">
-                    <li>CSV/Excel analysis</li>
-                    <li>Statistical computations</li>
-                    <li>Data transformation</li>
-                    <li>Automated insights</li>
+                <h3>Data Analytics</h3>
+                <p>Built-in pandas integration for advanced data analysis and insights</p>
+                <ul class="feature-list">
+                    <li><i class="fas fa-check"></i> CSV/Excel analysis</li>
+                    <li><i class="fas fa-check"></i> Statistical computing</li>
+                    <li><i class="fas fa-check"></i> Data visualization</li>
+                    <li><i class="fas fa-check"></i> Automated reports</li>
                 </ul>
             </div>
             
-            <div class="capability-card">
-                <div class="capability-icon">
-                    <i class="fas fa-magic"></i>
-                </div>
-                <h3>Content Generation</h3>
-                <p>Generate structured content in multiple formats with intelligent formatting and styling</p>
-                <ul class="capability-features">
-                    <li>CSV/Excel generation</li>
-                    <li>DOCX reports</li>
-                    <li>Structured data extraction</li>
-                    <li>Template-based output</li>
-                </ul>
-            </div>
-            
-            <div class="capability-card">
-                <div class="capability-icon">
+            <div class="feature-card">
+                <div class="feature-icon">
                     <i class="fas fa-image"></i>
                 </div>
-                <h3>Multi-Modal Processing</h3>
-                <p>Seamlessly handle text, images, and documents in a single unified interface</p>
-                <ul class="capability-features">
-                    <li>Image understanding</li>
-                    <li>OCR capabilities</li>
-                    <li>Mixed media analysis</li>
-                    <li>Visual question answering</li>
+                <h3>Multi-Modal AI</h3>
+                <p>Process text, images, and documents in a unified interface</p>
+                <ul class="feature-list">
+                    <li><i class="fas fa-check"></i> Image understanding</li>
+                    <li><i class="fas fa-check"></i> Mixed media</li>
+                    <li><i class="fas fa-check"></i> Visual Q&A</li>
+                    <li><i class="fas fa-check"></i> Format conversion</li>
                 </ul>
             </div>
             
-            <div class="capability-card">
-                <div class="capability-icon">
-                    <i class="fas fa-lock"></i>
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <i class="fas fa-shield-alt"></i>
                 </div>
                 <h3>Enterprise Security</h3>
-                <p>Bank-grade security with comprehensive validation, sanitization, and access control</p>
-                <ul class="capability-features">
-                    <li>Input validation</li>
-                    <li>File sanitization</li>
-                    <li>Rate limiting</li>
-                    <li>Audit logging</li>
+                <p>Bank-grade security with comprehensive validation and access control</p>
+                <ul class="feature-list">
+                    <li><i class="fas fa-check"></i> End-to-end encryption</li>
+                    <li><i class="fas fa-check"></i> SOC 2 compliant</li>
+                    <li><i class="fas fa-check"></i> GDPR ready</li>
+                    <li><i class="fas fa-check"></i> Audit logs</li>
+                </ul>
+            </div>
+            
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <i class="fas fa-code"></i>
+                </div>
+                <h3>Developer Friendly</h3>
+                <p>Comprehensive API with SDKs, documentation, and examples</p>
+                <ul class="feature-list">
+                    <li><i class="fas fa-check"></i> RESTful API</li>
+                    <li><i class="fas fa-check"></i> Python/JS SDKs</li>
+                    <li><i class="fas fa-check"></i> Webhook support</li>
+                    <li><i class="fas fa-check"></i> Code examples</li>
                 </ul>
             </div>
         </div>
     </section>
 
-    <!-- API Documentation -->
-    <section class="api-docs" id="api">
-        <div class="endpoints-container">
+    <!-- Testimonials Section -->
+    <section class="testimonials-section" id="testimonials">
+        <div class="testimonials-container">
             <div class="section-header">
-                <h2 class="section-title">API Documentation</h2>
-                <p class="section-subtitle">Complete reference for all endpoints</p>
+                <span class="section-badge">TESTIMONIALS</span>
+                <h2 class="section-title">Loved by Teams Worldwide</h2>
+                <p class="section-subtitle">
+                    See what our customers are saying about their experience
+                </p>
             </div>
             
-            <!-- Core AI Endpoints -->
-            <div class="endpoint-category">
-                <div class="category-header" onclick="toggleCategory(this)">
-                    <div class="category-title">
-                        <i class="fas fa-brain"></i>
-                        Core AI Endpoints
+            <div class="testimonials-grid">
+                <div class="testimonial-card">
+                    <div class="testimonial-rating">
+                        <i class="fas fa-star"></i>
+                        <i class="fas fa-star"></i>
+                        <i class="fas fa-star"></i>
+                        <i class="fas fa-star"></i>
+                        <i class="fas fa-star"></i>
                     </div>
-                    <i class="fas fa-chevron-down"></i>
-                </div>
-                <div class="endpoint-list">
-                    <div class="endpoint">
-                        <div class="endpoint-header">
-                            <span class="method method-post">POST</span>
-                            <span class="endpoint-path">/completion</span>
-                        </div>
-                        <p class="endpoint-description">
-                            Stateless AI completion with support for text, images, and documents. 
-                            Generate responses in plain text, CSV, or Excel formats.
-                        </p>
-                        <div class="code-block">
-                            <code>curl -X POST https://copilotv2.azurewebsites.net/completion \
-  -F "prompt=Generate a sales report for Q4" \
-  -F "output_format=excel" \
-  -F "temperature=0.7"</code>
-                            <button class="copy-button" onclick="copyCode(this)">
-                                <i class="fas fa-copy"></i>
-                            </button>
-                        </div>
-                    </div>
-                    
-                    <div class="endpoint">
-                        <div class="endpoint-header">
-                            <span class="method method-post">POST</span>
-                            <span class="endpoint-path">/extract-reviews</span>
-                        </div>
-                        <p class="endpoint-description">
-                            Extract structured review data from unstructured text files. 
-                            Supports custom column mapping and multiple output formats.
-                        </p>
-                        <div class="code-block">
-                            <code>curl -X POST https://copilotv2.azurewebsites.net/extract-reviews \
-  -F "file=@reviews.pdf" \
-  -F "columns=customer,rating,feedback,date" \
-  -F "output_format=excel"</code>
-                            <button class="copy-button" onclick="copyCode(this)">
-                                <i class="fas fa-copy"></i>
-                            </button>
+                    <p class="testimonial-content">
+                        "This AI platform has transformed how we handle customer data. The pandas integration 
+                        is a game-changer for our analytics team. Highly recommended!"
+                    </p>
+                    <div class="testimonial-author">
+                        <div class="author-avatar">JD</div>
+                        <div class="author-info">
+                            <h4>John Doe</h4>
+                            <p>CTO, TechCorp</p>
                         </div>
                     </div>
                 </div>
-            </div>
-
-            <!-- Conversation Management -->
-            <div class="endpoint-category">
-                <div class="category-header" onclick="toggleCategory(this)">
-                    <div class="category-title">
-                        <i class="fas fa-comments"></i>
-                        Conversation Management
+                
+                <div class="testimonial-card">
+                    <div class="testimonial-rating">
+                        <i class="fas fa-star"></i>
+                        <i class="fas fa-star"></i>
+                        <i class="fas fa-star"></i>
+                        <i class="fas fa-star"></i>
+                        <i class="fas fa-star"></i>
                     </div>
-                    <i class="fas fa-chevron-down"></i>
-                </div>
-                <div class="endpoint-list">
-                    <div class="endpoint">
-                        <div class="endpoint-header">
-                            <span class="method method-post">POST</span>
-                            <span class="endpoint-path">/initiate-chat</span>
-                        </div>
-                        <p class="endpoint-description">
-                            Initialize a new conversation session with assistant, thread, and vector store.
-                        </p>
-                        <div class="code-block">
-                            <code>curl -X POST https://copilotv2.azurewebsites.net/initiate-chat \
-  -F "context=I need help analyzing sales data" \
-  -F "file=@initial_data.csv"</code>
-                            <button class="copy-button" onclick="copyCode(this)">
-                                <i class="fas fa-copy"></i>
-                            </button>
-                        </div>
-                    </div>
-                    
-                    <div class="endpoint">
-                        <div class="endpoint-header">
-                            <span class="method method-get">GET</span>
-                            <span class="endpoint-path">/conversation</span>
-                        </div>
-                        <p class="endpoint-description">
-                            Stream responses from the AI assistant in real-time.
-                        </p>
-                        <div class="code-block">
-                            <code>curl -N "https://copilotv2.azurewebsites.net/conversation?session=thread_abc&prompt=Analyze the uploaded data&assistant=asst_xyz"</code>
-                            <button class="copy-button" onclick="copyCode(this)">
-                                <i class="fas fa-copy"></i>
-                            </button>
+                    <p class="testimonial-content">
+                        "The document processing capabilities are incredible. We've automated 80% of our 
+                        manual document workflows. The ROI has been fantastic."
+                    </p>
+                    <div class="testimonial-author">
+                        <div class="author-avatar">SM</div>
+                        <div class="author-info">
+                            <h4>Sarah Miller</h4>
+                            <p>VP Operations, FinanceHub</p>
                         </div>
                     </div>
                 </div>
-            </div>
-
-            <!-- File Operations -->
-            <div class="endpoint-category">
-                <div class="category-header" onclick="toggleCategory(this)">
-                    <div class="category-title">
-                        <i class="fas fa-file"></i>
-                        File Operations
+                
+                <div class="testimonial-card">
+                    <div class="testimonial-rating">
+                        <i class="fas fa-star"></i>
+                        <i class="fas fa-star"></i>
+                        <i class="fas fa-star"></i>
+                        <i class="fas fa-star"></i>
+                        <i class="fas fa-star"></i>
                     </div>
-                    <i class="fas fa-chevron-down"></i>
-                </div>
-                <div class="endpoint-list">
-                    <div class="endpoint">
-                        <div class="endpoint-header">
-                            <span class="method method-post">POST</span>
-                            <span class="endpoint-path">/upload-file</span>
-                        </div>
-                        <p class="endpoint-description">
-                            Upload files for processing. Supports CSV, Excel, PDF, images, and more.
-                        </p>
-                        <div class="code-block">
-                            <code>curl -X POST https://copilotv2.azurewebsites.net/upload-file \
-  -F "file=@data.xlsx" \
-  -F "assistant=asst_xyz" \
-  -F "session=thread_abc"</code>
-                            <button class="copy-button" onclick="copyCode(this)">
-                                <i class="fas fa-copy"></i>
-                            </button>
-                        </div>
-                    </div>
-                    
-                    <div class="endpoint">
-                        <div class="endpoint-header">
-                            <span class="method method-get">GET</span>
-                            <span class="endpoint-path">/download-files/{filename}</span>
-                        </div>
-                        <p class="endpoint-description">
-                            Download generated files securely with proper headers.
-                        </p>
-                        <div class="code-block">
-                            <code>curl -O https://copilotv2.azurewebsites.net/download-files/report_20240315.xlsx</code>
-                            <button class="copy-button" onclick="copyCode(this)">
-                                <i class="fas fa-copy"></i>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Health & Monitoring -->
-            <div class="endpoint-category">
-                <div class="category-header" onclick="toggleCategory(this)">
-                    <div class="category-title">
-                        <i class="fas fa-heartbeat"></i>
-                        Health & Monitoring
-                    </div>
-                    <i class="fas fa-chevron-down"></i>
-                </div>
-                <div class="endpoint-list">
-                    <div class="endpoint">
-                        <div class="endpoint-header">
-                            <span class="method method-get">GET</span>
-                            <span class="endpoint-path">/health-check</span>
-                        </div>
-                        <p class="endpoint-description">
-                            Comprehensive health check with system status, dependencies, and performance metrics.
-                        </p>
-                        <div class="code-block">
-                            <code>curl https://copilotv2.azurewebsites.net/health-check</code>
-                            <button class="copy-button" onclick="copyCode(this)">
-                                <i class="fas fa-copy"></i>
-                            </button>
+                    <p class="testimonial-content">
+                        "Best AI API platform we've used. The conversational AI is incredibly natural, 
+                        and the enterprise features give us peace of mind."
+                    </p>
+                    <div class="testimonial-author">
+                        <div class="author-avatar">RC</div>
+                        <div class="author-info">
+                            <h4>Robert Chen</h4>
+                            <p>Product Manager, AI Startup</p>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
     </section>
+
+    <!-- Pricing Section -->
+    <section class="pricing-section" id="pricing">
+        <div class="section-header">
+            <span class="section-badge">PRICING</span>
+            <h2 class="section-title">Choose Your Perfect Plan</h2>
+            <p class="section-subtitle">
+                Flexible pricing options to match your needs and scale
+            </p>
+        </div>
+        
+        <div class="pricing-grid">
+            <div class="pricing-card">
+                <h3 class="pricing-tier">Starter</h3>
+                <div class="pricing-price">
+                    $49
+                    <small>/month</small>
+                </div>
+                <p class="pricing-description">
+                    Perfect for small teams and projects
+                </p>
+                <ul class="pricing-features">
+                    <li><i class="fas fa-check"></i> 10,000 API calls/month</li>
+                    <li><i class="fas fa-check"></i> Basic file processing</li>
+                    <li><i class="fas fa-check"></i> Email support</li>
+                    <li><i class="fas fa-check"></i> 5 team members</li>
+                    <li><i class="fas fa-check"></i> Standard security</li>
+                </ul>
+                <a href="#" class="pricing-cta">Get Started</a>
+            </div>
+            
+            <div class="pricing-card featured">
+                <h3 class="pricing-tier">Professional</h3>
+                <div class="pricing-price">
+                    $199
+                    <small>/month</small>
+                </div>
+                <p class="pricing-description">
+                    Most popular for growing businesses
+                </p>
+                <ul class="pricing-features">
+                    <li><i class="fas fa-check"></i> 100,000 API calls/month</li>
+                    <li><i class="fas fa-check"></i> Advanced analytics</li>
+                    <li><i class="fas fa-check"></i> Priority support</li>
+                    <li><i class="fas fa-check"></i> Unlimited team members</li>
+                    <li><i class="fas fa-check"></i> Advanced security</li>
+                    <li><i class="fas fa-check"></i> Custom integrations</li>
+                </ul>
+                <a href="#" class="pricing-cta">Start Free Trial</a>
+            </div>
+            
+            <div class="pricing-card">
+                <h3 class="pricing-tier">Enterprise</h3>
+                <div class="pricing-price">
+                    Custom
+                    <small>pricing</small>
+                </div>
+                <p class="pricing-description">
+                    Tailored solutions for large organizations
+                </p>
+                <ul class="pricing-features">
+                    <li><i class="fas fa-check"></i> Unlimited API calls</li>
+                    <li><i class="fas fa-check"></i> Dedicated infrastructure</li>
+                    <li><i class="fas fa-check"></i> 24/7 phone support</li>
+                    <li><i class="fas fa-check"></i> SLA guarantee</li>
+                    <li><i class="fas fa-check"></i> On-premise option</li>
+                    <li><i class="fas fa-check"></i> Custom AI models</li>
+                </ul>
+                <a href="#" class="pricing-cta">Contact Sales</a>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="cta-section">
+        <div class="cta-content">
+            <h2>Ready to Transform Your Business?</h2>
+            <p>Join thousands of companies using our AI platform to innovate faster</p>
+            <div class="cta-buttons">
+                <a href="#" class="cta-btn-white" onclick="toggleChatbot()">
+                    Try Free Demo
+                </a>
+                <a href="#pricing" class="cta-btn-white" style="background: transparent; color: white; border: 2px solid white;">
+                    View Pricing
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Newsletter Section -->
+    <section class="newsletter-section">
+        <div class="newsletter-container">
+            <h3>Stay Updated with AI Trends</h3>
+            <p>Get weekly insights on AI, automation, and best practices</p>
+            <form class="newsletter-form" onsubmit="handleNewsletter(event)">
+                <input type="email" class="newsletter-input" placeholder="Enter your email" required>
+                <button type="submit" class="newsletter-btn">Subscribe</button>
+            </form>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer id="contact">
+        <div class="footer-container">
+            <div class="footer-grid">
+                <div class="footer-column">
+                    <div class="nav-logo" style="margin-bottom: 1rem;">
+                        <i class="fas fa-brain"></i>
+                        AI Platform Pro
+                    </div>
+                    <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">
+                        Enterprise AI solutions for the modern business. 
+                        Transform your operations with intelligent automation.
+                    </p>
+                    <div class="footer-social">
+                        <a href="#" class="social-link"><i class="fab fa-twitter"></i></a>
+                        <a href="#" class="social-link"><i class="fab fa-linkedin"></i></a>
+                        <a href="#" class="social-link"><i class="fab fa-github"></i></a>
+                        <a href="#" class="social-link"><i class="fab fa-discord"></i></a>
+                    </div>
+                </div>
+                
+                <div class="footer-column">
+                    <h3>Product</h3>
+                    <ul>
+                        <li><a href="#features">Features</a></li>
+                        <li><a href="#pricing">Pricing</a></li>
+                        <li><a href="#api">API Documentation</a></li>
+                        <li><a href="#">SDK Downloads</a></li>
+                        <li><a href="#">Changelog</a></li>
+                    </ul>
+                </div>
+                
+                <div class="footer-column">
+                    <h3>Company</h3>
+                    <ul>
+                        <li><a href="#">About Us</a></li>
+                        <li><a href="#">Blog</a></li>
+                        <li><a href="#">Careers</a></li>
+                        <li><a href="#">Press Kit</a></li>
+                        <li><a href="#">Contact</a></li>
+                    </ul>
+                </div>
+                
+                <div class="footer-column">
+                    <h3>Resources</h3>
+                    <ul>
+                        <li><a href="#">Documentation</a></li>
+                        <li><a href="#">Tutorials</a></li>
+                        <li><a href="#">Community</a></li>
+                        <li><a href="#">Support Center</a></li>
+                        <li><a href="#">Status Page</a></li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="footer-bottom">
+                <p class="footer-copy">
+                    © 2024 AI Platform Pro. All rights reserved. Created by Abhik.
+                </p>
+                <div class="footer-links">
+                    <a href="#">Privacy Policy</a>
+                    <a href="#">Terms of Service</a>
+                    <a href="#">Cookie Policy</a>
+                </div>
+            </div>
+        </div>
+    </footer>
 
     <!-- Chatbot -->
     <div class="chatbot-toggle" onclick="toggleChatbot()">
-        <i class="fas fa-comments"></i>
+        <i class="fas fa-comment-dots"></i>
+        <span class="chatbot-badge">1</span>
     </div>
     
     <div class="chatbot-container" id="chatbot">
         <div class="chatbot-header">
-            <div class="chatbot-title">AI Assistant Demo</div>
+            <div class="chatbot-title">
+                <i class="fas fa-robot"></i>
+                AI Assistant
+            </div>
+            <div class="chatbot-status">
+                <span class="status-dot"></span>
+                Online
+            </div>
             <button class="chatbot-close" onclick="toggleChatbot()">
                 <i class="fas fa-times"></i>
             </button>
@@ -7351,15 +8037,28 @@ async def root():
         
         <div class="chatbot-messages" id="chatMessages">
             <div class="message bot">
-                <p>👋 Hi! I'm a demo of this AI platform. I can help you:</p>
+                <p>👋 Welcome to AI Platform Pro! I can help you:</p>
                 <ul style="margin: 0.5rem 0; padding-left: 1.5rem;">
-                    <li>Generate CSV/Excel files</li>
-                    <li>Extract data from text</li>
-                    <li>Answer questions</li>
-                    <li>Analyze information</li>
+                    <li>Generate reports & data files</li>
+                    <li>Analyze your documents</li>
+                    <li>Answer technical questions</li>
+                    <li>Provide API guidance</li>
                 </ul>
-                <p>Try asking me to create a sales report or analyze some data!</p>
+                <p>How can I assist you today?</p>
+                <div class="message-time">Just now</div>
             </div>
+        </div>
+        
+        <div class="quick-actions">
+            <button class="quick-action-btn" onclick="sendQuickMessage('Generate a sample sales report')">
+                📊 Sample Report
+            </button>
+            <button class="quick-action-btn" onclick="sendQuickMessage('Show me API examples')">
+                📝 API Examples
+            </button>
+            <button class="quick-action-btn" onclick="sendQuickMessage('What are your features?')">
+                ✨ Features
+            </button>
         </div>
         
         <div class="chatbot-input-container">
@@ -7370,59 +8069,159 @@ async def root():
                 placeholder="Type your message..."
                 onkeypress="handleChatKeyPress(event)"
             >
-            <button class="chatbot-send" onclick="sendMessage()">
+            <button class="chatbot-send" onclick="sendMessage()" id="sendButton">
                 <i class="fas fa-paper-plane"></i>
                 Send
             </button>
         </div>
     </div>
 
-    <!-- Footer -->
-    <footer>
-        <p class="footer-text">
-            <span style="opacity: 0.5;">created by <a href="#">abhik</a></span>
-        </p>
-    </footer>
-
     <script>
-        // Toggle endpoint categories
-        function toggleCategory(element) {
-            const category = element.parentElement;
-            category.classList.toggle('active');
-            const chevron = element.querySelector('.fa-chevron-down');
-            chevron.style.transform = category.classList.contains('active') ? 'rotate(180deg)' : 'rotate(0)';
+        // Loading Screen
+        window.addEventListener('load', function() {
+            setTimeout(() => {
+                document.getElementById('loadingScreen').classList.add('hidden');
+            }, 1000);
+        });
+
+        // Particles
+        function createParticles() {
+            const particlesContainer = document.getElementById('particles');
+            for (let i = 0; i < 50; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'particle';
+                particle.style.left = Math.random() * 100 + '%';
+                particle.style.animationDelay = Math.random() * 10 + 's';
+                particle.style.animationDuration = (10 + Math.random() * 10) + 's';
+                particlesContainer.appendChild(particle);
+            }
         }
-    
-        // Copy code to clipboard
-        function copyCode(button) {
-            const codeBlock = button.parentElement;
-            const code = codeBlock.querySelector('code').textContent;
+        createParticles();
+
+        // Navbar Scroll Effect
+        let lastScroll = 0;
+        window.addEventListener('scroll', function() {
+            const navbar = document.getElementById('navbar');
+            const currentScroll = window.pageYOffset;
             
-            navigator.clipboard.writeText(code).then(() => {
-                const originalHtml = button.innerHTML;
-                button.innerHTML = '<i class="fas fa-check"></i>';
-                button.style.background = 'var(--success)';
+            if (currentScroll > 50) {
+                navbar.classList.add('scrolled');
+            } else {
+                navbar.classList.remove('scrolled');
+            }
+            
+            lastScroll = currentScroll;
+        });
+
+        // Mobile Menu
+        function toggleMobileMenu() {
+            const mobileMenu = document.getElementById('mobileMenu');
+            const mobileOverlay = document.getElementById('mobileOverlay');
+            const body = document.body;
+            
+            if (mobileMenu.classList.contains('active')) {
+                mobileMenu.classList.remove('active');
+                mobileOverlay.classList.remove('active');
+                body.style.overflow = '';
+            } else {
+                mobileMenu.classList.add('active');
+                mobileOverlay.classList.add('active');
+                body.style.overflow = 'hidden';
+            }
+        }
+
+        // Smooth Scrolling
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    const offset = 80;
+                    const targetPos = target.getBoundingClientRect().top + window.pageYOffset - offset;
+                    window.scrollTo({
+                        top: targetPos,
+                        behavior: 'smooth'
+                    });
+                }
+            });
+        });
+
+        // Counter Animation
+        function animateCounters() {
+            const counters = document.querySelectorAll('.stat-number');
+            const speed = 2000;
+            
+            counters.forEach(counter => {
+                const target = +counter.getAttribute('data-count');
+                const isDecimal = target % 1 !== 0;
+                let current = 0;
+                const increment = target / (speed / 16);
                 
-                setTimeout(() => {
-                    button.innerHTML = originalHtml;
-                    button.style.background = '';
-                }, 2000);
+                const updateCounter = () => {
+                    current += increment;
+                    if (current < target) {
+                        counter.textContent = isDecimal ? current.toFixed(1) : Math.ceil(current).toLocaleString();
+                        requestAnimationFrame(updateCounter);
+                    } else {
+                        counter.textContent = isDecimal ? target.toFixed(1) : target.toLocaleString();
+                    }
+                };
+                
+                updateCounter();
             });
         }
-    
-        // Chatbot functionality
+
+        // Intersection Observer
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: '0px'
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.style.opacity = '1';
+                    entry.target.style.transform = 'translateY(0)';
+                    
+                    // Trigger counter animation
+                    if (entry.target.classList.contains('stats-container')) {
+                        animateCounters();
+                        observer.unobserve(entry.target);
+                    }
+                }
+            });
+        }, observerOptions);
+
+        // Observe elements
+        document.querySelectorAll('.feature-card, .testimonial-card, .pricing-card, .stats-container').forEach(el => {
+            el.style.opacity = '0';
+            el.style.transform = 'translateY(30px)';
+            el.style.transition = 'all 0.6s ease-out';
+            observer.observe(el);
+        });
+
+        // Newsletter
+        function handleNewsletter(e) {
+            e.preventDefault();
+            const email = e.target.querySelector('input').value;
+            alert(`Thanks for subscribing with ${email}! We'll keep you updated.`);
+            e.target.reset();
+        }
+
+        // Chatbot
         let chatbotOpen = false;
         let sessionId = null;
         let assistantId = null;
-    
+
         function toggleChatbot() {
-            console.log('Toggle chatbot called');
             const chatbot = document.getElementById('chatbot');
+            const badge = document.querySelector('.chatbot-badge');
             chatbotOpen = !chatbotOpen;
             
             if (chatbotOpen) {
                 chatbot.classList.add('active');
                 document.getElementById('chatInput').focus();
+                if (badge) badge.style.display = 'none';
                 
                 // Initialize session if not already done
                 if (!sessionId) {
@@ -7432,10 +8231,9 @@ async def root():
                 chatbot.classList.remove('active');
             }
         }
-    
+
         async function initializeChat() {
             try {
-                console.log('Initializing chat...');
                 const response = await fetch('/initiate-chat', {
                     method: 'POST',
                     body: new FormData()
@@ -7449,29 +8247,37 @@ async def root():
                 console.error('Failed to initialize chat:', error);
             }
         }
-    
+
         function handleChatKeyPress(event) {
-            if (event.key === 'Enter') {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
                 sendMessage();
             }
         }
-    
-        // Enhanced message rendering with markdown support
+
+        function getCurrentTime() {
+            const now = new Date();
+            return now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+        }
+
         function addMessage(content, type) {
             const messagesContainer = document.getElementById('chatMessages');
             const messageDiv = document.createElement('div');
             messageDiv.className = 'message ' + type;
             
-            // Parse and render markdown tables and other formatting
             const formattedContent = parseMarkdown(content);
             messageDiv.innerHTML = formattedContent;
+            
+            const timeDiv = document.createElement('div');
+            timeDiv.className = 'message-time';
+            timeDiv.textContent = getCurrentTime();
+            messageDiv.appendChild(timeDiv);
             
             messagesContainer.appendChild(messageDiv);
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }
-    
+
         function parseMarkdown(text) {
-            // Escape HTML first
             let html = text.replace(/[&<>"']/g, function(match) {
                 const escapeMap = {
                     '&': '&amp;',
@@ -7482,41 +8288,27 @@ async def root():
                 };
                 return escapeMap[match];
             });
-    
-            // Parse markdown tables
+
+            // Parse markdown
             html = parseMarkdownTables(html);
-            
-            // Parse code blocks
             html = html.replace(/```([\\s\\S]*?)```/g, '<pre><code>$1</code></pre>');
-            
-            // Parse inline code
             html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-            
-            // Parse bold
             html = html.replace(/\\*\\*([^*]+)\\*\\*/g, '<strong>$1</strong>');
-            
-            // Parse italic
             html = html.replace(/\\*([^*]+)\\*/g, '<em>$1</em>');
-            
-            // Parse links (but preserve download links)
             html = html.replace(/\\[([^\\]]+)\\]\\(([^)]+)\\)/g, '<a href="$2" target="_blank">$1</a>');
-            
-            // Parse line breaks
             html = html.replace(/\\n/g, '<br>');
             
-            // Restore download links that were already in HTML format
+            // Restore HTML links
             html = html.replace(/&lt;a href="([^"]+)"([^&]*)&gt;([^&]+)&lt;\\/a&gt;/g, '<a href="$1"$2>$3</a>');
             
-            // Wrap in paragraph if not already structured
             if (!html.includes('<table') && !html.includes('<pre>') && !html.includes('<ul>') && !html.includes('<ol>')) {
                 html = '<p>' + html + '</p>';
             }
             
             return html;
         }
-    
+
         function parseMarkdownTables(text) {
-            // Split text into lines
             const lines = text.split('\\n');
             let inTable = false;
             let tableHtml = '';
@@ -7525,9 +8317,7 @@ async def root():
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i].trim();
                 
-                // Check if this line is a table row
                 if (line.includes('|')) {
-                    // Check if next line is separator (header row)
                     const nextLine = i + 1 < lines.length ? lines[i + 1].trim() : '';
                     const isHeaderSeparator = /^\\|?[\\s\\-:|]+\\|?$/.test(nextLine);
                     
@@ -7536,33 +8326,28 @@ async def root():
                         tableHtml = '<table>\\n';
                         
                         if (isHeaderSeparator) {
-                            // This is a header row
-                            const headers = line.split('|').filter(function(cell) { return cell.trim(); });
+                            const headers = line.split('|').filter(cell => cell.trim());
                             tableHtml += '<thead><tr>';
-                            headers.forEach(function(header) {
+                            headers.forEach(header => {
                                 tableHtml += '<th>' + header.trim() + '</th>';
                             });
                             tableHtml += '</tr></thead>\\n<tbody>';
-                            i++; // Skip separator line
+                            i++;
                         } else {
-                            // No header, start with body
                             tableHtml += '<tbody>';
                         }
                     }
                     
                     if (inTable && !isHeaderSeparator) {
-                        // Regular table row
-                        const cells = line.split('|').filter(function(cell) { return cell.trim(); });
+                        const cells = line.split('|').filter(cell => cell.trim());
                         tableHtml += '<tr>';
-                        cells.forEach(function(cell) {
+                        cells.forEach(cell => {
                             tableHtml += '<td>' + cell.trim() + '</td>';
                         });
                         tableHtml += '</tr>';
                     }
                 } else {
-                    // Not a table line
                     if (inTable) {
-                        // Close the table
                         tableHtml += '</tbody></table>\\n';
                         result += tableHtml;
                         inTable = false;
@@ -7572,7 +8357,6 @@ async def root():
                 }
             }
             
-            // Close table if still open
             if (inTable) {
                 tableHtml += '</tbody></table>\\n';
                 result += tableHtml;
@@ -7580,15 +8364,20 @@ async def root():
             
             return result;
         }
-    
+
+        function sendQuickMessage(message) {
+            document.getElementById('chatInput').value = message;
+            sendMessage();
+        }
+
         async function sendMessage() {
             const input = document.getElementById('chatInput');
-            const sendButton = document.querySelector('.chatbot-send');
+            const sendButton = document.getElementById('sendButton');
             const message = input.value.trim();
             
             if (!message) return;
             
-            // Disable input while sending
+            // Disable input
             input.disabled = true;
             sendButton.disabled = true;
             
@@ -7600,20 +8389,18 @@ async def root():
             showTyping();
             
             try {
-                // Check if message is asking for file generation
                 const isFileRequest = message.toLowerCase().includes('csv') || 
                                     message.toLowerCase().includes('excel') || 
                                     message.toLowerCase().includes('generate') ||
                                     message.toLowerCase().includes('create') ||
-                                    message.toLowerCase().includes('table');
+                                    message.toLowerCase().includes('report');
                 
                 if (isFileRequest) {
-                    // Use completion endpoint for file generation
+                    // Use completion endpoint
                     const formData = new FormData();
                     formData.append('prompt', message);
                     formData.append('temperature', '0.7');
                     
-                    // Determine output format
                     if (message.toLowerCase().includes('excel')) {
                         formData.append('output_format', 'excel');
                     } else if (message.toLowerCase().includes('csv')) {
@@ -7635,7 +8422,7 @@ async def root():
                     
                     addMessage(botMessage, 'bot');
                 } else {
-                    // Use regular chat endpoint
+                    // Use chat endpoint
                     if (!sessionId) {
                         await initializeChat();
                     }
@@ -7657,7 +8444,7 @@ async def root():
                 input.focus();
             }
         }
-    
+
         function showTyping() {
             const messagesContainer = document.getElementById('chatMessages');
             const typingDiv = document.createElement('div');
@@ -7667,59 +8454,35 @@ async def root():
             messagesContainer.appendChild(typingDiv);
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }
-    
+
         function hideTyping() {
             const typingIndicator = document.getElementById('typingIndicator');
             if (typingIndicator) {
                 typingIndicator.remove();
             }
         }
-    
-        // Navbar scroll effect
-        window.addEventListener('scroll', function() {
-            const navbar = document.getElementById('navbar');
-            if (window.scrollY > 50) {
-                navbar.style.background = 'rgba(3, 7, 18, 0.95)';
-                navbar.style.boxShadow = '0 10px 30px rgba(0, 0, 0, 0.3)';
-            } else {
-                navbar.style.background = 'rgba(3, 7, 18, 0.8)';
-                navbar.style.boxShadow = 'none';
+
+        // Performance optimizations
+        let ticking = false;
+        function requestTick() {
+            if (!ticking) {
+                requestAnimationFrame(updateScroll);
+                ticking = true;
             }
-        });
-    
-        // Smooth scrolling
-        document.querySelectorAll('a[href^="#"]').forEach(function(anchor) {
-            anchor.addEventListener('click', function (e) {
-                e.preventDefault();
-                const target = document.querySelector(this.getAttribute('href'));
-                if (target) {
-                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }
-            });
-        });
-    
-        // Intersection Observer for animations
-        const observerOptions = {
-            threshold: 0.1,
-            rootMargin: '0px'
-        };
-    
-        const observer = new IntersectionObserver(function(entries) {
-            entries.forEach(function(entry) {
-                if (entry.isIntersecting) {
-                    entry.target.style.opacity = '1';
-                    entry.target.style.transform = 'translateY(0)';
-                }
-            });
-        }, observerOptions);
-    
-        // Observe elements
-        document.querySelectorAll('.arch-component, .capability-card, .endpoint').forEach(function(el) {
-            el.style.opacity = '0';
-            el.style.transform = 'translateY(30px)';
-            el.style.transition = 'all 0.6s ease-out';
-            observer.observe(el);
-        });
+        }
+
+        function updateScroll() {
+            // Update scroll-based animations
+            ticking = false;
+        }
+
+        window.addEventListener('scroll', requestTick);
+
+        // Preload critical resources
+        const link = document.createElement('link');
+        link.rel = 'preconnect';
+        link.href = 'https://fonts.googleapis.com';
+        document.head.appendChild(link);
     </script>
 </body>
 </html>
