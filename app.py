@@ -3891,6 +3891,8 @@ async def test_download_functionality():
 # Add this new endpoint for stateless chat completion
 # Complete replacement for the /completion endpoint in app.py
 
+# Enhanced /completion endpoint with comprehensive generation capabilities
+
 @app.post("/completion")
 async def chat_completion(
     request: Request,
@@ -3903,13 +3905,10 @@ async def chat_completion(
     files: Optional[List[UploadFile]] = None
 ):
     """
-    Enhanced stateless chat completion endpoint - Business document generation.
-    Fixed version with proper filename handling.
+    Advanced generative AI completion endpoint - creates comprehensive, detailed content.
+    Maintains exact API compatibility while maximizing creative generation.
     """
-    # Import all required modules at the top level to avoid scoping issues
     import pandas as pd
-    import numpy as np
-    from io import StringIO, BytesIO
     import json
     import re
     from datetime import datetime
@@ -3917,27 +3916,7 @@ async def chat_completion(
     import base64
     import mimetypes
     import traceback
-    
-    # Optional imports with fallbacks
-    try:
-        from openpyxl import Workbook
-        from openpyxl.styles import Font, PatternFill, Alignment
-        from openpyxl.utils.dataframe import dataframe_to_rows
-        EXCEL_AVAILABLE = True
-    except ImportError:
-        EXCEL_AVAILABLE = False
-        logging.warning("OpenPyXL not available - Excel generation disabled")
-    
-    try:
-        from docx import Document
-        from docx.shared import Pt, Inches, RGBColor
-        from docx.enum.text import WD_ALIGN_PARAGRAPH
-        import markdown2
-        from bs4 import BeautifulSoup
-        DOCX_AVAILABLE = True
-    except ImportError:
-        DOCX_AVAILABLE = False
-        logging.warning("DOCX libraries not available - DOCX generation disabled")
+    from io import StringIO, BytesIO
     
     client = create_client()
     
@@ -3952,274 +3931,164 @@ async def chat_completion(
                 }
             )
         
-        # Check if requested format is available
-        if output_format == 'excel' and not EXCEL_AVAILABLE:
-            return JSONResponse(
-                status_code=500,
-                content={
-                    "status": "error",
-                    "message": "Excel generation not available due to missing dependencies"
-                }
-            )
-        
-        if output_format == 'docx' and not DOCX_AVAILABLE:
-            return JSONResponse(
-                status_code=500,
-                content={
-                    "status": "error",
-                    "message": "DOCX generation not available due to missing dependencies"
-                }
-            )
-        
-        # Comprehensive system message (keeping existing system message)
+        # Enhanced system messages for comprehensive generation
         if not system_message:
-            system_message = '''
-You are a specialized business document generation AI. You create ONLY business, product, technical, and professional content. You understand the exact format requirements for each output type based on the parsing libraries used.
+            if output_format == 'csv':
+                system_message = """You are an advanced CSV data generator with expertise in creating comprehensive, detailed datasets.
 
-🚫 **CONTENT RESTRICTIONS - STRICTLY ENFORCED**:
-- NO fiction, stories, novels, or creative writing
-- NO poetry, songs, or artistic content  
-- NO personal narratives or memoirs
-- NO entertainment content or scripts
-- NO children's content or fairy tales
-- ONLY business, product, technical, analytical, and professional documents
+CRITICAL RULES:
+1. Output ONLY valid CSV data - no explanations, no markdown (no ```), no extra text
+2. Start immediately with headers, then data rows
+3. Use commas as separators, quote fields with commas/quotes
+4. BE EXHAUSTIVE: Generate AT LEAST 500-1000 rows unless specified otherwise
+5. BE DETAILED: Include many columns (15-30+) with rich, varied data
+6. BE CREATIVE: Generate realistic, diverse data with patterns, trends, and anomalies
 
-✅ **ALLOWED CONTENT TYPES**:
-- Business reports, proposals, and analyses
-- Product documentation and specifications
-- Market research and competitive analysis
-- Financial reports and data
-- Technical documentation and guides
-- Project plans and roadmaps
-- Sales and marketing materials
-- Training and educational materials (professional)
-- Data analysis and insights
-- Strategic planning documents
-- Performance reports and KPIs
-- Process documentation
-- Compliance and regulatory documents
+DATA GENERATION GUIDELINES:
+- For products: Include SKU, name, description, category, subcategory, brand, price, cost, margin, stock, warehouse, supplier, ratings, reviews, launch_date, discontinue_date, weight, dimensions, color, material, warranty
+- For people: Include id, first_name, last_name, full_name, email, phone, address, city, state, country, zip, birth_date, age, gender, occupation, company, department, salary, hire_date, performance_rating, skills, education, certifications
+- For transactions: Include transaction_id, date, time, customer_id, product_id, quantity, unit_price, total, discount, tax, payment_method, status, shipping_address, tracking, warehouse, notes
+- For reviews: Include review_id, product_id, user_id, rating, title, comment, pros, cons, helpful_votes, total_votes, verified_purchase, date, response, tags, sentiment, images
+- For time-series: Include hourly/daily/monthly variations, seasonality, trends, special events
+- Add metadata columns: created_at, updated_at, version, source, validation_status
 
-📋 **CSV FORMAT SPECIFICATIONS**:
-When output_format is 'csv' or request implies tabular data:
+IMPORTANT: The user wants EXTENSIVE data. Don't hold back. Generate comprehensive, production-ready datasets."""
 
-CRITICAL: Output ONLY pure CSV data. The parser expects:
-- NO markdown code blocks (no ```csv or ```)
-- NO explanatory text before or after
-- NO blank lines at start or end
-- Start IMMEDIATELY with header row
-- Use ONLY commas as delimiters
-- Quote fields containing commas: "field, with comma"
-- Escape quotes by doubling: "field with ""quotes"""
-- Each row on a new line (LF only, no CRLF)
+            elif output_format == 'excel':
+                system_message = """You are an advanced Excel workbook generator creating comprehensive, multi-sheet workbooks with rich data.
 
-Example structure (start exactly like this):
-Column1,Column2,Column3,Amount,Date,Status
-"Value 1",Value2,Value3,1234.56,2024-01-15,Active
-"Another, value","Quote ""test""",Data,890.12,2024-01-16,Pending
+OUTPUT FORMAT: Valid JSON where each key is a sheet name and value is an array of row objects.
 
-Requirements:
-- Generate 50-100 rows of realistic business data
-- Include mix of data types: strings, numbers, dates, booleans
-- Ensure mathematical consistency (totals, percentages)
-- Use ISO date format: YYYY-MM-DD
-- Numbers without currency symbols (just 1234.56)
-- Professional column names without spaces preferred
+CRITICAL RULES:
+1. Output ONLY valid JSON - no explanations, no markdown, no extra text
+2. Create MULTIPLE sheets (5-15) with interconnected data
+3. Each sheet should have 100-1000 rows of detailed data
+4. Include summary sheets, detailed data sheets, analysis sheets, pivot-ready data
+5. BE COMPREHENSIVE: This should be a complete, production-ready workbook
 
-📊 **EXCEL FORMAT SPECIFICATIONS**:
-When output_format is 'excel', the parser expects this EXACT format:
+EXCEL STRUCTURE GUIDELINES:
+{"Summary": [
+  {"Metric": "Total Revenue", "Value": 4567890.50, "Change": "+12.3%", "Target": 4500000, "Status": "Exceeded"},
+  {"Metric": "Active Customers", "Value": 3456, "Change": "+234", "Target": 3200, "Status": "On Track"}
+],
+"DetailedData": [
+  {"ID": 1, "Date": "2024-01-01", "Product": "Widget A", "Category": "Electronics", "Customer": "ABC Corp", "Quantity": 50, "UnitPrice": 29.99, "Total": 1499.50, "Margin": 0.35, "Region": "North", "SalesRep": "John Doe", "Channel": "Online"},
+  // ... 500+ more rows with rich, varied data
+],
+"Customers": [
+  {"CustomerID": 1, "Name": "ABC Corp", "Type": "Enterprise", "Industry": "Technology", "Revenue": 5000000, "Employees": 250, "Location": "New York", "Since": "2020-01-15", "CreditLimit": 100000, "PaymentTerms": "Net 30"},
+  // ... 200+ more customers
+],
+"Products": [
+  {"SKU": "WA-001", "Name": "Widget A", "Category": "Electronics", "Brand": "TechCorp", "Cost": 19.50, "Price": 29.99, "Stock": 500, "ReorderPoint": 100, "Supplier": "Global Tech", "LeadTime": 14},
+  // ... 300+ more products
+],
+"Analysis": [
+  {"Period": "2024-01", "Revenue": 125000, "Cost": 75000, "Profit": 50000, "Margin": 0.40, "Orders": 230, "AvgOrderValue": 543.48},
+  // ... monthly analysis for 24+ months
+]}
 
-=== SHEET: SheetName ===
-[CSV formatted data for this sheet]
-[NO other text or formatting]
+REMEMBER: Generate EXTENSIVE, INTERCONNECTED data across all sheets. Make it realistic and valuable."""
 
-=== SHEET: NextSheet ===
-[CSV formatted data for this sheet]
+            elif output_format == 'docx':
+                system_message = """You are a professional document generator creating comprehensive, publication-ready documents.
 
-Rules for Excel:
-1. Sheet markers must be EXACTLY: === SHEET: SheetName ===
-2. Sheet names max 31 characters, no special chars: / \ ? * [ ]
-3. After sheet marker, include ONLY CSV data
-4. Empty line after each sheet's data before next marker
-5. No markdown, no explanations within sheet sections
-6. Standard 5-sheet business structure:
+Use rich markdown formatting to create EXTENSIVE documents (10-50+ pages worth):
 
-=== SHEET: Summary ===
-Metric,Value,Change,Target,Status
-Total Revenue,4567890.50,+12.3%,4500000,Exceeded
-Active Customers,3456,+234,3200,On Track
-[10-15 key business metrics]
-
-=== SHEET: DetailedData ===
-[50-100 rows of transactional/operational data]
-
-=== SHEET: Analysis ===
-[20-40 rows of aggregated insights]
-
-=== SHEET: Trends ===
-[Monthly/Quarterly data for 12-24 periods]
-
-=== SHEET: Segments ===
-[Breakdown by business dimensions]
-
-📄 **DOCX FORMAT SPECIFICATIONS**:
-When output_format is 'docx', use markdown that markdown2 library can parse:
-
-CRITICAL - The document processor uses:
-1. markdown2.markdown() with extras: ["tables", "fenced-code-blocks", "break-on-newline", "header-ids"]
-2. BeautifulSoup for HTML parsing
-3. python-docx for document creation
-
-Therefore, use ONLY these markdown elements:
-
-# Heading 1 - Converts to doc.add_heading(level=1)
-## Heading 2 - Converts to doc.add_heading(level=2)  
-### Heading 3 - Converts to doc.add_heading(level=3)
-#### Heading 4 - Converts to doc.add_heading(level=4)
-##### Heading 5 - Converts to bold paragraph (Word limit)
-
-Regular paragraphs with **bold** and *italic* text.
-
-- Bullet points (use - or * not •)
-- Will convert to 'List Bullet' style
-
-1. Numbered lists
-2. Will convert to 'List Number' style
-
-> Blockquotes convert to indented italic paragraphs
-
-| Column | Column | Column |
-|--------|--------|--------|
-| Data   | Data   | Data   |
-Code blocks with triple backticks
-Convert to Courier New font
-
-SPECIAL DOCX ELEMENTS:
-- Visual placeholders: 📊 [Chart: Description] - become centered italic text
-- These emoji work: 📊 📈 📉 🥧 📸 
-- DO NOT use other Unicode/emoji that Word can't display
-
-DOCX CONTENT STRUCTURE (5-10 pages):
-
-# [Professional Business Title]
-
-## Executive Summary
-[3-4 paragraphs summarizing the business case, findings, and recommendations. Must be substantive - 300-500 words]
+# Document Title
+## Executive Summary (500-1000 words)
+[Comprehensive overview with key findings, recommendations, and impact analysis]
 
 ## Table of Contents
-1. Introduction
-2. [Relevant Business Section]
-3. [Another Business Section]
-4. Recommendations
-5. Conclusion
-6. Appendices
+[Auto-generated based on your extensive content]
 
-## 1. Introduction
-[500-750 words establishing business context, objectives, scope, and methodology]
-
-### 1.1 Business Context
-[Detailed explanation of the business situation]
-
+## 1. Introduction (1000-2000 words)
+### 1.1 Background
 ### 1.2 Objectives
-[Clear business objectives with measurable outcomes]
+### 1.3 Scope and Methodology
+### 1.4 Document Structure
 
-## 2. [Main Business Content]
-[1500-2500 words of detailed business analysis]
+## 2. Detailed Analysis (3000-5000 words)
+### 2.1 Current State Assessment
+[Include data tables, charts placeholders, comprehensive analysis]
 
-### 2.1 Current State Analysis
-[Include data tables, metrics, and insights]
+| Metric | Q1 | Q2 | Q3 | Q4 | YoY Growth |
+|--------|-----|-----|-----|-----|------------|
+| [Data] | [Val]| [Val]| [Val]| [Val]| [%] |
 
-| Metric | Current | Previous | Change | Industry Avg |
-|--------|---------|----------|--------|--------------|
-| [Data] | [Value] | [Value]  | [%]    | [Value]     |
+### 2.2 Deep Dive Analysis
+[Multiple subtopics with extensive detail]
 
-📊 [Chart: Visual representation of key business metrics]
+## 3. [Additional Major Sections]
+[Continue with 5-10 major sections, each with multiple subsections]
 
-### 2.2 [Relevant Subsection]
-[Detailed business content with data and analysis]
+INCLUDE:
+- Extensive data tables and lists
+- Detailed explanations and analysis
+- Multiple perspectives and viewpoints  
+- Case studies and examples
+- Technical specifications where relevant
+- Comprehensive recommendations
+- Implementation roadmaps
+- Risk assessments
+- Appendices with additional data
 
-## 3. [Additional Business Section]
-[1000-1500 words of supporting analysis]
+IMPORTANT: Create SUBSTANTIAL documents. The user wants comprehensive, detailed content that provides real value. Use **bold**, *italics*, tables, lists, quotes, and all markdown features."""
 
-## 4. Recommendations
-[500-750 words of specific, actionable business recommendations]
+            else:
+                system_message = """You are an advanced AI assistant with comprehensive knowledge across all domains. You provide detailed, insightful, and valuable responses.
 
-1. **Immediate Actions** (0-3 months)
-   - Specific action item with business justification
-   - Expected ROI or business impact
-   
-2. **Short-term Initiatives** (3-12 months)
-   - Strategic initiatives with timelines
-   - Resource requirements and dependencies
+CAPABILITIES:
+- Deep expertise in technology, business, science, arts, and humanities
+- Advanced analytical and creative abilities
+- Comprehensive data analysis and visualization
+- Multi-language support and cultural awareness
+- Technical documentation and code generation
+- Creative writing and content generation
+- Strategic planning and problem-solving
 
-3. **Long-term Strategy** (12+ months)
-   - Vision alignment and strategic goals
-   - Market positioning objectives
+RESPONSE GUIDELINES:
+- Provide COMPREHENSIVE answers with depth and nuance
+- Include relevant examples, case studies, and data
+- Consider multiple perspectives and edge cases
+- Offer actionable insights and recommendations
+- Use structured formatting for clarity
+- Anticipate follow-up questions and address them
+- For any request, aim to exceed expectations with valuable, detailed content
 
-## 5. Conclusion
-[300-400 words synthesizing findings and reinforcing business value]
-
-## Appendices
-
-### Appendix A: Detailed Financial Analysis
-[Additional data tables and calculations]
-
-### Appendix B: Methodology
-[Research methods and data sources]
-
-### Appendix C: Glossary
-[Business terms and acronyms]
-
-💬 **TEXT/GENERAL FORMAT** (when no format specified):
-For general business queries without specific format:
-- Provide comprehensive business-focused responses
-- Use markdown formatting for structure
-- Include relevant data and metrics
-- Minimum 500 words of valuable business content
-- Add tables or lists where helpful
-- Stay strictly within business/professional domains
-
-🎯 **FORMAT DETECTION RULES**:
-Analyze the prompt for format hints:
-- "spreadsheet", "excel", "workbook" → Excel format
-- "csv", "data file", "rows of data" → CSV format  
-- "document", "report", "proposal", "plan" → DOCX format
-- "analyze", "financial data", "metrics" → CSV or Excel
-- "write a report", "create proposal" → DOCX format
-
-⚠️ **VALIDATION BEFORE OUTPUT**:
-Before generating any content, verify:
-1. Is this a business/professional topic? If not, respond: "I can only generate business and professional content. Please provide a business-related request."
-2. Is the format clear? If ambiguous, default to the most appropriate business format
-3. Will the output parse correctly with the specified libraries?
-
-🔧 **ERROR PREVENTION**:
-- CSV: Never include non-data content that would break pandas.read_csv()
-- Excel: Sheet markers must be exactly formatted or parser fails
-- DOCX: Only use markdown elements that convert properly
-- All formats: Stay strictly within business domain
-
-Remember: You are a business document specialist. Every output must be professional, data-driven, and suitable for corporate use. No exceptions to the business content rule.
-'''
+Remember: You are a GENERATIVE AI. Be creative, thorough, and produce substantial content that provides real value."""
         
         # Build messages
         messages = [{"role": "system", "content": system_message}]
         
-        # Process user content
-        user_content = []
-        
-        # Add explicit format instruction to prompt
+        # Enhanced user prompt with generation instructions
         enhanced_prompt = prompt
-        if output_format:
-            format_instructions = {
-                'csv': "\n\n[OUTPUT FORMAT: Generate pure CSV data starting with headers, no markdown formatting]",
-                'excel': "\n\n[OUTPUT FORMAT: Generate multi-sheet Excel using === SHEET: Name === markers with CSV data]",
-                'docx': "\n\n[OUTPUT FORMAT: Generate markdown document following business document structure]"
-            }
-            enhanced_prompt += format_instructions.get(output_format, "")
         
+        # Add format-specific enhancements
+        if output_format == 'csv':
+            if 'rows' not in prompt.lower() and 'records' not in prompt.lower():
+                enhanced_prompt += "\n\nIMPORTANT: Generate a comprehensive dataset with at least 500-1000 rows and 15-30 columns of detailed, realistic data. Include all relevant fields and metadata. Be exhaustive and creative."
+        
+        elif output_format == 'excel':
+            if 'sheet' not in prompt.lower():
+                enhanced_prompt += "\n\nIMPORTANT: Create a comprehensive multi-sheet workbook with at least 5-10 interconnected sheets. Include summary dashboards, detailed data, analysis sheets, and lookup tables. Each sheet should have substantial data (100-1000 rows). Make it production-ready."
+        
+        elif output_format == 'docx':
+            if 'page' not in prompt.lower() and 'comprehensive' not in prompt.lower():
+                enhanced_prompt += "\n\nIMPORTANT: Create a comprehensive, detailed document (equivalent to 10-50 pages). Include multiple sections with in-depth analysis, data tables, examples, case studies, and actionable recommendations. Be thorough and professional."
+        
+        # Special handling for reviews
+        if 'review' in prompt.lower():
+            enhanced_prompt += "\n\nFor reviews: Include diverse ratings (1-5 distribution), detailed comments, pros/cons, verified purchase status, helpful votes, dates, user demographics, product aspects, sentiment variations, and response from sellers where applicable."
+        
+        # Special handling for products
+        if 'product' in prompt.lower() and output_format in ['csv', 'excel']:
+            enhanced_prompt += "\n\nFor products: Include comprehensive product attributes, pricing tiers, inventory levels, supplier information, categories, specifications, images URLs, SEO data, and performance metrics."
+        
+        user_content = []
         user_content.append({"type": "text", "text": enhanced_prompt})
         
-        # Process uploaded files
+        # Process uploaded files if any
         processed_files = []
         if files:
             for file in files:
@@ -4230,7 +4099,6 @@ Remember: You are a business document specialist. Every output must be professio
                     file_content = await file.read()
                     file_type = file.content_type or mimetypes.guess_type(file.filename)[0] or "application/octet-stream"
                     
-                    # Handle images
                     if file_type.startswith('image/'):
                         b64_content = base64.b64encode(file_content).decode('utf-8')
                         user_content.append({
@@ -4241,14 +4109,13 @@ Remember: You are a business document specialist. Every output must be professio
                             }
                         })
                     else:
-                        # Extract text for context
                         extracted_text = extract_text_from_file(file_content, file.filename)
-                        if len(extracted_text) > 10000:
-                            extracted_text = extracted_text[:10000] + "\n... [truncated]"
+                        if len(extracted_text) > 30000:
+                            extracted_text = extracted_text[:30000] + "\n... [truncated for processing]"
                         
                         user_content.append({
                             "type": "text",
-                            "text": f"\n\nBusiness document context from {file.filename}:\n{extracted_text}"
+                            "text": f"\n\nContext from {file.filename}:\n{extracted_text}"
                         })
                     
                     processed_files.append(file.filename)
@@ -4259,194 +4126,212 @@ Remember: You are a business document specialist. Every output must be professio
         
         messages.append({"role": "user", "content": user_content})
         
+        # Increase max_tokens significantly for comprehensive generation
+        actual_max_tokens = max_tokens
+        if output_format == 'excel':
+            actual_max_tokens = max(max_tokens, 16000)  # Excel needs lots of tokens
+        elif output_format == 'docx':
+            actual_max_tokens = max(max_tokens, 12000)  # Documents need substantial tokens
+        elif output_format == 'csv':
+            actual_max_tokens = max(max_tokens, 10000)  # CSV needs many tokens for rows
+        else:
+            actual_max_tokens = max(max_tokens, 4000)   # General responses should be comprehensive
+        
         # Make completion request
         completion = client.chat.completions.create(
             model=model,
             messages=messages,
-            temperature=temperature,
-            max_tokens=8000 if output_format in ['excel', 'docx'] else 4000
+            temperature=temperature if output_format != 'csv' and output_format != 'excel' else 0.5,  # Balanced temperature
+            max_tokens=actual_max_tokens
         )
         
         response_content = completion.choices[0].message.content
         
-        # Check for content restriction violation
-        if "I can only generate business and professional content" in response_content:
-            return JSONResponse({
-                "status": "error",
-                "response": response_content,
-                "message": "Content restricted to business and professional topics only"
-            })
-        
         # Generate file if format specified
         download_url = None
         generated_filename = None
+        generation_errors = []
         
-        if output_format and response_content and "I can only generate business" not in response_content:
+        if output_format and response_content:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            file_bytes = None
-            filename = None
             
             try:
                 if output_format == 'csv':
-                    # Trust GPT to provide clean CSV - minimal processing
+                    # Clean up response
                     csv_content = response_content.strip()
                     
-                    # Only remove markdown if accidentally included
-                    if csv_content.startswith('```'):
-                        csv_content = re.sub(r'```[a-zA-Z]*\n', '', csv_content)
-                        csv_content = re.sub(r'```', '', csv_content).strip()
+                    # Remove markdown code blocks if present
+                    csv_content = re.sub(r'```[a-zA-Z]*\n?', '', csv_content)
+                    csv_content = re.sub(r'```', '', csv_content)
+                    csv_content = csv_content.strip()
                     
-                    filename = f"business_data_{timestamp}.csv"
-                    file_bytes = csv_content.encode('utf-8-sig')
-                    
-                elif output_format == 'excel' and EXCEL_AVAILABLE:
+                    # Validate and save
                     try:
-                        wb = Workbook()
+                        # Quick validation
+                        df = pd.read_csv(StringIO(csv_content), nrows=5)  # Just check first 5 rows
                         
-                        # Parse sheets - GPT should provide exact format
-                        sheet_pattern = r'=== SHEET: (.*?) ===\n([\s\S]*?)(?==== SHEET:|$)'
-                        sheets = re.findall(sheet_pattern, response_content + '\n=== SHEET: END', re.MULTILINE)
+                        # If valid, save the full content
+                        filename = f"generated_data_{timestamp}.csv"
+                        file_bytes = csv_content.encode('utf-8-sig')
                         
-                        if sheets:
-                            wb.remove(wb.active)
-                            
-                            for sheet_name, sheet_content in sheets:
-                                if sheet_name.strip() == 'END':
-                                    continue
-                                    
-                                safe_name = re.sub(r'[\\/*?\[\]:]', '', sheet_name.strip()[:31])
-                                ws = wb.create_sheet(title=safe_name)
-                                
-                                csv_data = sheet_content.strip()
-                                
-                                if csv_data:
-                                    try:
-                                        df = pd.read_csv(StringIO(csv_data))
-                                        
-                                        for r in dataframe_to_rows(df, index=False, header=True):
-                                            ws.append(r)
-                                        
-                                        # Professional formatting
-                                        header_font = Font(bold=True, color="FFFFFF")
-                                        header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
-                                        
-                                        for cell in ws[1]:
-                                            cell.font = header_font
-                                            cell.fill = header_fill
-                                            cell.alignment = Alignment(horizontal="center")
-                                        
-                                        # Auto-width columns
-                                        for column in ws.columns:
-                                            max_length = 0
-                                            column_letter = None
-                                            for cell in column:
-                                                if cell.value:
-                                                    max_length = max(max_length, len(str(cell.value)))
-                                                    column_letter = cell.column_letter
-                                            if column_letter:
-                                                ws.column_dimensions[column_letter].width = min(max_length + 2, 50)
-                                                
-                                    except Exception as e:
-                                        logging.error(f"Sheet parsing error: {e}")
-                                        ws['A1'] = f"Data parsing error - check format"
-                                        ws['A3'] = csv_data[:1000]
+                        # Log statistics
+                        lines = csv_content.count('\n')
+                        logging.info(f"Generated CSV with approximately {lines} rows")
+                        
+                    except Exception as csv_error:
+                        generation_errors.append(f"CSV validation error: {str(csv_error)}")
+                        # Try to fix common issues
+                        csv_lines = csv_content.split('\n')
+                        if len(csv_lines) > 1:
+                            # Save as-is
+                            filename = f"generated_data_{timestamp}.csv"
+                            file_bytes = csv_content.encode('utf-8-sig')
                         else:
-                            # Fallback for single sheet
-                            ws = wb.active
-                            ws.title = "BusinessData"
-                            ws['A1'] = "Format error - expected Excel sheet markers"
-                            ws['A3'] = response_content[:5000]
+                            raise Exception("Invalid CSV format")
+                
+                elif output_format == 'excel':
+                    try:
+                        # Clean JSON response
+                        json_content = response_content.strip()
                         
+                        # Remove markdown if present
+                        json_content = re.sub(r'```[a-zA-Z]*\n?', '', json_content)
+                        json_content = re.sub(r'```', '', json_content)
+                        json_content = json_content.strip()
+                        
+                        # Parse JSON
+                        data = json.loads(json_content)
+                        
+                        # Create Excel file
                         buffer = BytesIO()
-                        wb.save(buffer)
+                        
+                        # Use ExcelWriter with formatting
+                        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                            sheets_created = 0
+                            total_rows = 0
+                            
+                            if isinstance(data, dict):
+                                # Multiple sheets
+                                for sheet_name, sheet_data in data.items():
+                                    if isinstance(sheet_data, list) and sheet_data:
+                                        df = pd.DataFrame(sheet_data)
+                                        # Clean sheet name
+                                        safe_sheet_name = re.sub(r'[^\w\s-]', '', str(sheet_name))[:31]
+                                        df.to_excel(writer, sheet_name=safe_sheet_name, index=False)
+                                        
+                                        # Format the worksheet
+                                        worksheet = writer.sheets[safe_sheet_name]
+                                        
+                                        # Auto-adjust columns
+                                        for column in df.columns:
+                                            column_length = max(
+                                                df[column].astype(str).map(len).max(),
+                                                len(str(column))
+                                            )
+                                            col_idx = df.columns.get_loc(column)
+                                            column_letter = chr(65 + col_idx) if col_idx < 26 else f"A{chr(65 + col_idx - 26)}"
+                                            worksheet.column_dimensions[column_letter].width = min(column_length + 2, 50)
+                                        
+                                        # Add filters
+                                        worksheet.auto_filter.ref = worksheet.dimensions
+                                        
+                                        sheets_created += 1
+                                        total_rows += len(df)
+                            
+                            elif isinstance(data, list):
+                                # Single sheet
+                                df = pd.DataFrame(data)
+                                df.to_excel(writer, sheet_name='Data', index=False)
+                                sheets_created = 1
+                                total_rows = len(df)
+                            
+                            logging.info(f"Created Excel with {sheets_created} sheets and {total_rows} total rows")
+                        
                         buffer.seek(0)
-                        filename = f"business_workbook_{timestamp}.xlsx"
+                        filename = f"comprehensive_data_{timestamp}.xlsx"
                         file_bytes = buffer.getvalue()
                         
-                    except Exception as excel_error:
-                        logging.error(f"Excel generation failed: {excel_error}")
-                        # Fallback to CSV
-                        csv_content = response_content.strip()
-                        if csv_content.startswith('```'):
-                            csv_content = re.sub(r'```[a-zA-Z]*\n', '', csv_content)
-                            csv_content = re.sub(r'```', '', csv_content).strip()
-                        filename = f"business_data_fallback_{timestamp}.csv"
-                        file_bytes = csv_content.encode('utf-8-sig')
-                        output_format = 'csv'  # Update for response
-                        
-                elif output_format == 'docx' and DOCX_AVAILABLE:
+                    except json.JSONDecodeError as json_error:
+                        generation_errors.append(f"JSON parsing error: {str(json_error)}")
+                        # Fallback to DOCX
+                        output_format = 'docx'
+                        raise Exception("Falling back to DOCX due to Excel generation error")
+                
+                # DOCX generation (or fallback)
+                if output_format == 'docx':
+                    doc_content = response_content
+                    
+                    # Add error information if this is a fallback
+                    if generation_errors:
+                        error_section = "\n\n---\n\n## Format Conversion Note\n\n"
+                        error_section += "The requested format encountered technical issues. Content preserved in document format.\n\n"
+                        error_section += "---\n\n"
+                        doc_content = error_section + doc_content
+                    
                     try:
+                        from docx import Document
+                        from docx.shared import Inches, Pt, RGBColor
+                        from docx.enum.text import WD_ALIGN_PARAGRAPH
+                        import markdown2
+                        from bs4 import BeautifulSoup
+                        
                         doc = Document()
                         
-                        # Let markdown2 parse GPT's markdown
+                        # Set document properties
+                        sections = doc.sections
+                        for section in sections:
+                            section.top_margin = Inches(1)
+                            section.bottom_margin = Inches(1)
+                            section.left_margin = Inches(1)
+                            section.right_margin = Inches(1)
+                        
+                        # Convert markdown to HTML
                         html = markdown2.markdown(
-                            response_content, 
-                            extras=["tables", "fenced-code-blocks", "break-on-newline", "header-ids"]
+                            doc_content, 
+                            extras=["tables", "fenced-code-blocks", "header-ids", "strike", "task_list"]
                         )
                         soup = BeautifulSoup(html, 'html.parser')
                         
-                        # Process elements based on GPT's markdown
-                        for element in soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'ul', 'ol', 'table', 'blockquote', 'pre']):
+                        # Process elements with enhanced formatting
+                        for element in soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'p', 'ul', 'ol', 'table', 'pre', 'blockquote']):
                             try:
                                 if element.name == 'h1':
-                                    doc.add_heading(element.get_text().strip(), level=1)
+                                    heading = doc.add_heading(element.get_text().strip(), level=1)
+                                    heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
                                 elif element.name == 'h2':
                                     doc.add_heading(element.get_text().strip(), level=2)
                                 elif element.name == 'h3':
                                     doc.add_heading(element.get_text().strip(), level=3)
                                 elif element.name == 'h4':
                                     doc.add_heading(element.get_text().strip(), level=4)
-                                elif element.name in ['h5', 'h6']:
+                                elif element.name == 'h5':
                                     p = doc.add_paragraph()
-                                    p.add_run(element.get_text().strip()).bold = True
-                                    
+                                    run = p.add_run(element.get_text().strip())
+                                    run.bold = True
+                                    run.font.size = Pt(12)
                                 elif element.name == 'p':
                                     text = element.get_text().strip()
                                     if text:
-                                        # Handle visual placeholders
-                                        if any(marker in text for marker in ['📊', '📈', '📉', '🥧', '📸', '[Chart:', '[Graph:']):
-                                            p = doc.add_paragraph()
-                                            p.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                                            run = p.add_run(text)
-                                            run.italic = True
-                                            run.font.color.rgb = RGBColor(128, 128, 128)
-                                        else:
-                                            # Handle inline formatting
-                                            p = doc.add_paragraph()
-                                            # Process bold and italic
-                                            for child in element.children:
-                                                if hasattr(child, 'name'):
-                                                    if child.name == 'strong':
-                                                        p.add_run(child.get_text()).bold = True
-                                                    elif child.name == 'em':
-                                                        p.add_run(child.get_text()).italic = True
-                                                    else:
-                                                        p.add_run(child.get_text())
+                                        p = doc.add_paragraph()
+                                        # Handle inline formatting
+                                        for child in element.children:
+                                            if hasattr(child, 'name'):
+                                                if child.name == 'strong' or child.name == 'b':
+                                                    p.add_run(child.get_text()).bold = True
+                                                elif child.name == 'em' or child.name == 'i':
+                                                    p.add_run(child.get_text()).italic = True
+                                                elif child.name == 'code':
+                                                    run = p.add_run(child.get_text())
+                                                    run.font.name = 'Courier New'
+                                                    run.font.size = Pt(10)
                                                 else:
-                                                    p.add_run(str(child))
-                                            
+                                                    p.add_run(child.get_text())
+                                            else:
+                                                p.add_run(str(child))
                                 elif element.name in ['ul', 'ol']:
                                     for li in element.find_all('li', recursive=False):
-                                        text = li.get_text().strip()
-                                        if element.name == 'ul':
-                                            doc.add_paragraph(text, style='List Bullet')
-                                        else:
-                                            doc.add_paragraph(text, style='List Number')
-                                            
-                                elif element.name == 'blockquote':
-                                    p = doc.add_paragraph()
-                                    p.paragraph_format.left_indent = Inches(0.5)
-                                    p.paragraph_format.right_indent = Inches(0.5)
-                                    run = p.add_run(element.get_text().strip())
-                                    run.italic = True
-                                    
-                                elif element.name == 'pre':
-                                    p = doc.add_paragraph()
-                                    run = p.add_run(element.get_text())
-                                    run.font.name = 'Courier New'
-                                    run.font.size = Pt(10)
-                                    p.paragraph_format.left_indent = Inches(0.25)
-                                    
+                                        style = 'List Bullet' if element.name == 'ul' else 'List Number'
+                                        doc.add_paragraph(li.get_text().strip(), style=style)
                                 elif element.name == 'table':
                                     rows = element.find_all('tr')
                                     if rows:
@@ -4462,45 +4347,61 @@ Remember: You are a business document specialist. Every output must be professio
                                                     for j, cell in enumerate(cells[:cols]):
                                                         row_cells[j].text = cell.get_text().strip()
                                                         if cell.name == 'th':
+                                                            # Bold header cells
                                                             for paragraph in row_cells[j].paragraphs:
                                                                 for run in paragraph.runs:
                                                                     run.font.bold = True
-                                            
-                                            doc.add_paragraph()
-                                            
-                            except Exception as e:
-                                logging.error(f"Element processing error: {e}")
+                                    doc.add_paragraph()  # Space after table
+                                elif element.name == 'pre':
+                                    p = doc.add_paragraph()
+                                    run = p.add_run(element.get_text())
+                                    run.font.name = 'Courier New'
+                                    run.font.size = Pt(9)
+                                    p.paragraph_format.left_indent = Inches(0.5)
+                                elif element.name == 'blockquote':
+                                    p = doc.add_paragraph()
+                                    p.paragraph_format.left_indent = Inches(0.5)
+                                    p.paragraph_format.right_indent = Inches(0.5)
+                                    run = p.add_run(element.get_text().strip())
+                                    run.italic = True
+                                    run.font.color.rgb = RGBColor(100, 100, 100)
+                            except Exception as elem_error:
+                                logging.error(f"Error processing element {element.name}: {elem_error}")
+                                # Add as plain text
                                 doc.add_paragraph(element.get_text())
+                        
+                        # Add page numbers (note: this is a simple version)
+                        doc.add_page_break()
                         
                         buffer = BytesIO()
                         doc.save(buffer)
                         buffer.seek(0)
-                        filename = f"business_document_{timestamp}.docx"
+                        filename = f"comprehensive_document_{timestamp}.docx"
                         file_bytes = buffer.getvalue()
                         
-                    except Exception as docx_error:
-                        logging.error(f"DOCX generation failed: {docx_error}")
-                        # Fallback to plain text
-                        filename = f"business_document_fallback_{timestamp}.txt"
-                        file_bytes = response_content.encode('utf-8')
-                        output_format = 'txt'  # Update for response
-                
-                # Save file if generation succeeded
-                if file_bytes and filename:
-                    # Use the fixed save_download_file function that returns actual filename
-                    actual_filename = save_download_file(file_bytes, filename)
-                    generated_filename = actual_filename  # Use the actual filename returned
-                    download_url = construct_download_url(request, actual_filename)
+                    except ImportError:
+                        # If DOCX libraries not available, save as text
+                        filename = f"document_{timestamp}.txt"
+                        file_bytes = doc_content.encode('utf-8')
+                        output_format = 'txt'
                     
-                    # Cleanup
-                    cleanup_old_downloads()
-                    
-            except Exception as file_gen_error:
-                logging.error(f"File generation error: {str(file_gen_error)}\n{traceback.format_exc()}")
-                # Continue without file generation
+            except Exception as format_error:
+                logging.error(f"Format generation error: {str(format_error)}\n{traceback.format_exc()}")
+                # If all else fails, save response as text
+                filename = f"response_{timestamp}.txt"
+                file_bytes = response_content.encode('utf-8')
+                output_format = 'txt'
+                generation_errors.append(f"Format generation failed: {str(format_error)}")
+            
+            # Save file if generation succeeded
+            if 'file_bytes' in locals() and 'filename' in locals():
+                actual_filename = save_download_file(file_bytes, filename)
+                generated_filename = actual_filename
+                download_url = construct_download_url(request, actual_filename)
+                cleanup_old_downloads()
         
         # Return response
-        return JSONResponse({
+        response_data = {
             "status": "success",
             "response": response_content,
             "model": model,
@@ -4513,7 +4414,22 @@ Remember: You are a business document specialist. Every output must be professio
             "output_format": output_format,
             "filename": generated_filename,
             "processed_files": processed_files
-        })
+        }
+        
+        # Add generation metadata
+        if download_url:
+            response_data["generation_metadata"] = {
+                "format": output_format,
+                "timestamp": timestamp,
+                "model_temperature": temperature,
+                "max_tokens_used": actual_max_tokens
+            }
+        
+        # Add warnings if any
+        if generation_errors:
+            response_data["warnings"] = generation_errors
+        
+        return JSONResponse(response_data)
         
     except Exception as e:
         logging.error(f"Completion endpoint error: {str(e)}\n{traceback.format_exc()}")
@@ -4522,11 +4438,9 @@ Remember: You are a business document specialist. Every output must be professio
             content={
                 "status": "error",
                 "error": "Internal server error",
-                "message": "An unexpected error occurred while processing your request."
+                "message": str(e) if os.getenv("ENVIRONMENT") != "production" else "An error occurred processing your request"
             }
         )
-
-# Add this endpoint for review extraction
 
 # Complete /extract-reviews endpoint for app.py
 # Replace the existing /extract-reviews endpoint with this complete version
