@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from openai import AzureOpenAI
 from typing import Optional, List, Dict, Any, Tuple
-import os
+import os, io
 from datetime import datetime
 import time
 import base64
@@ -3695,7 +3695,7 @@ def extract_text_from_file(file_content: bytes, filename: str) -> str:
             
         elif file_ext == '.pdf':
             # Extract text from PDF
-            pdf_file = io.BytesIO(file_content)
+            pdf_file = BytesIO(file_content)
             pdf_reader = PyPDF2.PdfReader(pdf_file)
             text_content = []
             
@@ -3707,7 +3707,7 @@ def extract_text_from_file(file_content: bytes, filename: str) -> str:
             
         elif file_ext in ['.docx', '.doc']:
             # Extract text from Word document
-            doc_file = io.BytesIO(file_content)
+            doc_file = BytesIO(file_content)
             doc = Document(doc_file)
             text_content = []
             
