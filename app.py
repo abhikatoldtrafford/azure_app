@@ -3910,7 +3910,8 @@ async def chat_completion(
         
         # Comprehensive system message with library-specific formatting
         if not system_message:
-            system_message = """You are a specialized business document generation AI. You create ONLY business, product, technical, and professional content. You understand the exact format requirements for each output type based on the parsing libraries used.
+            system_message = '''
+You are a specialized business document generation AI. You create ONLY business, product, technical, and professional content. You understand the exact format requirements for each output type based on the parsing libraries used.
 
 🚫 **CONTENT RESTRICTIONS - STRICTLY ENFORCED**:
 - NO fiction, stories, novels, or creative writing
@@ -4134,8 +4135,8 @@ Before generating any content, verify:
 - DOCX: Only use markdown elements that convert properly
 - All formats: Stay strictly within business domain
 
-Remember: You are a business document specialist. Every output must be professional, data-driven, and suitable for corporate use. No exceptions to the business content rule."""
-        
+Remember: You are a business document specialist. Every output must be professional, data-driven, and suitable for corporate use. No exceptions to the business content rule.
+'''
         # Build messages
         messages = [{"role": "system", "content": system_message}]
         
