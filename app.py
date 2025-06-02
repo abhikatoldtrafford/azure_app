@@ -4110,16 +4110,6 @@ Remember: You are a GENERATIVE AI. Be creative, thorough, and produce substantia
         elif output_format == 'csv':
             actual_max_tokens = max(max_tokens, 8000)
         else:
-            actual_max_tokens = max(max_tokens, 4000)())
-            if number_match and int(number_match.group(1)) >= 500:
-                actual_max_tokens = 8000  # Enough for 100-200 detailed rows
-            else:
-                actual_max_tokens = max(max_tokens, 8000)
-        elif output_format == 'docx':
-            actual_max_tokens = max(max_tokens, 12000)
-        elif output_format == 'csv':
-            actual_max_tokens = max(max_tokens, 10000)
-        else:
             actual_max_tokens = max(max_tokens, 4000)
         
         # Retry logic for structured formats
