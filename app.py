@@ -3888,9 +3888,6 @@ async def test_download_functionality():
             "error": str(e),
             "downloads_directory": DOWNLOADS_DIR
         }, status_code=500)
-# Add this new endpoint for stateless chat completion
-# Enhanced /completion endpoint with comprehensive generation capabilities
-
 @app.post("/completion")
 async def chat_completion(
     request: Request,
@@ -3966,31 +3963,54 @@ IMPORTANT: The user wants EXTENSIVE data. Don't hold back. Generate comprehensiv
 
 CRITICAL RULES:
 1. Output ONLY valid JSON - no markdown, no explanations, no text before/after
-2. Generate ALL requested rows - no placeholders, no ellipsis
-3. Use proper JSON format with double quotes for strings
-4. Numbers should not have quotes
+2. Keep JSON concise - use short property names when possible
+3. For large datasets (500+ rows), generate a representative sample of 100-200 rows and note this
+4. ALWAYS ensure JSON is complete - better to have fewer rows than broken JSON
+5. Numbers without quotes, strings with quotes
+6. NO trailing commas in arrays or objects
 
 EXCEL JSON STRUCTURE:
 {
   "SheetName1": [
-    {"column1": "value1", "column2": 123, "column3": "value3"},
-    {"column1": "value2", "column2": 456, "column3": "value4"}
+    {"col1": "value1", "col2": 123, "col3": "value3"},
+    {"col1": "value2", "col2": 456, "col3": "value4"}
   ],
   "SheetName2": [
-    {"col1": "data1", "col2": 789},
-    {"col1": "data2", "col2": 012}
+    {"id": 1, "data": "example"},
+    {"id": 2, "data": "sample"}
   ]
 }
 
-DATA GENERATION GUIDELINES:
-- Generate comprehensive data with 15-30 columns per sheet
-- Include realistic variations, patterns, and edge cases
-- For reviews: diverse ratings (1-5), detailed comments, pros/cons, dates, user info
-- For products: full specifications, pricing, inventory, categories, metadata
-- For transactions: complete order details, customer info, shipping, payment data
-- Generate the EXACT number of rows requested (500, 1000, etc.)
+For reviews, use this structure:
+{
+  "Reviews": [
+    {
+      "id": 1,
+      "user": "username",
+      "rating": 5,
+      "title": "Great app!",
+      "comment": "Love it",
+      "date": "2024-06-01",
+      "device": "iPhone",
+      "pros": "Fast, easy",
+      "cons": "None",
+      "verified": true,
+      "helpful": 45,
+      "feature_requests": "More avatars"
+    }
+  ],
+  "Summary": [
+    {"metric": "Total Reviews", "value": 1000},
+    {"metric": "Average Rating", "value": 4.2},
+    {"metric": "5 Star %", "value": 45}
+  ]
+}
 
-IMPORTANT: Output ONLY the JSON data structure. No other text."""
+IMPORTANT: 
+- For requests of 1000+ items, generate 100-200 representative samples
+- Include a Summary sheet with statistics about the full dataset
+- Ensure ALL JSON is valid and complete
+- Use concise property names to save tokens"""
 
             elif output_format == 'docx':
                 system_message = """You are a professional document generator creating comprehensive, publication-ready documents.
@@ -4078,12 +4098,17 @@ Remember: You are a GENERATIVE AI. Be creative, thorough, and produce substantia
             # Extract number if mentioned
             number_match = re.search(r'(\d{3,})\+?\s*(reviews?|records?|rows?|entries|items?|products?|customers?|transactions?)', prompt.lower())
             if number_match:
-                requested_count = min(int(number_match.group(1)), 1000)  # Cap at 1000 for now
-                enhanced_prompt += f"\n\nCRITICAL: Generate EXACTLY {requested_count} complete data rows. Output ONLY valid JSON with no markdown or explanations."
+                requested_count = int(number_match.group(1))
+                if requested_count >= 500:
+                    # For large requests, ask for a representative sample
+                    enhanced_prompt += f"\n\nIMPORTANT: Generate a representative sample of 100-200 {number_match.group(2)} that covers all scenarios (positive, negative, feature requests, bugs, etc.). Include a Summary sheet with statistics about what the full {requested_count} dataset would look like."
+                    enhanced_prompt += f"\n\nUse this exact format - keep property names short to save space:\n{{'Reviews': [100-200 diverse review objects], 'Summary': [statistics about the full {requested_count} reviews]}}"
+                else:
+                    enhanced_prompt += f"\n\nGenerate EXACTLY {requested_count} complete data rows. Output ONLY valid JSON."
             else:
-                enhanced_prompt += "\n\nIMPORTANT: Create multiple sheets with substantial data (100-500 rows each). Output ONLY valid JSON."
+                enhanced_prompt += "\n\nIMPORTANT: Create multiple sheets with substantial data (100-200 rows each). Output ONLY valid JSON."
             
-            enhanced_prompt += "\n\nYour JSON will be parsed and converted to Excel using pandas. Each key becomes a sheet name, each value must be an array of objects."
+            enhanced_prompt += "\n\nCRITICAL: Ensure JSON is complete and valid. Better to have fewer complete rows than broken JSON. Your JSON will be parsed with Python's json.loads()."
         
         elif output_format == 'docx':
             if 'page' not in prompt.lower() and 'comprehensive' not in prompt.lower():
@@ -4133,7 +4158,12 @@ Remember: You are a GENERATIVE AI. Be creative, thorough, and produce substantia
         # Set appropriate max_tokens
         actual_max_tokens = max_tokens
         if output_format == 'excel':
-            actual_max_tokens = max(max_tokens, 12000)
+            # For Excel, be more conservative with tokens to ensure complete JSON
+            number_match = re.search(r'(\d{3,})\+?\s*(reviews?|records?|rows?|entries|items?|products?|customers?|transactions?)', prompt.lower())
+            if number_match and int(number_match.group(1)) >= 500:
+                actual_max_tokens = 8000  # Enough for 100-200 detailed rows
+            else:
+                actual_max_tokens = max(max_tokens, 8000)
         elif output_format == 'docx':
             actual_max_tokens = max(max_tokens, 12000)
         elif output_format == 'csv':
@@ -4190,6 +4220,11 @@ Remember: You are a GENERATIVE AI. Be creative, thorough, and produce substantia
             except Exception as e:
                 logging.warning(f"Attempt {retry + 1} failed: {str(e)}")
                 if retry < max_retries - 1:
+                    # Modify prompt for retry
+                    if output_format == 'csv':
+                        messages[-1]["content"][0]["text"] = enhanced_prompt + f"\n\nRETRY {retry + 1}: Output ONLY CSV data. No markdown. Start with headers immediately."
+                    elif output_format == 'excel':
+                        messages[-1]["content"][0]["text"] = enhanced_prompt + f"\n\nRETRY {retry + 1}: Output ONLY valid JSON. Ensure it's complete - reduce rows if needed to fit. For 1000+ requests, 100-200 samples is perfect."
                     continue
                 else:
                     # Final retry failed - use GPT to convert to markdown/docx
@@ -4264,7 +4299,19 @@ Use proper markdown formatting with headers, tables, lists, and emphasis."""},
                             sheets_created = 0
                             total_rows = 0
                             
+                            # Check if we have a Summary sheet - put it first if it exists
+                            if 'Summary' in data and isinstance(data['Summary'], list):
+                                summary_df = pd.DataFrame(data['Summary'])
+                                summary_df.to_excel(writer, sheet_name='Summary', index=False)
+                                worksheet = writer.sheets['Summary']
+                                worksheet.auto_filter.ref = worksheet.dimensions
+                                sheets_created += 1
+                            
+                            # Process other sheets
                             for sheet_name, sheet_data in data.items():
+                                if sheet_name == 'Summary':
+                                    continue  # Already processed
+                                    
                                 if isinstance(sheet_data, list) and sheet_data:
                                     try:
                                         df = pd.DataFrame(sheet_data)
@@ -4275,6 +4322,17 @@ Use proper markdown formatting with headers, tables, lists, and emphasis."""},
                                         worksheet = writer.sheets[safe_sheet_name]
                                         worksheet.auto_filter.ref = worksheet.dimensions
                                         
+                                        # Auto-adjust column widths (limit to prevent performance issues)
+                                        for column in df.columns[:20]:  # First 20 columns only
+                                            column_length = max(
+                                                df[column].astype(str).map(len).max(),
+                                                len(str(column))
+                                            )
+                                            col_idx = df.columns.get_loc(column)
+                                            if col_idx < 26:
+                                                col_letter = chr(65 + col_idx)
+                                                worksheet.column_dimensions[col_letter].width = min(column_length + 2, 40)
+                                        
                                         sheets_created += 1
                                         total_rows += len(df)
                                     except Exception as sheet_error:
@@ -4282,11 +4340,21 @@ Use proper markdown formatting with headers, tables, lists, and emphasis."""},
                             
                             logging.info(f"Created Excel with {sheets_created} sheets and {total_rows} total rows")
                             
+                            # Add metadata sheet if sample was generated
+                            if total_rows < 300 and any(term in prompt.lower() for term in ['1000', '500', 'thousand']):
+                                metadata_df = pd.DataFrame([{
+                                    "Note": "Representative Sample Generated",
+                                    "Sample Size": total_rows,
+                                    "Full Dataset Would Include": "See Summary sheet for statistics",
+                                    "Generation Date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                                }])
+                                metadata_df.to_excel(writer, sheet_name='Metadata', index=False)
+                            
                             if sheets_created == 0:
                                 # Create error sheet
                                 error_df = pd.DataFrame([{
                                     "Error": "No valid data could be processed",
-                                    "Raw_Response": response_content[:1000]
+                                    "Raw_Response_Sample": response_content[:500] + "..."
                                 }])
                                 error_df.to_excel(writer, sheet_name='Error', index=False)
                         
@@ -4300,8 +4368,8 @@ Use proper markdown formatting with headers, tables, lists, and emphasis."""},
                         
                         # Ask GPT to convert to document format
                         fallback_messages = [
-                            {"role": "system", "content": "Convert the data into a well-formatted markdown document with tables and structure."},
-                            {"role": "user", "content": f"Convert this to a document:\n{response_content[:2000]}"}
+                            {"role": "system", "content": "Convert the data request into a well-formatted markdown document with structured tables and comprehensive analysis."},
+                            {"role": "user", "content": f"The user requested: {prompt}\n\nCreate a comprehensive document with data tables, analysis, and insights. Make it professional and detailed."}
                         ]
                         
                         try:
@@ -4309,7 +4377,7 @@ Use proper markdown formatting with headers, tables, lists, and emphasis."""},
                                 model=model,
                                 messages=fallback_messages,
                                 temperature=0.7,
-                                max_tokens=8000
+                                max_tokens=10000
                             )
                             response_content = fallback_completion.choices[0].message.content
                             output_format = 'docx'
@@ -4318,7 +4386,7 @@ Use proper markdown formatting with headers, tables, lists, and emphasis."""},
                         except:
                             # Final fallback
                             filename = f"data_fallback_{timestamp}.txt"
-                            file_bytes = f"Error generating {original_format}\n\n{response_content}".encode('utf-8')
+                            file_bytes = f"Error generating {original_format}\n\nOriginal request: {prompt}\n\nPlease try with a smaller dataset or different format.".encode('utf-8')
                             output_format = 'txt'
                 
                 if output_format == 'docx':
@@ -4502,6 +4570,12 @@ Use proper markdown formatting with headers, tables, lists, and emphasis."""},
         # Add warnings if any
         if generation_errors:
             response_data["warnings"] = generation_errors
+        
+        # Add note about sampling for large Excel requests
+        if output_format == 'excel' and download_url:
+            number_match = re.search(r'(\d{3,})\+?\s*(reviews?|records?|rows?|entries|items?|products?|customers?|transactions?)', prompt.lower())
+            if number_match and int(number_match.group(1)) >= 500:
+                response_data["note"] = f"Generated a representative sample of 100-200 {number_match.group(2)} with comprehensive coverage. Check the Summary sheet for statistics about the full dataset."
         
         return JSONResponse(response_data)
         
