@@ -4156,7 +4156,7 @@ Remember: You are a GENERATIVE AI. Be creative, thorough, and produce substantia
                     chunk_end = min((chunk_num + 1) * chunk_size, requested_count)
                     actual_chunk_size = chunk_end - chunk_start
                     
-                    chunk_prompt = f"""Generate EXACTLY {actual_chunk_size} {item_type} as a JSON array.
+                    chunk_prompt = f"""Generate EXACTLY {actual_chunk_size} {item_type} as a JSON array. Output nothing else.
 
 Original request: {prompt}
 
@@ -4191,8 +4191,9 @@ Output ONLY the JSON array, no other text. Example:
                             chunk_completion = client.chat.completions.create(
                                 model=model,
                                 messages=chunk_messages,
-                                temperature=0.8,
-                                max_tokens=5000
+                                temperature=0.1,
+                                max_tokens=5000,
+                                response_format={"type": "json_object"} 
                             )
                             
                             chunk_response = chunk_completion.choices[0].message.content.strip()
