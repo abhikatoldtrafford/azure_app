@@ -3893,8 +3893,41 @@ async def chat_completion(
 ):
     """
     Enhanced stateless chat completion endpoint - Business document generation.
-    GPT handles all formatting based on the libraries used for conversion.
+    Fixed version with proper import handling and error recovery.
     """
+    # Import all required modules at the top level to avoid scoping issues
+    import pandas as pd
+    import numpy as np
+    from io import StringIO, BytesIO
+    import json
+    import re
+    from datetime import datetime
+    import os
+    import base64
+    import mimetypes
+    import traceback
+    
+    # Optional imports with fallbacks
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill, Alignment
+        from openpyxl.utils.dataframe import dataframe_to_rows
+        EXCEL_AVAILABLE = True
+    except ImportError:
+        EXCEL_AVAILABLE = False
+        logging.warning("OpenPyXL not available - Excel generation disabled")
+    
+    try:
+        from docx import Document
+        from docx.shared import Pt, Inches, RGBColor
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+        import markdown2
+        from bs4 import BeautifulSoup
+        DOCX_AVAILABLE = True
+    except ImportError:
+        DOCX_AVAILABLE = False
+        logging.warning("DOCX libraries not available - DOCX generation disabled")
+    
     client = create_client()
     
     try:
@@ -3905,6 +3938,25 @@ async def chat_completion(
                 content={
                     "status": "error",
                     "message": "Invalid output_format. Must be 'csv', 'excel', or 'docx'"
+                }
+            )
+        
+        # Check if requested format is available
+        if output_format == 'excel' and not EXCEL_AVAILABLE:
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "status": "error",
+                    "message": "Excel generation not available due to missing dependencies"
+                }
+            )
+        
+        if output_format == 'docx' and not DOCX_AVAILABLE:
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "status": "error",
+                    "message": "DOCX generation not available due to missing dependencies"
                 }
             )
         
@@ -4219,6 +4271,8 @@ Remember: You are a business document specialist. Every output must be professio
         
         if output_format and response_content and "I can only generate business" not in response_content:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            file_bytes = None
+            filename = None
             
             try:
                 if output_format == 'csv':
@@ -4233,195 +4287,204 @@ Remember: You are a business document specialist. Every output must be professio
                     filename = f"business_data_{timestamp}.csv"
                     file_bytes = csv_content.encode('utf-8-sig')
                     
-                elif output_format == 'excel':
-                    import pandas as pd
-                    from openpyxl import Workbook
-                    from openpyxl.styles import Font, PatternFill, Alignment
-                    from openpyxl.utils.dataframe import dataframe_to_rows
-                    from io import StringIO, BytesIO
-                    
-                    wb = Workbook()
-                    
-                    # Parse sheets - GPT should provide exact format
-                    sheet_pattern = r'=== SHEET: (.*?) ===\n([\s\S]*?)(?==== SHEET:|$)'
-                    sheets = re.findall(sheet_pattern, response_content + '\n=== SHEET: END', re.MULTILINE)
-                    
-                    if sheets:
-                        wb.remove(wb.active)
+                elif output_format == 'excel' and EXCEL_AVAILABLE:
+                    try:
+                        wb = Workbook()
                         
-                        for sheet_name, sheet_content in sheets:
-                            if sheet_name.strip() == 'END':
-                                continue
-                                
-                            safe_name = re.sub(r'[\\/*?\[\]:]', '', sheet_name.strip()[:31])
-                            ws = wb.create_sheet(title=safe_name)
+                        # Parse sheets - GPT should provide exact format
+                        sheet_pattern = r'=== SHEET: (.*?) ===\n([\s\S]*?)(?==== SHEET:|$)'
+                        sheets = re.findall(sheet_pattern, response_content + '\n=== SHEET: END', re.MULTILINE)
+                        
+                        if sheets:
+                            wb.remove(wb.active)
                             
-                            csv_data = sheet_content.strip()
-                            
-                            if csv_data:
-                                try:
-                                    df = pd.read_csv(StringIO(csv_data))
+                            for sheet_name, sheet_content in sheets:
+                                if sheet_name.strip() == 'END':
+                                    continue
                                     
-                                    for r in dataframe_to_rows(df, index=False, header=True):
-                                        ws.append(r)
-                                    
-                                    # Professional formatting
-                                    header_font = Font(bold=True, color="FFFFFF")
-                                    header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
-                                    
-                                    for cell in ws[1]:
-                                        cell.font = header_font
-                                        cell.fill = header_fill
-                                        cell.alignment = Alignment(horizontal="center")
-                                    
-                                    # Auto-width columns
-                                    for column in ws.columns:
-                                        max_length = 0
-                                        column_letter = None
-                                        for cell in column:
-                                            if cell.value:
-                                                max_length = max(max_length, len(str(cell.value)))
-                                                column_letter = cell.column_letter
-                                        if column_letter:
-                                            ws.column_dimensions[column_letter].width = min(max_length + 2, 50)
-                                            
-                                except Exception as e:
-                                    logging.error(f"Sheet parsing error: {e}")
-                                    ws['A1'] = f"Data parsing error - check format"
-                                    ws['A3'] = csv_data[:1000]
-                    else:
-                        # Fallback for single sheet
-                        ws = wb.active
-                        ws.title = "BusinessData"
-                        ws['A1'] = "Format error - expected Excel sheet markers"
-                        ws['A3'] = response_content[:5000]
-                    
-                    buffer = BytesIO()
-                    wb.save(buffer)
-                    buffer.seek(0)
-                    filename = f"business_workbook_{timestamp}.xlsx"
-                    file_bytes = buffer.getvalue()
-                    
-                elif output_format == 'docx':
-                    from docx import Document
-                    from docx.shared import Pt, Inches, RGBColor
-                    from docx.enum.text import WD_ALIGN_PARAGRAPH
-                    import markdown2
-                    from bs4 import BeautifulSoup
-                    
-                    doc = Document()
-                    
-                    # Let markdown2 parse GPT's markdown
-                    html = markdown2.markdown(
-                        response_content, 
-                        extras=["tables", "fenced-code-blocks", "break-on-newline", "header-ids"]
-                    )
-                    soup = BeautifulSoup(html, 'html.parser')
-                    
-                    # Process elements based on GPT's markdown
-                    for element in soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'ul', 'ol', 'table', 'blockquote', 'pre']):
-                        try:
-                            if element.name == 'h1':
-                                doc.add_heading(element.get_text().strip(), level=1)
-                            elif element.name == 'h2':
-                                doc.add_heading(element.get_text().strip(), level=2)
-                            elif element.name == 'h3':
-                                doc.add_heading(element.get_text().strip(), level=3)
-                            elif element.name == 'h4':
-                                doc.add_heading(element.get_text().strip(), level=4)
-                            elif element.name in ['h5', 'h6']:
-                                p = doc.add_paragraph()
-                                p.add_run(element.get_text().strip()).bold = True
+                                safe_name = re.sub(r'[\\/*?\[\]:]', '', sheet_name.strip()[:31])
+                                ws = wb.create_sheet(title=safe_name)
                                 
-                            elif element.name == 'p':
-                                text = element.get_text().strip()
-                                if text:
-                                    # Handle visual placeholders
-                                    if any(marker in text for marker in ['📊', '📈', '📉', '🥧', '📸', '[Chart:', '[Graph:']):
-                                        p = doc.add_paragraph()
-                                        p.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                                        run = p.add_run(text)
-                                        run.italic = True
-                                        run.font.color.rgb = RGBColor(128, 128, 128)
-                                    else:
-                                        # Handle inline formatting
-                                        p = doc.add_paragraph()
-                                        # Process bold and italic
-                                        for child in element.children:
-                                            if hasattr(child, 'name'):
-                                                if child.name == 'strong':
-                                                    p.add_run(child.get_text()).bold = True
-                                                elif child.name == 'em':
-                                                    p.add_run(child.get_text()).italic = True
+                                csv_data = sheet_content.strip()
+                                
+                                if csv_data:
+                                    try:
+                                        df = pd.read_csv(StringIO(csv_data))
+                                        
+                                        for r in dataframe_to_rows(df, index=False, header=True):
+                                            ws.append(r)
+                                        
+                                        # Professional formatting
+                                        header_font = Font(bold=True, color="FFFFFF")
+                                        header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+                                        
+                                        for cell in ws[1]:
+                                            cell.font = header_font
+                                            cell.fill = header_fill
+                                            cell.alignment = Alignment(horizontal="center")
+                                        
+                                        # Auto-width columns
+                                        for column in ws.columns:
+                                            max_length = 0
+                                            column_letter = None
+                                            for cell in column:
+                                                if cell.value:
+                                                    max_length = max(max_length, len(str(cell.value)))
+                                                    column_letter = cell.column_letter
+                                            if column_letter:
+                                                ws.column_dimensions[column_letter].width = min(max_length + 2, 50)
+                                                
+                                    except Exception as e:
+                                        logging.error(f"Sheet parsing error: {e}")
+                                        ws['A1'] = f"Data parsing error - check format"
+                                        ws['A3'] = csv_data[:1000]
+                        else:
+                            # Fallback for single sheet
+                            ws = wb.active
+                            ws.title = "BusinessData"
+                            ws['A1'] = "Format error - expected Excel sheet markers"
+                            ws['A3'] = response_content[:5000]
+                        
+                        buffer = BytesIO()
+                        wb.save(buffer)
+                        buffer.seek(0)
+                        filename = f"business_workbook_{timestamp}.xlsx"
+                        file_bytes = buffer.getvalue()
+                        
+                    except Exception as excel_error:
+                        logging.error(f"Excel generation failed: {excel_error}")
+                        # Fallback to CSV
+                        csv_content = response_content.strip()
+                        if csv_content.startswith('```'):
+                            csv_content = re.sub(r'```[a-zA-Z]*\n', '', csv_content)
+                            csv_content = re.sub(r'```', '', csv_content).strip()
+                        filename = f"business_data_fallback_{timestamp}.csv"
+                        file_bytes = csv_content.encode('utf-8-sig')
+                        output_format = 'csv'  # Update for response
+                        
+                elif output_format == 'docx' and DOCX_AVAILABLE:
+                    try:
+                        doc = Document()
+                        
+                        # Let markdown2 parse GPT's markdown
+                        html = markdown2.markdown(
+                            response_content, 
+                            extras=["tables", "fenced-code-blocks", "break-on-newline", "header-ids"]
+                        )
+                        soup = BeautifulSoup(html, 'html.parser')
+                        
+                        # Process elements based on GPT's markdown
+                        for element in soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'ul', 'ol', 'table', 'blockquote', 'pre']):
+                            try:
+                                if element.name == 'h1':
+                                    doc.add_heading(element.get_text().strip(), level=1)
+                                elif element.name == 'h2':
+                                    doc.add_heading(element.get_text().strip(), level=2)
+                                elif element.name == 'h3':
+                                    doc.add_heading(element.get_text().strip(), level=3)
+                                elif element.name == 'h4':
+                                    doc.add_heading(element.get_text().strip(), level=4)
+                                elif element.name in ['h5', 'h6']:
+                                    p = doc.add_paragraph()
+                                    p.add_run(element.get_text().strip()).bold = True
+                                    
+                                elif element.name == 'p':
+                                    text = element.get_text().strip()
+                                    if text:
+                                        # Handle visual placeholders
+                                        if any(marker in text for marker in ['📊', '📈', '📉', '🥧', '📸', '[Chart:', '[Graph:']):
+                                            p = doc.add_paragraph()
+                                            p.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                                            run = p.add_run(text)
+                                            run.italic = True
+                                            run.font.color.rgb = RGBColor(128, 128, 128)
+                                        else:
+                                            # Handle inline formatting
+                                            p = doc.add_paragraph()
+                                            # Process bold and italic
+                                            for child in element.children:
+                                                if hasattr(child, 'name'):
+                                                    if child.name == 'strong':
+                                                        p.add_run(child.get_text()).bold = True
+                                                    elif child.name == 'em':
+                                                        p.add_run(child.get_text()).italic = True
+                                                    else:
+                                                        p.add_run(child.get_text())
                                                 else:
-                                                    p.add_run(child.get_text())
-                                            else:
-                                                p.add_run(str(child))
-                                        
-                            elif element.name in ['ul', 'ol']:
-                                for li in element.find_all('li', recursive=False):
-                                    text = li.get_text().strip()
-                                    if element.name == 'ul':
-                                        doc.add_paragraph(text, style='List Bullet')
-                                    else:
-                                        doc.add_paragraph(text, style='List Number')
-                                        
-                            elif element.name == 'blockquote':
-                                p = doc.add_paragraph()
-                                p.paragraph_format.left_indent = Inches(0.5)
-                                p.paragraph_format.right_indent = Inches(0.5)
-                                run = p.add_run(element.get_text().strip())
-                                run.italic = True
-                                
-                            elif element.name == 'pre':
-                                p = doc.add_paragraph()
-                                run = p.add_run(element.get_text())
-                                run.font.name = 'Courier New'
-                                run.font.size = Pt(10)
-                                p.paragraph_format.left_indent = Inches(0.25)
-                                
-                            elif element.name == 'table':
-                                rows = element.find_all('tr')
-                                if rows:
-                                    cols = len(rows[0].find_all(['td', 'th']))
-                                    if cols > 0:
-                                        table = doc.add_table(rows=0, cols=cols)
-                                        table.style = 'Light Grid'
-                                        
-                                        for row in rows:
-                                            cells = row.find_all(['td', 'th'])
-                                            if cells:
-                                                row_cells = table.add_row().cells
-                                                for j, cell in enumerate(cells[:cols]):
-                                                    row_cells[j].text = cell.get_text().strip()
-                                                    if cell.name == 'th':
-                                                        for paragraph in row_cells[j].paragraphs:
-                                                            for run in paragraph.runs:
-                                                                run.font.bold = True
-                                        
-                                        doc.add_paragraph()
-                                        
-                        except Exception as e:
-                            logging.error(f"Element processing error: {e}")
-                            doc.add_paragraph(element.get_text())
+                                                    p.add_run(str(child))
+                                            
+                                elif element.name in ['ul', 'ol']:
+                                    for li in element.find_all('li', recursive=False):
+                                        text = li.get_text().strip()
+                                        if element.name == 'ul':
+                                            doc.add_paragraph(text, style='List Bullet')
+                                        else:
+                                            doc.add_paragraph(text, style='List Number')
+                                            
+                                elif element.name == 'blockquote':
+                                    p = doc.add_paragraph()
+                                    p.paragraph_format.left_indent = Inches(0.5)
+                                    p.paragraph_format.right_indent = Inches(0.5)
+                                    run = p.add_run(element.get_text().strip())
+                                    run.italic = True
+                                    
+                                elif element.name == 'pre':
+                                    p = doc.add_paragraph()
+                                    run = p.add_run(element.get_text())
+                                    run.font.name = 'Courier New'
+                                    run.font.size = Pt(10)
+                                    p.paragraph_format.left_indent = Inches(0.25)
+                                    
+                                elif element.name == 'table':
+                                    rows = element.find_all('tr')
+                                    if rows:
+                                        cols = len(rows[0].find_all(['td', 'th']))
+                                        if cols > 0:
+                                            table = doc.add_table(rows=0, cols=cols)
+                                            table.style = 'Light Grid'
+                                            
+                                            for row in rows:
+                                                cells = row.find_all(['td', 'th'])
+                                                if cells:
+                                                    row_cells = table.add_row().cells
+                                                    for j, cell in enumerate(cells[:cols]):
+                                                        row_cells[j].text = cell.get_text().strip()
+                                                        if cell.name == 'th':
+                                                            for paragraph in row_cells[j].paragraphs:
+                                                                for run in paragraph.runs:
+                                                                    run.font.bold = True
+                                            
+                                            doc.add_paragraph()
+                                            
+                            except Exception as e:
+                                logging.error(f"Element processing error: {e}")
+                                doc.add_paragraph(element.get_text())
+                        
+                        buffer = BytesIO()
+                        doc.save(buffer)
+                        buffer.seek(0)
+                        filename = f"business_document_{timestamp}.docx"
+                        file_bytes = buffer.getvalue()
+                        
+                    except Exception as docx_error:
+                        logging.error(f"DOCX generation failed: {docx_error}")
+                        # Fallback to plain text
+                        filename = f"business_document_fallback_{timestamp}.txt"
+                        file_bytes = response_content.encode('utf-8')
+                        output_format = 'txt'  # Update for response
+                
+                # Save file if generation succeeded
+                if file_bytes and filename:
+                    filepath = save_download_file(file_bytes, filename)
+                    generated_filename = filename
+                    download_url = construct_download_url(request, filename)
                     
-                    buffer = BytesIO()
-                    doc.save(buffer)
-                    buffer.seek(0)
-                    filename = f"business_document_{timestamp}.docx"
-                    file_bytes = buffer.getvalue()
-                
-                # Save file
-                filepath = save_download_file(file_bytes, filename)
-                generated_filename = filename
-                download_url = construct_download_url(request, filename)
-                
-                # Cleanup
-                cleanup_old_downloads()
-                
-            except Exception as e:
-                logging.error(f"File generation error: {str(e)}")
-                # Return response without file
+                    # Cleanup
+                    cleanup_old_downloads()
+                    
+            except Exception as file_gen_error:
+                logging.error(f"File generation error: {str(file_gen_error)}\n{traceback.format_exc()}")
+                # Continue without file generation
         
         # Return response
         return JSONResponse({
