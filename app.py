@@ -1,10 +1,9 @@
 import logging
 import threading
 from fastapi import FastAPI, Request, UploadFile, Form, HTTPException
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse, FileResponse, Response, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, Response
-import mimetypes
+from fastapi.staticfiles import StaticFiles
 from openai import AzureOpenAI
 from typing import Optional, List, Dict, Any, Tuple
 import os
@@ -15,24 +14,46 @@ import mimetypes
 import traceback
 import asyncio
 import json
-from io import StringIO
+from io import StringIO, BytesIO
 import sys
 import re
-from docx import Document
-from docx.shared import Inches
-from PIL import Image
-from fastapi.responses import Response, FileResponse
-from fastapi.staticfiles import StaticFiles
 import hashlib
 import shutil
-import PyPDF2
-import chardet
-from bs4 import BeautifulSoup
-import pandas as pd
-import io
 import uuid
 import tempfile
 import platform
+
+# Document processing
+from docx import Document
+from docx.shared import Inches, Pt, RGBColor
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.style import WD_STYLE_TYPE
+from PIL import Image
+import PyPDF2
+import chardet
+from bs4 import BeautifulSoup
+import markdown2
+
+# Data processing
+import pandas as pd
+import numpy as np
+import openpyxl
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils.dataframe import dataframe_to_rows
+try:
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    import plotly.graph_objects as go
+    import plotly.io as pio
+    from wordcloud import WordCloud
+    CHARTS_AVAILABLE = True
+except ImportError:
+    CHARTS_AVAILABLE = False
+    logging.warning("Chart libraries not available. Chart generation disabled.")
+
 # Simple status updates for long-running operations
 operation_statuses = {}
 
@@ -3864,202 +3885,535 @@ async def chat_completion(
     request: Request,
     prompt: str = Form(...),
     model: str = Form("gpt-4.1"),
-    temperature: float = Form(0.7),
+    temperature: float = Form(0.8),  # Higher for more creative generation
     max_tokens: int = Form(1000),
     system_message: Optional[str] = Form(None),
-    output_format: Optional[str] = Form(None),  # 'csv', 'excel', or None
+    output_format: Optional[str] = Form(None),  # 'csv', 'excel', 'docx', or None
     files: Optional[List[UploadFile]] = None
 ):
     """
-    Stateless chat completion endpoint that accepts text, files, and images.
-    Enhanced with better error handling and CSV extraction.
+    Enhanced stateless chat completion endpoint - True generative AI for documents.
+    
+    Generates comprehensive, detailed content:
+    - CSV: 50-100 rows of rich, multidimensional data with patterns and insights
+    - Excel: Multi-sheet workbooks with summaries, detailed data, analysis, and trends
+    - DOCX: 5-10 page professional documents with sections, tables, and visualization placeholders
+    
+    The system prompts instruct GPT to be creative, detailed, and generate genuinely useful content.
     """
     client = create_client()
     
     try:
         # Validate output format
-        if output_format and output_format not in ['csv', 'excel']:
+        if output_format and output_format not in ['csv', 'excel', 'docx']:
             return JSONResponse(
                 status_code=400,
                 content={
                     "status": "error",
-                    "message": "Invalid output_format. Must be 'csv', 'excel', or None"
+                    "message": "Invalid output_format. Must be 'csv', 'excel', or 'docx'"
                 }
             )
         
-        # Start building the messages array
-        messages = []
+        # Detailed system messages for rich content generation
+        if not system_message:
+            if output_format == 'csv':
+                system_message = """You are a data generation specialist. Generate comprehensive CSV data that is:
+
+1. REALISTIC AND DETAILED: Create at least 50-100 rows of diverse, realistic data
+2. MULTI-DIMENSIONAL: Include various data types - text, numbers, dates, categories, percentages
+3. STATISTICALLY INTERESTING: Include trends, patterns, outliers, and correlations
+4. BUSINESS-READY: Use professional column names and realistic business scenarios
+
+FORMAT RULES:
+- Output ONLY the CSV content - no explanations, no markdown code blocks
+- Start directly with the header row
+- Use commas as delimiters, quote fields containing commas
+- Include calculated fields where relevant (totals, averages, growth rates)
+- Add timestamp fields, status fields, category fields for richness
+
+Example domains to consider based on context:
+- Sales data: Include customer names, products, quantities, prices, discounts, regions, dates, sales reps
+- Financial data: Include revenue, costs, profit margins, YoY growth, budget vs actual
+- Customer data: Include demographics, purchase history, satisfaction scores, churn risk
+- Inventory data: Include SKUs, quantities, reorder points, suppliers, lead times
+- HR data: Include employee info, departments, salaries, performance ratings, tenure
+
+BE CREATIVE and generate genuinely useful datasets that tell a story!"""
+                
+            elif output_format == 'excel':
+                system_message = """You are an Excel workbook specialist creating comprehensive, multi-sheet workbooks.
+
+WORKBOOK STRUCTURE:
+=== SHEET: Summary ===
+[Executive summary with key metrics, KPIs, and highlights]
+
+=== SHEET: DetailedData ===
+[Main dataset with 50+ rows of detailed transactional/operational data]
+
+=== SHEET: Analysis ===
+[Analytical views, aggregations, pivot-table style summaries]
+
+=== SHEET: Trends ===
+[Time-series data showing trends, month-over-month, year-over-year]
+
+=== SHEET: Segments ===
+[Data broken down by categories, regions, or other dimensions]
+
+EACH SHEET SHOULD HAVE:
+- Meaningful, interconnected data that tells a cohesive story
+- Professional column headers with units (e.g., "Revenue (USD)", "Growth Rate (%)")
+- Mix of raw data and calculated metrics
+- Consistent ID fields to allow cross-sheet relationships
+- Date/time stamps for temporal analysis
+
+DATA GENERATION GUIDELINES:
+- Create 50-100 rows per detailed sheet
+- Include formulas conceptually (SUM, AVERAGE, VLOOKUP references)
+- Add conditional formatting indicators (note cells that would be highlighted)
+- Include data validation rules in comments
+- Generate realistic business scenarios with actual company names, product names, etc.
+
+VISUALIZATION HINTS (as comments in data):
+- Note where charts would go: "CHART: Line graph of monthly revenue trend"
+- Suggest pivot tables: "PIVOT: Sales by Region and Product Category"
+- Indicate dashboards: "DASHBOARD: KPI cards for Revenue, Growth, Customer Count"
+
+Be comprehensive and create a workbook that would impress in a business presentation!"""
+                
+            elif output_format == 'docx':
+                system_message = """You are a professional document creator specializing in rich, comprehensive business documents.
+
+DOCUMENT REQUIREMENTS:
+
+1. LENGTH AND DEPTH:
+   - Generate 5-10 pages worth of content (2000-5000 words)
+   - Include multiple sections with substantive content in each
+   - Provide detailed explanations, examples, and analysis
+
+2. STRUCTURE AND FORMATTING:
+   # Title (compelling and professional)
+   
+   ## Executive Summary
+   - 3-5 paragraph overview
+   - Key findings/recommendations
+   - Business impact statement
+   
+   ## Table of Contents
+   - List all major sections
+   
+   ## 1. Introduction/Background
+   - Context and scope
+   - Objectives and goals
+   - Methodology (if applicable)
+   
+   ## 2. Detailed Analysis/Main Content
+   - Multiple subsections with ### headers
+   - Data-driven insights
+   - **Bold key points** and *emphasize important terms*
+   - Use bullet points for clarity:
+     • Main point
+     • Supporting detail
+     • Additional context
+   
+   ## 3. Data and Visualizations
+   - Include markdown tables with real data
+   - Describe charts/graphs: "📊 [Chart: Monthly Revenue Trend showing 25% growth]"
+   - Add data interpretation and insights
+   
+   ## 4. Case Studies/Examples
+   - 2-3 detailed examples
+   - Real-world applications
+   - Lessons learned
+   
+   ## 5. Recommendations/Action Items
+   - Numbered list of specific recommendations
+   - Priority levels (High/Medium/Low)
+   - Timeline and resource requirements
+   
+   ## 6. Conclusion
+   - Summarize key points
+   - Reiterate value proposition
+   - Call to action
+   
+   ## Appendices
+   - Additional data tables
+   - Glossary of terms
+   - References and sources
+
+3. RICH CONTENT ELEMENTS:
+   - **Tables**: Include 3-5 data tables with analysis
+   - **Quotes**: Add relevant industry quotes or testimonials
+   - **Statistics**: Pepper throughout with relevant stats and percentages
+   - **Callout Boxes**: Use > blockquotes for important notes
+   - **Lists**: Mix of bulleted and numbered lists
+   - **Formulas/Calculations**: Show ROI calculations, growth formulas
+   
+4. VISUAL DESCRIPTIONS:
+   Include placeholder descriptions for visuals:
+   - 📊 [Bar Chart: Market Share by Region]
+   - 📈 [Line Graph: 5-Year Growth Projection]
+   - 🥧 [Pie Chart: Budget Allocation]
+   - 🔄 [Process Diagram: Implementation Phases]
+   - 📸 [Image: Product Screenshot or Team Photo]
+
+5. PROFESSIONAL TONE:
+   - Use industry-appropriate terminology
+   - Include executive-level insights
+   - Balance technical detail with accessibility
+   - Add credibility with specific numbers and dates
+
+Generate a document that would be suitable for board presentations, investor meetings, or strategic planning sessions. Be comprehensive, detailed, and professional!"""
+                
+            else:
+                system_message = """You are an advanced AI assistant capable of generating comprehensive, detailed content.
+
+When responding:
+1. Be thorough and detailed in your explanations
+2. Include relevant data, statistics, and examples
+3. Structure your response with clear sections and formatting
+4. Provide actionable insights and recommendations
+5. Use professional language appropriate for business contexts
+6. Include visual descriptions where helpful: 📊 [Chart: Description]
+7. Generate 500+ words for substantial responses
+8. Add tables, lists, and formatted text where appropriate
+
+Create content that demonstrates deep knowledge and provides genuine value!"""
         
-        # Add system message
-        if system_message:
-            messages.append({
-                "role": "system",
-                "content": system_message
-            })
-        else:
-            # Default system message
-            default_system = "You are a helpful, knowledgeable AI assistant. You can analyze images, documents, and answer questions on any topic."
-            
-            # If output format is specified, adjust system message
-            if output_format in ['csv', 'excel']:
-                default_system += (
-                    f"\n\nIMPORTANT: The user wants the response in {output_format.upper()} format. "
-                    "When presenting tabular data:\n"
-                    "1. Provide ONLY the raw CSV data\n"
-                    "2. Do NOT include any explanatory text before or after\n"
-                    "3. Do NOT use markdown formatting or code blocks\n"
-                    "4. Start directly with the header row\n"
-                    "5. Use comma as delimiter\n"
-                    "6. Quote fields that contain commas"
-                )
-            
-            messages.append({
-                "role": "system",
-                "content": default_system
-            })
+        # Build messages with enhanced prompts
+        messages = [{"role": "system", "content": system_message}]
         
-        # Build user message content
+        # Enhanced user prompt for comprehensive generation
+        enhanced_prompt = prompt
+        if output_format:
+            enhancement_suffix = {
+                'csv': """
+
+Please generate a comprehensive dataset with:
+- At least 50-100 rows of detailed data
+- Multiple related columns showing different dimensions
+- Realistic variations and patterns in the data
+- Include calculated fields and aggregations where relevant
+- Professional column naming with units
+- Data that tells a meaningful business story""",
+                
+                'excel': """
+
+Create a professional multi-sheet workbook with:
+- Executive Summary sheet with KPIs and highlights
+- Detailed data sheet with 50+ rows of transactional data  
+- Analysis sheet with aggregations and insights
+- Trends sheet showing time-series progression
+- Segment breakdowns by categories/regions
+- Include notes about where charts and pivots would be placed
+- Make all sheets interconnected with consistent ID fields""",
+                
+                'docx': """
+
+Generate a comprehensive business document including:
+- 5-10 pages of detailed content (2000-5000 words)
+- Executive summary, detailed analysis, recommendations
+- Multiple data tables with insights
+- Descriptions of charts and visualizations 
+- Case studies and real-world examples
+- Professional formatting with sections and subsections
+- Actionable conclusions and next steps
+- Include placeholder descriptions for graphs like: 📊 [Chart: Revenue by Quarter]
+- Make it suitable for executive presentation"""
+            }
+            
+            if output_format in enhancement_suffix:
+                enhanced_prompt += enhancement_suffix[output_format]
+        
+        # Process user content
         user_content = []
+        user_content.append({"type": "text", "text": enhanced_prompt})
         
-        # Add the text prompt
-        user_content.append({
-            "type": "text",
-            "text": prompt
-        })
-        
-        # Process uploaded files if any
+        # Process files if any
         processed_files = []
         if files:
             for file in files:
-                if not file.filename:  # Skip files without names
-                    continue
-                    
                 try:
-                    # Read file content
                     file_content = await file.read()
-                    file_type = file.content_type or mimetypes.guess_type(file.filename)[0] or "application/octet-stream"
+                    file_type = file.content_type or mimetypes.guess_type(file.filename)[0] or "text/plain"
                     
-                    logging.info(f"Processing file: {file.filename} ({file_type}, {len(file_content)} bytes)")
+                    # Simple file handling
+                    if file_type.startswith('image/'):
+                        b64_content = base64.b64encode(file_content).decode('utf-8')
+                        user_content.append({
+                            "type": "image_url",
+                            "image_url": {"url": f"data:{file_type};base64,{b64_content}"}
+                        })
+                    else:
+                        # Try to extract text
+                        try:
+                            text = file_content.decode('utf-8')
+                        except:
+                            text = f"[Binary file: {file.filename}]"
+                        user_content.append({
+                            "type": "text",
+                            "text": f"File {file.filename}:\n{text[:5000]}"  # Limit size
+                        })
                     
-                    # Validate file size (e.g., max 10MB)
-                    if len(file_content) > 10 * 1024 * 1024:
-                        logging.warning(f"File {file.filename} exceeds 10MB limit")
-                        continue
-                    
-                    # Prepare file for inclusion
-                    prepared_content = prepare_file_for_completion(
-                        file_content, 
-                        file.filename, 
-                        file_type
-                    )
-                    
-                    # Add to user content
-                    user_content.append(prepared_content)
                     processed_files.append(file.filename)
-                    
-                except Exception as file_error:
-                    logging.error(f"Error processing file {file.filename}: {file_error}")
-                    # Continue with other files
+                except Exception as e:
+                    logging.error(f"Error processing file {file.filename}: {e}")
         
-        # Add user message with all content
-        messages.append({
-            "role": "user",
-            "content": user_content
-        })
+        messages.append({"role": "user", "content": user_content})
         
-        # Make the completion request
-        logging.info(f"Making completion request with model: {model}, processed files: {processed_files}")
+        # Get completion with increased tokens for comprehensive content
+        completion = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=8000 if output_format else max_tokens  # Increased for rich content
+        )
         
-        try:
-            completion = client.chat.completions.create(
-                model=model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens
-            )
-        except Exception as api_error:
-            logging.error(f"OpenAI API error: {api_error}")
-            return JSONResponse(
-                status_code=503,
-                content={
-                    "status": "error",
-                    "error": "AI service temporarily unavailable",
-                    "message": "Please try again in a moment"
-                }
-            )
-        
-        # Extract the response
         response_content = completion.choices[0].message.content
         
-        # Check if we need to generate a file
+        # Generate file if format specified
         download_url = None
         generated_filename = None
         
-        if output_format in ['csv', 'excel'] and response_content:
+        if output_format and response_content:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
             try:
-                # Extract CSV content from response
-                csv_content = extract_csv_from_content(response_content)
-                
-                # Validate CSV content
-                if not csv_content or len(csv_content.strip().split('\n')) < 2:
-                    logging.warning("Generated content doesn't appear to be valid CSV")
-                else:
-                    # Generate timestamp for filename
-                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                if output_format == 'csv':
+                    # MINIMAL LOGIC: Just remove markdown formatting and save
+                    csv_content = response_content
+                    # Remove code blocks if any
+                    csv_content = re.sub(r'```[a-z]*\n', '', csv_content)
+                    csv_content = re.sub(r'```', '', csv_content)
+                    csv_content = csv_content.strip()
                     
-                    if output_format == 'csv':
-                        # Save as CSV
-                        filename = f"generated_data_{timestamp}.csv"
-                        file_bytes = csv_content.encode('utf-8')
+                    filename = f"data_{timestamp}.csv"
+                    file_bytes = csv_content.encode('utf-8-sig')  # UTF-8 with BOM for Excel
+                    
+                elif output_format == 'excel':
+                    # Simple Excel generation with multi-sheet support
+                    wb = Workbook()
+                    
+                    # Parse sheets from response
+                    sheet_pattern = r'=== SHEET: (.*?) ===\n(.*?)(?==== SHEET:|$)'
+                    sheets = re.findall(sheet_pattern, response_content + '\n=== SHEET:', re.DOTALL)
+                    
+                    if sheets:
+                        # Remove default sheet
+                        wb.remove(wb.active)
+                        
+                        for sheet_name, sheet_content in sheets:
+                            ws = wb.create_sheet(title=sheet_name.strip()[:31])
+                            
+                            # Parse CSV content
+                            csv_data = sheet_content.strip()
+                            if csv_data:
+                                try:
+                                    # Remove chart placeholders and comments
+                                    csv_data = re.sub(r'(CHART:|PIVOT:|DASHBOARD:)[^\n]+\n?', '', csv_data)
+                                    csv_data = re.sub(r'#[^\n]+\n?', '', csv_data)
+                                    
+                                    df = pd.read_csv(StringIO(csv_data))
+                                    
+                                    # Write to worksheet
+                                    for r in dataframe_to_rows(df, index=False, header=True):
+                                        ws.append(r)
+                                    
+                                    # Enhanced formatting
+                                    for cell in ws[1]:
+                                        cell.font = Font(bold=True, color="FFFFFF")
+                                        cell.fill = PatternFill("solid", fgColor="366092")
+                                        cell.alignment = Alignment(horizontal="center")
+                                    
+                                    # Auto-adjust column widths
+                                    for column in ws.columns:
+                                        max_length = 0
+                                        column_cells = list(column)
+                                        for cell in column_cells:
+                                            try:
+                                                if cell.value and len(str(cell.value)) > max_length:
+                                                    max_length = len(str(cell.value))
+                                            except:
+                                                pass
+                                        adjusted_width = min(max_length + 2, 50)
+                                        if column_cells:
+                                            ws.column_dimensions[column_cells[0].column_letter].width = adjusted_width
+                                        
+                                except Exception as e:
+                                    # Fallback: just put the content as text
+                                    ws['A1'] = sheet_content
                     else:
-                        # Convert to Excel
+                        # Single sheet with enhanced processing
+                        ws = wb.active
+                        ws.title = "Data"
+                        
+                        # Remove code blocks and chart placeholders
+                        csv_content = re.sub(r'```[a-z]*\n', '', response_content)
+                        csv_content = re.sub(r'```', '', csv_content)
+                        csv_content = re.sub(r'(CHART:|PIVOT:|DASHBOARD:|📊|📈|🥧)[^\n]+\n?', '', csv_content)
+                        csv_content = csv_content.strip()
+                        
                         try:
-                            import pandas as pd
-                            from io import StringIO, BytesIO
-                            
-                            # Parse CSV with pandas
                             df = pd.read_csv(StringIO(csv_content))
+                            for r in dataframe_to_rows(df, index=False, header=True):
+                                ws.append(r)
                             
-                            # Validate dataframe
-                            if df.empty:
-                                raise ValueError("Parsed dataframe is empty")
-                            
-                            # Write to Excel
-                            buffer = BytesIO()
-                            with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                                df.to_excel(writer, index=False, sheet_name='Data')
-                            
-                            buffer.seek(0)
-                            filename = f"generated_data_{timestamp}.xlsx"
-                            file_bytes = buffer.getvalue()
-                            
-                        except Exception as excel_error:
-                            logging.error(f"Error converting to Excel: {excel_error}")
-                            # Fallback to CSV
-                            filename = f"generated_data_{timestamp}.csv"
-                            file_bytes = csv_content.encode('utf-8')
-                            output_format = 'csv'  # Update format for response
+                            # Enhanced formatting
+                            for cell in ws[1]:
+                                cell.font = Font(bold=True, color="FFFFFF")
+                                cell.fill = PatternFill("solid", fgColor="366092")
+                                cell.alignment = Alignment(horizontal="center")
+                                
+                            # Add alternating row colors for readability
+                            for row_num in range(2, ws.max_row + 1):
+                                if row_num % 2 == 0:
+                                    for cell in ws[row_num]:
+                                        cell.fill = PatternFill("solid", fgColor="F2F2F2")
+                                        
+                        except Exception as e:
+                            ws['A1'] = response_content
                     
-                    # Save file to downloads directory
-                    filepath = os.path.join(DOWNLOADS_DIR, filename)
-                    with open(filepath, 'wb') as f:
-                        f.write(file_bytes)
+                    # Save
+                    buffer = BytesIO()
+                    wb.save(buffer)
+                    buffer.seek(0)
+                    filename = f"data_{timestamp}.xlsx"
+                    file_bytes = buffer.getvalue()
                     
-                    generated_filename = filename
+                elif output_format == 'docx':
+                    # Enhanced DOCX generation using markdown
+                    doc = Document()
                     
-                    # Clean up old downloads
-                    cleanup_old_downloads()
+                    # Add title style
+                    styles = doc.styles
+                    if 'CustomTitle' not in styles:
+                        title_style = styles.add_style('CustomTitle', WD_STYLE_TYPE.PARAGRAPH)
+                        title_style.font.size = Pt(28)
+                        title_style.font.bold = True
+                        title_style.font.color.rgb = RGBColor(31, 73, 125)
+                        title_style.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                        title_style.paragraph_format.space_after = Pt(20)
                     
-                    # Generate download URL
-                    download_url = construct_download_url(request, filename)
+                    # Convert markdown to HTML with tables support
+                    html = markdown2.markdown(response_content, extras=["tables", "fenced-code-blocks"])
+                    soup = BeautifulSoup(html, 'html.parser')
                     
-                    logging.info(f"Generated {output_format} file: {filename}")
+                    # Track if we've added a title
+                    title_added = False
                     
-            except Exception as file_gen_error:
-                logging.error(f"Error generating {output_format} file: {file_gen_error}")
+                    # Enhanced processing
+                    for element in soup.find_all(['h1', 'h2', 'h3', 'h4', 'p', 'ul', 'ol', 'table', 'blockquote', 'pre']):
+                        try:
+                            if element.name == 'h1':
+                                if not title_added:
+                                    doc.add_paragraph(element.get_text(), style='CustomTitle')
+                                    title_added = True
+                                else:
+                                    doc.add_heading(element.get_text(), level=1)
+                            elif element.name == 'h2':
+                                doc.add_heading(element.get_text(), level=2)
+                            elif element.name == 'h3':
+                                doc.add_heading(element.get_text(), level=3)
+                            elif element.name == 'h4':
+                                doc.add_heading(element.get_text(), level=4)
+                            elif element.name == 'p':
+                                text = element.get_text()
+                                # Handle chart placeholders
+                                if any(marker in text for marker in ['📊', '📈', '📉', '🥧', '[Chart:', '[Graph:', '[Diagram:']):
+                                    # Add as italicized note
+                                    p = doc.add_paragraph()
+                                    p.add_run(text).italic = True
+                                else:
+                                    # Process inline formatting
+                                    p = doc.add_paragraph()
+                                    current_text = ""
+                                    
+                                    # Simple bold/italic processing
+                                    parts = re.split(r'(\*\*[^*]+\*\*|\*[^*]+\*)', text)
+                                    for part in parts:
+                                        if part.startswith('**') and part.endswith('**'):
+                                            if current_text:
+                                                p.add_run(current_text)
+                                                current_text = ""
+                                            p.add_run(part[2:-2]).bold = True
+                                        elif part.startswith('*') and part.endswith('*') and not part.startswith('**'):
+                                            if current_text:
+                                                p.add_run(current_text)
+                                                current_text = ""
+                                            p.add_run(part[1:-1]).italic = True
+                                        else:
+                                            current_text += part
+                                    
+                                    if current_text:
+                                        p.add_run(current_text)
+                                        
+                            elif element.name in ['ul', 'ol']:
+                                for li in element.find_all('li'):
+                                    if element.name == 'ul':
+                                        doc.add_paragraph(li.get_text(), style='List Bullet')
+                                    else:
+                                        # Get the index for numbered lists
+                                        doc.add_paragraph(li.get_text(), style='List Number')
+                                        
+                            elif element.name == 'blockquote':
+                                # Add as indented italic paragraph
+                                p = doc.add_paragraph()
+                                p.paragraph_format.left_indent = Inches(0.5)
+                                p.add_run(element.get_text()).italic = True
+                                
+                            elif element.name == 'pre':
+                                # Code block
+                                p = doc.add_paragraph()
+                                run = p.add_run(element.get_text())
+                                run.font.name = 'Courier New'
+                                run.font.size = Pt(10)
+                                p.paragraph_format.left_indent = Inches(0.25)
+                                
+                            elif element.name == 'table':
+                                rows = element.find_all('tr')
+                                if rows:
+                                    # Count columns
+                                    cols = len(rows[0].find_all(['td', 'th']))
+                                    table = doc.add_table(rows=len(rows), cols=cols)
+                                    table.style = 'Light Shading'
+                                    
+                                    for i, row in enumerate(rows):
+                                        cells = row.find_all(['td', 'th'])
+                                        for j, cell in enumerate(cells):
+                                            if j < len(table.rows[i].cells):
+                                                table.rows[i].cells[j].text = cell.get_text().strip()
+                                                # Bold header row
+                                                if i == 0 or row.find('th'):
+                                                    for paragraph in table.rows[i].cells[j].paragraphs:
+                                                        for run in paragraph.runs:
+                                                            run.font.bold = True
+                                    
+                                    # Add spacing after table
+                                    doc.add_paragraph()
+                                    
+                        except Exception as e:
+                            # Fallback - just add as plain text
+                            doc.add_paragraph(element.get_text())
+                    
+                    # Save
+                    buffer = BytesIO()
+                    doc.save(buffer)
+                    buffer.seek(0)
+                    filename = f"document_{timestamp}.docx"
+                    file_bytes = buffer.getvalue()
+                
+                # Save file
+                filepath = save_download_file(file_bytes, filename)
+                generated_filename = filename
+                download_url = construct_download_url(request, filename)
+                
+                # Cleanup old files
+                cleanup_old_downloads()
+                
+            except Exception as e:
+                logging.error(f"Error generating {output_format}: {e}")
                 # Continue without file generation
         
-        # Return the response
+        # Return response
         return JSONResponse({
             "status": "success",
             "response": response_content,
@@ -4075,18 +4429,17 @@ async def chat_completion(
             "processed_files": processed_files
         })
         
-    except HTTPException:
-        raise
     except Exception as e:
-        logging.error(f"Unexpected error in chat completion: {str(e)}\n{traceback.format_exc()}")
+        logging.error(f"Error in completion endpoint: {str(e)}\n{traceback.format_exc()}")
         return JSONResponse(
             status_code=500,
             content={
                 "status": "error",
                 "error": "Internal server error",
-                "message": "An unexpected error occurred"
+                "message": str(e)
             }
         )
+
 # Add this endpoint for review extraction
 
 @app.post("/extract-reviews")
