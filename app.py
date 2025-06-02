@@ -3920,34 +3920,25 @@ async def chat_completion(
         # Enhanced system messages for comprehensive generation
         if not system_message:
             if output_format == 'csv':
-                system_message = """You are an advanced CSV data generator with expertise in creating comprehensive, detailed datasets.
+                system_message = """You are a CSV data generator. Output ONLY valid CSV data.
 
 CRITICAL RULES:
-1. Output ONLY valid CSV data - no explanations, no markdown (no ```), no extra text
-2. Start immediately with headers, then data rows
-3. Use commas as separators, quote fields with commas/quotes
-4. BE EXHAUSTIVE: Generate AT LEAST 500-1000 rows unless specified otherwise
-5. BE DETAILED: Include many columns (15-30+) with rich, varied data
-6. BE CREATIVE: Generate realistic, diverse data with patterns, trends, and anomalies
+1. Start immediately with column headers
+2. Use commas as separators
+3. Quote fields that contain commas or quotes
+4. Generate realistic, diverse data
+5. NO markdown code blocks (no ```)
+6. NO explanations or text - just CSV data
 
-HOW YOUR OUTPUT WILL BE PROCESSED:
-- Your response will be saved directly as a .csv file
-- We will encode it as UTF-8 with BOM
-- Any markdown or extra text will break the CSV format
-- Example of correct output:
-id,name,email,age,department,salary,hire_date,performance_rating
-1,"John Smith","john.smith@email.com",34,"Engineering",125000,"2021-03-15",4.5
-2,"Sarah Johnson","sarah.j@email.com",29,"Marketing",95000,"2022-01-20",4.2
+For reviews, use columns like:
+id,user,rating,title,review,date,platform,verified,helpful_votes
 
-DATA GENERATION GUIDELINES:
-- For products: Include SKU, name, description, category, subcategory, brand, price, cost, margin, stock, warehouse, supplier, ratings, reviews, launch_date, discontinue_date, weight, dimensions, color, material, warranty
-- For people: Include id, first_name, last_name, full_name, email, phone, address, city, state, country, zip, birth_date, age, gender, occupation, company, department, salary, hire_date, performance_rating, skills, education, certifications
-- For transactions: Include transaction_id, date, time, customer_id, product_id, quantity, unit_price, total, discount, tax, payment_method, status, shipping_address, tracking, warehouse, notes
-- For reviews: Include review_id, product_id, user_id, rating, title, comment, pros, cons, helpful_votes, total_votes, verified_purchase, date, response, tags, sentiment, images
-- For time-series: Include hourly/daily/monthly variations, seasonality, trends, special events
-- Add metadata columns: created_at, updated_at, version, source, validation_status
+Example output:
+id,user,rating,title,review,date,platform,verified,helpful_votes
+1,"alex_smith",5,"Amazing app!","The 3D avatars are incredibly realistic.",2024-06-01,iOS,true,42
+2,"tech_guru",2,"Crashes constantly","App crashes when exporting.",2024-06-02,Android,true,18
 
-IMPORTANT: The user wants EXTENSIVE data. Don't hold back. Generate comprehensive, production-ready datasets."""
+Generate the requested data in this exact format."""
 
             elif output_format == 'excel':
                 system_message = """You are a data generator that outputs ONLY valid JSON arrays.
@@ -4055,14 +4046,14 @@ Remember: You are a GENERATIVE AI. Be creative, thorough, and produce substantia
             if number_match:
                 requested_count = int(number_match.group(1))
                 if requested_count >= 500:
-                    # For large requests, we'll use chunking
-                    enhanced_prompt += f"\n\nNOTE: For {requested_count} rows, we'll generate data in chunks of 100 and combine them."
+                    # For large requests, just note we'll generate a sample
+                    enhanced_prompt += f"\n\nNOTE: For {requested_count} rows, we'll generate 100 representative samples covering all scenarios."
                 else:
-                    enhanced_prompt += f"\n\nGenerate EXACTLY {requested_count} rows of data. Output as a JSON array."
+                    enhanced_prompt += f"\n\nGenerate {requested_count} rows of data as a JSON array."
             else:
-                enhanced_prompt += "\n\nGenerate data rows. Output as a JSON array or object with arrays."
+                enhanced_prompt += "\n\nGenerate data rows as a JSON array."
             
-            enhanced_prompt += "\n\nKEEP IT SIMPLE: Just generate the raw data table. No analysis, no summaries, no statistics - just the data rows."
+            enhanced_prompt += "\n\nKEEP IT SIMPLE: Just the data, no analysis or summaries. Output a clean JSON array."
         
         elif output_format == 'docx':
             if 'page' not in prompt.lower() and 'comprehensive' not in prompt.lower():
@@ -4112,17 +4103,18 @@ Remember: You are a GENERATIVE AI. Be creative, thorough, and produce substantia
         # Set appropriate max_tokens
         actual_max_tokens = max_tokens
         if output_format == 'excel':
-            # For Excel, be more conservative with tokens to ensure complete JSON
-            number_match = re.search(r'(\d{3,})\+?\s*(reviews?|records?|rows?|entries|items?|products?|customers?|transactions?)', prompt.lower())
-            if number_match and int(number_match.group(1)) >= 500:
-                actual_max_tokens = 6000  # For chunked generation, each chunk needs less
-            else:
-                actual_max_tokens = max(max_tokens, 8000)
+            # For Excel, we need enough tokens for JSON formatting
+            actual_max_tokens = max(max_tokens, 8000)
         elif output_format == 'docx':
             actual_max_tokens = max(max_tokens, 12000)
         elif output_format == 'csv':
-            actual_max_tokens = max(max_tokens, 10000)
-        
+            actual_max_tokens = max(max_tokens, 8000)
+        else:
+            actual_max_tokens = max(max_tokens, 4000)())
+            if number_match and int(number_match.group(1)) >= 500:
+                actual_max_tokens = 8000  # Enough for 100-200 detailed rows
+            else:
+                actual_max_tokens = max(max_tokens, 8000)
         elif output_format == 'docx':
             actual_max_tokens = max(max_tokens, 12000)
         elif output_format == 'csv':
@@ -4135,6 +4127,7 @@ Remember: You are a GENERATIVE AI. Be creative, thorough, and produce substantia
         response_content = None
         completion = None
         original_format = output_format
+        generation_errors = []
         
         # Special handling for large Excel requests - chunk generation
         if output_format == 'excel':
@@ -4156,7 +4149,7 @@ Remember: You are a GENERATIVE AI. Be creative, thorough, and produce substantia
                     chunk_end = min((chunk_num + 1) * chunk_size, requested_count)
                     actual_chunk_size = chunk_end - chunk_start
                     
-                    chunk_prompt = f"""Generate EXACTLY {actual_chunk_size} {item_type} as a JSON array. Output nothing else.
+                    chunk_prompt = f"""Generate EXACTLY {actual_chunk_size} {item_type} as a JSON array.
 
 Original request: {prompt}
 
@@ -4191,9 +4184,8 @@ Output ONLY the JSON array, no other text. Example:
                             chunk_completion = client.chat.completions.create(
                                 model=model,
                                 messages=chunk_messages,
-                                temperature=0.1,
-                                max_tokens=5000,
-                                response_format={"type": "json_object"} 
+                                temperature=0.8,
+                                max_tokens=5000
                             )
                             
                             chunk_response = chunk_completion.choices[0].message.content.strip()
@@ -4325,7 +4317,8 @@ Output ONLY the JSON array, no other text. Example:
         # Generate file if format specified
         download_url = None
         generated_filename = None
-        generation_errors = []
+        if 'generation_errors' not in locals():
+            generation_errors = []
         
         if output_format and response_content:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -4400,6 +4393,12 @@ Output ONLY the JSON array, no other text. Example:
                                         logging.error(f"Error creating sheet {sheet_name}: {sheet_error}")
                             
                             logging.info(f"Created Excel with {sheets_created} sheets and {total_rows} total rows")
+                            
+                            # Add note if this was a sample
+                            if total_rows <= 100:
+                                number_match = re.search(r'(\d{3,})\+?\s*(reviews?|records?|rows?|entries|items?|products?|customers?|transactions?)', prompt.lower())
+                                if number_match and int(number_match.group(1)) >= 500:
+                                    logging.info(f"Generated {total_rows} representative samples for {number_match.group(1)} requested {number_match.group(2)}")
                             
                             # Add metadata sheet if sample was generated
                             if total_rows < 300 and any(term in prompt.lower() for term in ['1000', '500', 'thousand']):
@@ -4626,9 +4625,16 @@ Output ONLY the JSON array, no other text. Example:
                 "model_temperature": temperature
             }
             
-            # Add info about chunked generation
-            if output_format == 'excel' and 'chunks' in str(response_content):
-                response_data["generation_metadata"]["method"] = "chunked"
+            # Add note about sampling for large requests
+            if output_format == 'excel' and original_format == 'excel':
+                number_match = re.search(r'(\d{3,})\+?\s*(reviews?|records?|rows?|entries|items?|products?|customers?|transactions?)', prompt.lower())
+                if number_match and int(number_match.group(1)) >= 500:
+                    response_data["generation_metadata"]["note"] = f"Generated 100 representative {number_match.group(2)} (requested {number_match.group(1)})"
+            
+            # Add fallback info if format changed
+            if original_format and original_format != output_format:
+                response_data["generation_metadata"]["original_format"] = original_format
+                response_data["generation_metadata"]["fallback_reason"] = f"{original_format.upper()} generation failed"
         
         # Add warnings if any
         if generation_errors:
