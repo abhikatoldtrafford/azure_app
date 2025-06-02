@@ -3889,8 +3889,6 @@ async def test_download_functionality():
             "downloads_directory": DOWNLOADS_DIR
         }, status_code=500)
 # Add this new endpoint for stateless chat completion
-# Complete replacement for the /completion endpoint in app.py
-
 # Enhanced /completion endpoint with comprehensive generation capabilities
 
 @app.post("/completion")
@@ -3905,7 +3903,7 @@ async def chat_completion(
     files: Optional[List[UploadFile]] = None
 ):
     """
-    Advanced generative AI completion endpoint - creates comprehensive, detailed content.
+    Enhanced generative AI completion endpoint - creates comprehensive, detailed content.
     Maintains exact API compatibility while maximizing creative generation.
     """
     import pandas as pd
@@ -3955,40 +3953,40 @@ DATA GENERATION GUIDELINES:
 IMPORTANT: The user wants EXTENSIVE data. Don't hold back. Generate comprehensive, production-ready datasets."""
 
             elif output_format == 'excel':
-                system_message = """You are an advanced Excel workbook generator creating comprehensive, multi-sheet workbooks with rich data.
+                system_message = """You are an Excel data generator. Output ONLY valid JSON - no comments, no explanations.
 
-OUTPUT FORMAT: Valid JSON where each key is a sheet name and value is an array of row objects.
+CRITICAL JSON RULES:
+1. NO COMMENTS (// or /* */ are forbidden in JSON)
+2. NO placeholders like "... more data" - generate ALL rows
+3. NO text before or after the JSON
+4. MUST be valid, parseable JSON
 
-CRITICAL RULES:
-1. Output ONLY valid JSON - no explanations, no markdown, no extra text
-2. Create MULTIPLE sheets (5-15) with interconnected data
-3. Each sheet should have 100-1000 rows of detailed data
-4. Include summary sheets, detailed data sheets, analysis sheets, pivot-ready data
-5. BE COMPREHENSIVE: This should be a complete, production-ready workbook
+OUTPUT FORMAT:
+{
+  "SheetName1": [array of row objects],
+  "SheetName2": [array of row objects]
+}
 
-EXCEL STRUCTURE GUIDELINES:
-{"Summary": [
-  {"Metric": "Total Revenue", "Value": 4567890.50, "Change": "+12.3%", "Target": 4500000, "Status": "Exceeded"},
-  {"Metric": "Active Customers", "Value": 3456, "Change": "+234", "Target": 3200, "Status": "On Track"}
-],
-"DetailedData": [
-  {"ID": 1, "Date": "2024-01-01", "Product": "Widget A", "Category": "Electronics", "Customer": "ABC Corp", "Quantity": 50, "UnitPrice": 29.99, "Total": 1499.50, "Margin": 0.35, "Region": "North", "SalesRep": "John Doe", "Channel": "Online"},
-  // ... 500+ more rows with rich, varied data
-],
-"Customers": [
-  {"CustomerID": 1, "Name": "ABC Corp", "Type": "Enterprise", "Industry": "Technology", "Revenue": 5000000, "Employees": 250, "Location": "New York", "Since": "2020-01-15", "CreditLimit": 100000, "PaymentTerms": "Net 30"},
-  // ... 200+ more customers
-],
-"Products": [
-  {"SKU": "WA-001", "Name": "Widget A", "Category": "Electronics", "Brand": "TechCorp", "Cost": 19.50, "Price": 29.99, "Stock": 500, "ReorderPoint": 100, "Supplier": "Global Tech", "LeadTime": 14},
-  // ... 300+ more products
-],
-"Analysis": [
-  {"Period": "2024-01", "Revenue": 125000, "Cost": 75000, "Profit": 50000, "Margin": 0.40, "Orders": 230, "AvgOrderValue": 543.48},
-  // ... monthly analysis for 24+ months
-]}
+GENERATION RULES:
+- Generate COMPLETE data (no placeholders)
+- For 1000+ rows, actually generate ALL 1000+ rows
+- Each row must be a complete object
+- Use consistent field names within each sheet
+- Numbers without quotes, strings with quotes
 
-REMEMBER: Generate EXTENSIVE, INTERCONNECTED data across all sheets. Make it realistic and valuable."""
+Example structure (but generate ALL rows, not just examples):
+{
+  "Summary": [
+    {"Metric": "Total Revenue", "Value": 4567890.50, "Change": 12.3, "Target": 4500000, "Status": "Exceeded"},
+    {"Metric": "Active Customers", "Value": 3456, "Change": 234, "Target": 3200, "Status": "On Track"}
+  ],
+  "Data": [
+    {"ID": 1, "Date": "2024-01-01", "Product": "Widget A", "Price": 29.99, "Quantity": 50},
+    {"ID": 2, "Date": "2024-01-02", "Product": "Widget B", "Price": 39.99, "Quantity": 30}
+  ]
+}
+
+IMPORTANT: Generate ALL requested rows. If asked for 1000 reviews, generate exactly 1000 review objects, not 5 examples with a comment."""
 
             elif output_format == 'docx':
                 system_message = """You are a professional document generator creating comprehensive, publication-ready documents.
@@ -4070,7 +4068,13 @@ Remember: You are a GENERATIVE AI. Be creative, thorough, and produce substantia
                 enhanced_prompt += "\n\nIMPORTANT: Generate a comprehensive dataset with at least 500-1000 rows and 15-30 columns of detailed, realistic data. Include all relevant fields and metadata. Be exhaustive and creative."
         
         elif output_format == 'excel':
-            if 'sheet' not in prompt.lower():
+            # Extract number if mentioned (e.g., "1000 reviews", "500 products")
+            import re
+            number_match = re.search(r'(\d{3,})\+?\s*(reviews?|records?|rows?|entries|items?|products?|customers?|transactions?)', prompt.lower())
+            if number_match:
+                requested_count = int(number_match.group(1))
+                enhanced_prompt += f"\n\nCRITICAL: Generate EXACTLY {requested_count} complete data rows as requested. Do NOT use placeholders or comments. Generate ALL {requested_count} rows with unique, realistic data."
+            elif 'sheet' not in prompt.lower():
                 enhanced_prompt += "\n\nIMPORTANT: Create a comprehensive multi-sheet workbook with at least 5-10 interconnected sheets. Include summary dashboards, detailed data, analysis sheets, and lookup tables. Each sheet should have substantial data (100-1000 rows). Make it production-ready."
         
         elif output_format == 'docx':
@@ -4137,15 +4141,95 @@ Remember: You are a GENERATIVE AI. Be creative, thorough, and produce substantia
         else:
             actual_max_tokens = max(max_tokens, 4000)   # General responses should be comprehensive
         
-        # Make completion request
-        completion = client.chat.completions.create(
-            model=model,
-            messages=messages,
-            temperature=temperature if output_format != 'csv' and output_format != 'excel' else 0.5,  # Balanced temperature
-            max_tokens=actual_max_tokens
-        )
+        # For very large Excel requests, use a chunking strategy
+        use_chunking = False
+        chunk_data = {}
+        completion = None  # Initialize completion variable
         
-        response_content = completion.choices[0].message.content
+        if output_format == 'excel':
+            # Check if user requested a very large dataset
+            number_match = re.search(r'(\d{3,})\+?\s*(reviews?|records?|rows?|entries|items?|products?|customers?|transactions?)', prompt.lower())
+            if number_match:
+                requested_count = int(number_match.group(1))
+                if requested_count >= 1000:
+                    use_chunking = True
+                    chunks_needed = min((requested_count // 500) + 1, 3)  # Max 3 chunks to avoid too many API calls
+                    
+                    logging.info(f"Using chunking strategy for {requested_count} rows across {chunks_needed} chunks")
+                    
+                    for chunk_num in range(chunks_needed):
+                        chunk_start = chunk_num * 500
+                        chunk_end = min((chunk_num + 1) * 500, requested_count)
+                        chunk_size = chunk_end - chunk_start
+                        
+                        # Modify prompt for this chunk
+                        chunk_prompt = enhanced_prompt.replace(
+                            f"{requested_count}", 
+                            f"{chunk_size}"
+                        ) + f"\n\nGenerate rows {chunk_start + 1} to {chunk_end} with unique IDs starting from {chunk_start + 1}."
+                        
+                        # Update messages for chunk
+                        chunk_messages = messages.copy()
+                        chunk_messages[-1]["content"] = [{"type": "text", "text": chunk_prompt}]
+                        
+                        # Make completion request for chunk
+                        chunk_completion = client.chat.completions.create(
+                            model=model,
+                            messages=chunk_messages,
+                            temperature=0.5,
+                            max_tokens=8000
+                        )
+                        
+                        chunk_response = chunk_completion.choices[0].message.content
+                        
+                        # Parse chunk JSON
+                        try:
+                            chunk_json = chunk_response.strip()
+                            chunk_json = re.sub(r'```[a-zA-Z]*\n?', '', chunk_json)
+                            chunk_json = re.sub(r'```', '', chunk_json)
+                            chunk_json = chunk_json.strip()
+                            
+                            # Extract JSON
+                            json_start = chunk_json.find('{')
+                            if json_start > 0:
+                                chunk_json = chunk_json[json_start:]
+                            json_end = chunk_json.rfind('}')
+                            if json_end > 0:
+                                chunk_json = chunk_json[:json_end + 1]
+                            
+                            chunk_parsed = json.loads(chunk_json)
+                            
+                            # Merge chunk data
+                            if chunk_num == 0:
+                                chunk_data = chunk_parsed
+                            else:
+                                # Merge data into existing sheets
+                                for sheet_name, sheet_data in chunk_parsed.items():
+                                    if sheet_name in chunk_data and isinstance(sheet_data, list):
+                                        if sheet_name != "Summary" and sheet_name != "Analysis":  # Don't duplicate summary sheets
+                                            chunk_data[sheet_name].extend(sheet_data)
+                                    else:
+                                        chunk_data[sheet_name] = sheet_data
+                                        
+                        except Exception as chunk_error:
+                            logging.error(f"Error processing chunk {chunk_num}: {chunk_error}")
+                            # Continue with other chunks
+                    
+                    # Use combined chunk data as response
+                    if chunk_data:
+                        response_content = json.dumps(chunk_data)
+                        use_chunking = True
+        
+        # Make single completion request if not using chunking
+        if not use_chunking:
+            completion = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=temperature if output_format != 'csv' and output_format != 'excel' else 0.5,
+                max_tokens=actual_max_tokens
+            )
+            
+            response_content = completion.choices[0].message.content
         
         # Generate file if format specified
         download_url = None
@@ -4199,6 +4283,16 @@ Remember: You are a GENERATIVE AI. Be creative, thorough, and produce substantia
                         json_content = re.sub(r'```', '', json_content)
                         json_content = json_content.strip()
                         
+                        # Remove any non-JSON content before the first {
+                        json_start = json_content.find('{')
+                        if json_start > 0:
+                            json_content = json_content[json_start:]
+                        
+                        # Remove any content after the last }
+                        json_end = json_content.rfind('}')
+                        if json_end > 0 and json_end < len(json_content) - 1:
+                            json_content = json_content[:json_end + 1]
+                        
                         # Parse JSON
                         data = json.loads(json_content)
                         
@@ -4214,29 +4308,43 @@ Remember: You are a GENERATIVE AI. Be creative, thorough, and produce substantia
                                 # Multiple sheets
                                 for sheet_name, sheet_data in data.items():
                                     if isinstance(sheet_data, list) and sheet_data:
-                                        df = pd.DataFrame(sheet_data)
-                                        # Clean sheet name
-                                        safe_sheet_name = re.sub(r'[^\w\s-]', '', str(sheet_name))[:31]
-                                        df.to_excel(writer, sheet_name=safe_sheet_name, index=False)
-                                        
-                                        # Format the worksheet
-                                        worksheet = writer.sheets[safe_sheet_name]
-                                        
-                                        # Auto-adjust columns
-                                        for column in df.columns:
-                                            column_length = max(
-                                                df[column].astype(str).map(len).max(),
-                                                len(str(column))
-                                            )
-                                            col_idx = df.columns.get_loc(column)
-                                            column_letter = chr(65 + col_idx) if col_idx < 26 else f"A{chr(65 + col_idx - 26)}"
-                                            worksheet.column_dimensions[column_letter].width = min(column_length + 2, 50)
-                                        
-                                        # Add filters
-                                        worksheet.auto_filter.ref = worksheet.dimensions
-                                        
-                                        sheets_created += 1
-                                        total_rows += len(df)
+                                        try:
+                                            # For very large datasets, process in chunks
+                                            if len(sheet_data) > 5000:
+                                                # Process first 5000 rows to avoid memory issues
+                                                df = pd.DataFrame(sheet_data[:5000])
+                                                logging.warning(f"Large dataset truncated: {sheet_name} had {len(sheet_data)} rows, using first 5000")
+                                            else:
+                                                df = pd.DataFrame(sheet_data)
+                                            
+                                            # Clean sheet name
+                                            safe_sheet_name = re.sub(r'[^\w\s-]', '', str(sheet_name))[:31]
+                                            df.to_excel(writer, sheet_name=safe_sheet_name, index=False)
+                                            
+                                            # Format the worksheet
+                                            worksheet = writer.sheets[safe_sheet_name]
+                                            
+                                            # Auto-adjust columns (limit iterations for performance)
+                                            for idx, column in enumerate(df.columns[:50]):  # Limit to first 50 columns
+                                                column_length = max(
+                                                    df[column].astype(str).map(len).max(),
+                                                    len(str(column))
+                                                )
+                                                col_idx = df.columns.get_loc(column)
+                                                if col_idx < 26:
+                                                    column_letter = chr(65 + col_idx)
+                                                else:
+                                                    column_letter = f"{chr(65 + col_idx // 26 - 1)}{chr(65 + col_idx % 26)}"
+                                                worksheet.column_dimensions[column_letter].width = min(column_length + 2, 50)
+                                            
+                                            # Add filters
+                                            worksheet.auto_filter.ref = worksheet.dimensions
+                                            
+                                            sheets_created += 1
+                                            total_rows += len(df)
+                                        except Exception as sheet_error:
+                                            logging.error(f"Error processing sheet {sheet_name}: {sheet_error}")
+                                            # Continue with other sheets
                             
                             elif isinstance(data, list):
                                 # Single sheet
@@ -4246,6 +4354,15 @@ Remember: You are a GENERATIVE AI. Be creative, thorough, and produce substantia
                                 total_rows = len(df)
                             
                             logging.info(f"Created Excel with {sheets_created} sheets and {total_rows} total rows")
+                            
+                            # Ensure at least one sheet was created
+                            if sheets_created == 0:
+                                # Create error sheet
+                                error_df = pd.DataFrame([{
+                                    "Error": "No valid data could be processed",
+                                    "Note": "Check the data format and try again"
+                                }])
+                                error_df.to_excel(writer, sheet_name='Error', index=False)
                         
                         buffer.seek(0)
                         filename = f"comprehensive_data_{timestamp}.xlsx"
@@ -4253,9 +4370,45 @@ Remember: You are a GENERATIVE AI. Be creative, thorough, and produce substantia
                         
                     except json.JSONDecodeError as json_error:
                         generation_errors.append(f"JSON parsing error: {str(json_error)}")
-                        # Fallback to DOCX
-                        output_format = 'docx'
-                        raise Exception("Falling back to DOCX due to Excel generation error")
+                        
+                        # Try to extract JSON from a mixed response
+                        try:
+                            # Look for JSON structure in the response
+                            import re
+                            json_match = re.search(r'\{[\s\S]*\}', response_content)
+                            if json_match:
+                                json_content = json_match.group(0)
+                                # Remove comments
+                                json_content = re.sub(r'//[^\n]*', '', json_content)
+                                json_content = re.sub(r'/\*[\s\S]*?\*/', '', json_content)
+                                
+                                data = json.loads(json_content)
+                                
+                                # Retry Excel generation with cleaned data
+                                buffer = BytesIO()
+                                with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                                    if isinstance(data, dict):
+                                        for sheet_name, sheet_data in data.items():
+                                            if isinstance(sheet_data, list) and sheet_data:
+                                                df = pd.DataFrame(sheet_data)
+                                                safe_sheet_name = re.sub(r'[^\w\s-]', '', str(sheet_name))[:31]
+                                                df.to_excel(writer, sheet_name=safe_sheet_name, index=False)
+                                    else:
+                                        df = pd.DataFrame(data)
+                                        df.to_excel(writer, sheet_name='Data', index=False)
+                                
+                                buffer.seek(0)
+                                filename = f"data_{timestamp}.xlsx"
+                                file_bytes = buffer.getvalue()
+                                generation_errors.append("JSON had comments - cleaned and processed successfully")
+                            else:
+                                raise Exception("No valid JSON structure found")
+                                
+                        except Exception as retry_error:
+                            generation_errors.append(f"Retry failed: {str(retry_error)}")
+                            # Final fallback to DOCX
+                            output_format = 'docx'
+                            raise Exception("Falling back to DOCX due to Excel generation error")
                 
                 # DOCX generation (or fallback)
                 if output_format == 'docx':
@@ -4404,17 +4557,32 @@ Remember: You are a GENERATIVE AI. Be creative, thorough, and produce substantia
         response_data = {
             "status": "success",
             "response": response_content,
-            "model": model,
-            "usage": {
+            "model": model
+        }
+        
+        # Add usage stats
+        if use_chunking or completion is None:
+            # For chunked responses, we don't have accurate token counts
+            response_data["usage"] = {
+                "prompt_tokens": "chunked",
+                "completion_tokens": "chunked", 
+                "total_tokens": "chunked",
+                "note": "Large dataset generated in chunks"
+            }
+        else:
+            response_data["usage"] = {
                 "prompt_tokens": completion.usage.prompt_tokens,
                 "completion_tokens": completion.usage.completion_tokens,
                 "total_tokens": completion.usage.total_tokens
-            },
+            }
+        
+        # Add file info
+        response_data.update({
             "download_url": download_url,
             "output_format": output_format,
             "filename": generated_filename,
             "processed_files": processed_files
-        }
+        })
         
         # Add generation metadata
         if download_url:
@@ -4422,7 +4590,8 @@ Remember: You are a GENERATIVE AI. Be creative, thorough, and produce substantia
                 "format": output_format,
                 "timestamp": timestamp,
                 "model_temperature": temperature,
-                "max_tokens_used": actual_max_tokens
+                "max_tokens_used": actual_max_tokens,
+                "chunked": use_chunking
             }
         
         # Add warnings if any
@@ -4441,7 +4610,6 @@ Remember: You are a GENERATIVE AI. Be creative, thorough, and produce substantia
                 "message": str(e) if os.getenv("ENVIRONMENT") != "production" else "An error occurred processing your request"
             }
         )
-
 # Complete /extract-reviews endpoint for app.py
 # Replace the existing /extract-reviews endpoint with this complete version
 
