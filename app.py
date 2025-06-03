@@ -3920,43 +3920,80 @@ async def chat_completion(
         # Enhanced system messages for comprehensive generation
         if not system_message:
             if output_format == 'csv':
-                system_message = """You are a CSV data generator. Output ONLY valid CSV data.
+                system_message = """You are a JSON data generator that outputs structured data for CSV conversion.
 
 CRITICAL RULES:
-1. Start immediately with column headers
-2. Use commas as separators
-3. Quote fields that contain commas or quotes
-4. Generate realistic, diverse data
-5. NO markdown code blocks (no ```)
-6. NO explanations or text - just CSV data
+1. Output ONLY valid JSON in this exact format:
+{
+  "columns": ["column1", "column2", "column3", ...],
+  "data": [
+    ["value1", "value2", "value3", ...],
+    ["value1", "value2", "value3", ...],
+    ...
+  ]
+}
 
-For reviews, use columns like:
-id,user,rating,title,review,date,platform,verified,helpful_votes
+2. Generate 50-100 rows of realistic, diverse data
+3. Keep values simple - no commas or special characters that break CSV
+4. Use appropriate column names based on the request
+5. Ensure all rows have the same number of values as columns
 
-Example output:
-id,user,rating,title,review,date,platform,verified,helpful_votes
-1,"alex_smith",5,"Amazing app!","The 3D avatars are incredibly realistic.",2024-06-01,iOS,true,42
-2,"tech_guru",2,"Crashes constantly","App crashes when exporting.",2024-06-02,Android,true,18
+Example for product reviews:
+{
+  "columns": ["id", "username", "rating", "title", "review", "date", "verified", "helpful_votes"],
+  "data": [
+    ["1", "john_doe", "5", "Amazing product", "This product exceeded my expectations in every way", "2024-06-01", "true", "42"],
+    ["2", "jane_smith", "4", "Very good quality", "Happy with my purchase but shipping was slow", "2024-06-02", "true", "18"]
+  ]
+}
 
-Generate the requested data in this exact format."""
+IMPORTANT: Generate exactly what was requested. Be creative with the data but keep the format strict."""
 
             elif output_format == 'excel':
-                system_message = """You are a data generator that outputs ONLY valid JSON arrays.
+                system_message = """You are a JSON data generator that outputs structured data for Excel conversion.
 
 CRITICAL RULES:
-1. Output ONLY a JSON array of objects - nothing else
-2. Each object represents one row of data
-3. Use simple, consistent property names
-4. No analysis, no summaries, no statistics - just raw data
-5. Keep it simple and clean
+1. Output ONLY valid JSON in this exact format:
+{
+  "sheets": {
+    "Sheet1": {
+      "columns": ["column1", "column2", "column3", ...],
+      "data": [
+        ["value1", "value2", "value3", ...],
+        ["value1", "value2", "value3", ...],
+        ...
+      ]
+    }
+  }
+}
 
-Example for reviews:
-[
-  {"id": 1, "user": "john_doe", "rating": 5, "review": "Great app!", "date": "2024-06-01", "platform": "iOS"},
-  {"id": 2, "user": "jane_smith", "rating": 3, "review": "Needs work", "date": "2024-06-02", "platform": "Android"}
-]
+2. Generate 50-100 rows of realistic data per sheet
+3. You can create multiple sheets if appropriate for the request
+4. Use appropriate data types (numbers should be numbers, not strings)
+5. Include a summary sheet if the request seems to warrant it
 
-IMPORTANT: Generate ONLY the data array. No explanations, no markdown, no extra text."""
+Example for sales data:
+{
+  "sheets": {
+    "Sales Data": {
+      "columns": ["Order ID", "Date", "Customer", "Product", "Quantity", "Price", "Total"],
+      "data": [
+        ["ORD-001", "2024-06-01", "ABC Corp", "Widget Pro", 5, 29.99, 149.95],
+        ["ORD-002", "2024-06-01", "XYZ Ltd", "Gadget Plus", 3, 49.99, 149.97]
+      ]
+    },
+    "Summary": {
+      "columns": ["Metric", "Value"],
+      "data": [
+        ["Total Orders", 100],
+        ["Total Revenue", 15000],
+        ["Average Order Value", 150]
+      ]
+    }
+  }
+}
+
+Generate comprehensive data with multiple sheets if it makes sense for the request."""
 
             elif output_format == 'docx':
                 system_message = """You are a professional document generator creating comprehensive, publication-ready documents.
@@ -3967,8 +4004,6 @@ Use rich markdown formatting to create EXTENSIVE documents (10-50+ pages worth):
 ## Executive Summary (500-1000 words)
 [Comprehensive overview with key findings, recommendations, and impact analysis]
 
-## Table of Contents
-[Auto-generated based on your extensive content]
 
 ## 1. Introduction (1000-2000 words)
 ### 1.1 Background
@@ -4034,26 +4069,27 @@ Remember: You are a GENERATIVE AI. Be creative, thorough, and produce substantia
         
         # Add format-specific enhancements
         if output_format == 'csv':
-            if 'rows' not in prompt.lower() and 'records' not in prompt.lower():
-                enhanced_prompt += "\n\nIMPORTANT: Generate a comprehensive dataset with at least 500-1000 rows and 15-30 columns of detailed, realistic data. Include all relevant fields and metadata. Be exhaustive and creative."
+            # Extract any specific number mentioned in the prompt
+            number_match = re.search(r'(\d+)\s*(reviews?|records?|rows?|entries|items?|products?|customers?|transactions?)', prompt.lower())
+            if number_match:
+                requested_count = min(int(number_match.group(1)), 100)  # Cap at 100 for simplicity
+                enhanced_prompt += f"\n\nGenerate exactly {requested_count} rows of data."
+            else:
+                enhanced_prompt += "\n\nGenerate 50-100 rows of comprehensive, realistic data."
             
-            # Add conversion info
-            enhanced_prompt += "\n\nNOTE: Your output will be directly saved as a CSV file. We will:\n1. Strip any markdown formatting\n2. Remove code blocks if present\n3. Save with UTF-8 encoding\n4. If CSV generation fails, we'll ask you to convert it to a document format instead"
+            enhanced_prompt += "\n\nRemember: Output ONLY the JSON object with 'columns' and 'data' arrays. No other text."
         
         elif output_format == 'excel':
             # Extract number if mentioned
-            number_match = re.search(r'(\d{3,})\+?\s*(reviews?|records?|rows?|entries|items?|products?|customers?|transactions?)', prompt.lower())
+            number_match = re.search(r'(\d+)\s*(reviews?|records?|rows?|entries|items?|products?|customers?|transactions?)', prompt.lower())
             if number_match:
-                requested_count = int(number_match.group(1))
-                if requested_count >= 500:
-                    # For large requests, just note we'll generate a sample
-                    enhanced_prompt += f"\n\nNOTE: For {requested_count} rows, we'll generate 100 representative samples covering all scenarios."
-                else:
-                    enhanced_prompt += f"\n\nGenerate {requested_count} rows of data as a JSON array."
+                requested_count = min(int(number_match.group(1)), 100)  # Cap at 100
+                enhanced_prompt += f"\n\nGenerate {requested_count} rows of data in the main sheet."
             else:
-                enhanced_prompt += "\n\nGenerate data rows as a JSON array."
+                enhanced_prompt += "\n\nGenerate 50-100 rows of data with appropriate sheets."
             
-            enhanced_prompt += "\n\nKEEP IT SIMPLE: Just the data, no analysis or summaries. Output a clean JSON array."
+            enhanced_prompt += "\n\nIf appropriate, include a Summary sheet with key statistics."
+            enhanced_prompt += "\n\nRemember: Output ONLY the JSON object with 'sheets'. No other text."
         
         elif output_format == 'docx':
             if 'page' not in prompt.lower() and 'comprehensive' not in prompt.lower():
@@ -4102,238 +4138,98 @@ Remember: You are a GENERATIVE AI. Be creative, thorough, and produce substantia
         
         # Set appropriate max_tokens
         actual_max_tokens = max_tokens
-        if output_format == 'excel':
-            # For Excel, we need enough tokens for JSON formatting
+        if output_format in ['excel', 'csv']:
             actual_max_tokens = max(max_tokens, 8000)
         elif output_format == 'docx':
             actual_max_tokens = max(max_tokens, 12000)
-        elif output_format == 'csv':
-            actual_max_tokens = max(max_tokens, 8000)
         else:
             actual_max_tokens = max(max_tokens, 4000)
         
-        # Retry logic for structured formats
-        max_retries = 3 if output_format in ['csv', 'excel'] else 1
+        # Make the API call with response_format for structured outputs
         response_content = None
         completion = None
-        original_format = output_format
-        generation_errors = []
         
-        # Special handling for large Excel requests - chunk generation
-        if output_format == 'excel':
-            number_match = re.search(r'(\d{3,})\+?\s*(reviews?|records?|rows?|entries|items?|products?|customers?|transactions?)', prompt.lower())
-            if number_match and int(number_match.group(1)) >= 500:
-                requested_count = int(number_match.group(1))
-                item_type = number_match.group(2)
-                
-                logging.info(f"Large Excel request: {requested_count} {item_type} - using chunked generation")
-                
-                # Generate data in chunks
-                all_rows = []
-                chunk_size = 100
-                chunks_needed = min((requested_count + chunk_size - 1) // chunk_size, 10)  # Max 10 chunks = 1000 rows
-                
-                # Simplified chunk generation
-                for chunk_num in range(chunks_needed):
-                    chunk_start = chunk_num * chunk_size
-                    chunk_end = min((chunk_num + 1) * chunk_size, requested_count)
-                    actual_chunk_size = chunk_end - chunk_start
-                    
-                    chunk_prompt = f"""Generate EXACTLY {actual_chunk_size} {item_type} as a JSON array.
-
-Original request: {prompt}
-
-Start IDs from {chunk_start + 1}. Include diverse, realistic data.
-
-For reviews, use simple format:
-- id: unique number
-- user: username
-- rating: 1-5
-- title: short review title
-- review: the actual review text
-- date: YYYY-MM-DD format
-- platform: iOS/Android/Web
-- verified: true/false
-- helpful_votes: number
-- issue_type: none/crash/lag/feature_request/other
-
-Output ONLY the JSON array, no other text. Example:
-[
-  {{"id": {chunk_start + 1}, "user": "user123", "rating": 4, "title": "Good app", "review": "Works well but...", "date": "2024-06-01", "platform": "iOS", "verified": true, "helpful_votes": 12, "issue_type": "feature_request"}},
-  ...
-]"""
-                    
-                    chunk_messages = [
-                        {"role": "system", "content": "Output ONLY a valid JSON array. No explanations, no markdown."},
-                        {"role": "user", "content": chunk_prompt}
-                    ]
-                    
-                    # Try to generate this chunk
-                    for retry in range(2):
-                        try:
-                            chunk_completion = client.chat.completions.create(
-                                model=model,
-                                messages=chunk_messages,
-                                temperature=0.8,
-                                max_tokens=5000
-                            )
-                            
-                            chunk_response = chunk_completion.choices[0].message.content.strip()
-                            
-                            # Clean up the response
-                            chunk_response = re.sub(r'```[a-zA-Z]*\n?', '', chunk_response)
-                            chunk_response = re.sub(r'```', '', chunk_response).strip()
-                            
-                            # Parse the JSON array
-                            chunk_data = json.loads(chunk_response)
-                            
-                            if isinstance(chunk_data, list) and len(chunk_data) > 0:
-                                all_rows.extend(chunk_data)
-                                logging.info(f"Chunk {chunk_num + 1}/{chunks_needed} successful - {len(chunk_data)} items")
-                                break
-                            else:
-                                raise ValueError("Invalid chunk data - not an array or empty")
-                                
-                        except Exception as e:
-                            logging.warning(f"Chunk {chunk_num + 1} attempt {retry + 1} failed: {e}")
-                            if retry == 1:
-                                logging.error(f"Failed to generate chunk {chunk_num + 1} - skipping")
-                
-                # If we got some data, format it for Excel
-                if all_rows:
-                    # Create a simple single-sheet Excel structure
-                    excel_data = {
-                        "Reviews": all_rows[:requested_count]  # Ensure we don't exceed requested count
-                    }
-                    
-                    response_content = json.dumps(excel_data)
-                    logging.info(f"Chunked generation complete: {len(all_rows)} items generated")
-                else:
-                    # Fallback if all chunks failed
-                    raise Exception("Chunked generation failed - no data generated")
-                    
-        # If chunking failed or not applicable, continue with normal flow
-            else:
-                # Regular generation for smaller requests
-                for retry in range(max_retries):
-                    try:
-                        request_params = {
-                            "model": model,
-                            "messages": messages,
-                            "temperature": 0.7,
-                            "max_tokens": actual_max_tokens
-                        }
-                        
-                        completion = client.chat.completions.create(**request_params)
-                        response_content = completion.choices[0].message.content
-                        
-                        # Clean and validate
-                        json_test = response_content.strip()
-                        json_test = re.sub(r'```[a-zA-Z]*\n?', '', json_test)
-                        json_test = re.sub(r'```', '', json_test).strip()
-                        
-                        # Try to parse
-                        parsed = json.loads(json_test)
-                        
-                        # If it's a raw array, wrap it in a sheet
-                        if isinstance(parsed, list):
-                            excel_data = {"Data": parsed}
-                            response_content = json.dumps(excel_data)
-                        
-                        break  # Success
-                        
-                    except Exception as e:
-                        logging.warning(f"Attempt {retry + 1} failed: {str(e)}")
-                        if retry < max_retries - 1:
-                            messages[-1]["content"][0]["text"] = enhanced_prompt + f"\n\nRETRY {retry + 1}: Output ONLY valid JSON. An array is fine."
-                            continue
-                        else:
-                            # Final fallback
-                            raise Exception("Excel generation failed after retries")
-        else:
-            # Non-Excel formats - use existing logic
-            for retry in range(max_retries):
-                try:
-                    request_params = {
-                        "model": model,
-                        "messages": messages,
-                        "temperature": 0.5 if output_format == 'csv' else temperature,
-                        "max_tokens": actual_max_tokens
-                    }
-                    
-                    completion = client.chat.completions.create(**request_params)
-                    response_content = completion.choices[0].message.content
-                    
-                    if output_format == 'csv':
-                        csv_test = response_content.strip()
-                        csv_test = re.sub(r'```[a-zA-Z]*\n?', '', csv_test)
-                        csv_test = re.sub(r'```', '', csv_test).strip()
-                        
-                        if ',' in csv_test and '\n' in csv_test:
-                            response_content = csv_test
-                            break
-                        else:
-                            raise ValueError("No comma-separated values found")
-                    else:
-                        break
-                        
-                except Exception as e:
-                    logging.warning(f"Attempt {retry + 1} failed: {str(e)}")
-                    if retry < max_retries - 1:
-                        if output_format == 'csv':
-                            messages[-1]["content"][0]["text"] = enhanced_prompt + f"\n\nRETRY {retry + 1}: Output ONLY CSV data. No markdown. Start with headers immediately."
-                        continue
-                    else:
-                        # Final fallback to document
-                        if output_format in ['csv', 'excel']:
-                            logging.info(f"{output_format.upper()} generation failed - converting to document")
-                            
-                            fallback_messages = [
-                                {"role": "system", "content": "Create a comprehensive document with the requested data in table format."},
-                                {"role": "user", "content": f"The user requested: {prompt}\n\nCreate a document with the data in well-formatted tables."}
-                            ]
-                            
-                            fallback_completion = client.chat.completions.create(
-                                model=model,
-                                messages=fallback_messages,
-                                temperature=0.7,
-                                max_tokens=12000
-                            )
-                            
-                            response_content = fallback_completion.choices[0].message.content
-                            output_format = 'docx'
-                            break
+        try:
+            request_params = {
+                "model": model,
+                "messages": messages,
+                "temperature": 0.7 if output_format in ['csv', 'excel'] else temperature,
+                "max_tokens": actual_max_tokens
+            }
+            
+            # Add response_format for CSV and Excel
+            if output_format in ['csv', 'excel']:
+                request_params["response_format"] = {"type": "json_object"}
+            
+            completion = client.chat.completions.create(**request_params)
+            response_content = completion.choices[0].message.content
+            
+        except Exception as e:
+            logging.error(f"OpenAI API error: {e}")
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "status": "error",
+                    "error": "AI service temporarily unavailable",
+                    "message": "Please try again in a moment"
+                }
+            )
         
         # Generate file if format specified
         download_url = None
         generated_filename = None
-        if 'generation_errors' not in locals():
-            generation_errors = []
+        generation_errors = []
         
         if output_format and response_content:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             
             try:
                 if output_format == 'csv':
-                    # Clean up response
-                    csv_content = response_content.strip()
-                    
-                    # Remove markdown code blocks if present
-                    csv_content = re.sub(r'```[a-zA-Z]*\n?', '', csv_content)
-                    csv_content = re.sub(r'```', '', csv_content)
-                    csv_content = csv_content.strip()
-                    
-                    # Save CSV
-                    filename = f"generated_data_{timestamp}.csv"
-                    file_bytes = csv_content.encode('utf-8-sig')
-                    
-                    # Log statistics
-                    lines = csv_content.count('\n')
-                    logging.info(f"Generated CSV with approximately {lines} rows")
+                    try:
+                        # Parse JSON response
+                        data = json.loads(response_content)
+                        
+                        # Validate structure
+                        if 'columns' not in data or 'data' not in data:
+                            raise ValueError("Invalid JSON structure - missing 'columns' or 'data'")
+                        
+                        # Create CSV content
+                        csv_lines = []
+                        
+                        # Add header
+                        csv_lines.append(','.join(data['columns']))
+                        
+                        # Add data rows
+                        for row in data['data']:
+                            # Ensure all values are strings and properly escaped
+                            escaped_row = []
+                            for value in row:
+                                str_value = str(value)
+                                # Escape quotes and wrap in quotes if contains comma or quote
+                                if ',' in str_value or '"' in str_value or '\n' in str_value:
+                                    str_value = '"' + str_value.replace('"', '""') + '"'
+                                escaped_row.append(str_value)
+                            csv_lines.append(','.join(escaped_row))
+                        
+                        csv_content = '\n'.join(csv_lines)
+                        
+                        # Save CSV
+                        filename = f"generated_data_{timestamp}.csv"
+                        file_bytes = csv_content.encode('utf-8-sig')
+                        
+                        # Log statistics
+                        logging.info(f"Generated CSV with {len(data['columns'])} columns and {len(data['data'])} rows")
+                        
+                    except json.JSONDecodeError as e:
+                        logging.error(f"JSON parse error for CSV: {e}")
+                        # Fallback - save as text
+                        filename = f"data_error_{timestamp}.txt"
+                        file_bytes = f"Error generating CSV:\n{str(e)}\n\nRaw response:\n{response_content}".encode('utf-8')
+                        generation_errors.append("CSV generation failed - saved raw response")
                 
                 elif output_format == 'excel':
                     try:
-                        # Parse JSON (should already be clean from response_format)
+                        # Parse JSON response
                         data = json.loads(response_content)
                         
                         # Create Excel file
@@ -4343,22 +4239,11 @@ Output ONLY the JSON array, no other text. Example:
                             sheets_created = 0
                             total_rows = 0
                             
-                            # Check if we have a Summary sheet - put it first if it exists
-                            if 'Summary' in data and isinstance(data['Summary'], list):
-                                summary_df = pd.DataFrame(data['Summary'])
-                                summary_df.to_excel(writer, sheet_name='Summary', index=False)
-                                worksheet = writer.sheets['Summary']
-                                worksheet.auto_filter.ref = worksheet.dimensions
-                                sheets_created += 1
-                            
-                            # Process other sheets
-                            for sheet_name, sheet_data in data.items():
-                                if sheet_name == 'Summary':
-                                    continue  # Already processed
-                                    
-                                if isinstance(sheet_data, list) and sheet_data:
-                                    try:
-                                        df = pd.DataFrame(sheet_data)
+                            # Handle new format with 'sheets' key
+                            if 'sheets' in data:
+                                for sheet_name, sheet_data in data['sheets'].items():
+                                    if 'columns' in sheet_data and 'data' in sheet_data:
+                                        df = pd.DataFrame(sheet_data['data'], columns=sheet_data['columns'])
                                         safe_sheet_name = re.sub(r'[^\w\s-]', '', str(sheet_name))[:31]
                                         df.to_excel(writer, sheet_name=safe_sheet_name, index=False)
                                         
@@ -4366,7 +4251,7 @@ Output ONLY the JSON array, no other text. Example:
                                         worksheet = writer.sheets[safe_sheet_name]
                                         worksheet.auto_filter.ref = worksheet.dimensions
                                         
-                                        # Auto-adjust column widths (limit to prevent performance issues)
+                                        # Auto-adjust column widths
                                         for column in df.columns[:20]:  # First 20 columns only
                                             column_length = max(
                                                 df[column].astype(str).map(len).max(),
@@ -4379,72 +4264,54 @@ Output ONLY the JSON array, no other text. Example:
                                         
                                         sheets_created += 1
                                         total_rows += len(df)
-                                    except Exception as sheet_error:
-                                        logging.error(f"Error creating sheet {sheet_name}: {sheet_error}")
+                            
+                            # Fallback for old format (columns and data at root level)
+                            elif 'columns' in data and 'data' in data:
+                                df = pd.DataFrame(data['data'], columns=data['columns'])
+                                df.to_excel(writer, sheet_name='Data', index=False)
+                                
+                                # Basic formatting
+                                worksheet = writer.sheets['Data']
+                                worksheet.auto_filter.ref = worksheet.dimensions
+                                
+                                sheets_created = 1
+                                total_rows = len(df)
+                            
+                            else:
+                                raise ValueError("Invalid JSON structure for Excel")
                             
                             logging.info(f"Created Excel with {sheets_created} sheets and {total_rows} total rows")
-                            
-                            # Add note if this was a sample
-                            if total_rows <= 100:
-                                number_match = re.search(r'(\d{3,})\+?\s*(reviews?|records?|rows?|entries|items?|products?|customers?|transactions?)', prompt.lower())
-                                if number_match and int(number_match.group(1)) >= 500:
-                                    logging.info(f"Generated {total_rows} representative samples for {number_match.group(1)} requested {number_match.group(2)}")
-                            
-                            # Add metadata sheet if sample was generated
-                            if total_rows < 300 and any(term in prompt.lower() for term in ['1000', '500', 'thousand']):
-                                metadata_df = pd.DataFrame([{
-                                    "Note": "Representative Sample Generated",
-                                    "Sample Size": total_rows,
-                                    "Full Dataset Would Include": "See Summary sheet for statistics",
-                                    "Generation Date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                                }])
-                                metadata_df.to_excel(writer, sheet_name='Metadata', index=False)
-                            
-                            if sheets_created == 0:
-                                # Create error sheet
-                                error_df = pd.DataFrame([{
-                                    "Error": "No valid data could be processed",
-                                    "Raw_Response_Sample": response_content[:500] + "..."
-                                }])
-                                error_df.to_excel(writer, sheet_name='Error', index=False)
                         
                         buffer.seek(0)
-                        filename = f"comprehensive_data_{timestamp}.xlsx"
+                        filename = f"generated_data_{timestamp}.xlsx"
                         file_bytes = buffer.getvalue()
                         
-                    except json.JSONDecodeError as e:
-                        # Fallback: convert to document
-                        logging.error(f"Excel JSON parse failed: {e}")
-                        
-                        # Ask GPT to convert to document format
-                        fallback_messages = [
-                            {"role": "system", "content": "Convert the data request into a well-formatted markdown document with structured tables and comprehensive analysis."},
-                            {"role": "user", "content": f"The user requested: {prompt}\n\nCreate a comprehensive document with data tables, analysis, and insights. Make it professional and detailed."}
-                        ]
-                        
+                    except (json.JSONDecodeError, KeyError, ValueError) as e:
+                        logging.error(f"Excel generation error: {e}")
+                        # Fallback - save as CSV
                         try:
-                            fallback_completion = client.chat.completions.create(
-                                model=model,
-                                messages=fallback_messages,
-                                temperature=0.7,
-                                max_tokens=10000
-                            )
-                            response_content = fallback_completion.choices[0].message.content
-                            output_format = 'docx'
-                            generation_errors.append(f"Excel generation failed (was {original_format}) - converted to document")
-                            # Continue to docx generation below
+                            # Try to extract any structured data
+                            data = json.loads(response_content)
+                            if isinstance(data, dict):
+                                # Convert dict to simple CSV
+                                csv_lines = ["key,value"]
+                                for k, v in data.items():
+                                    csv_lines.append(f"{k},{v}")
+                                csv_content = '\n'.join(csv_lines)
+                            else:
+                                csv_content = str(data)
+                            
+                            filename = f"data_fallback_{timestamp}.csv"
+                            file_bytes = csv_content.encode('utf-8-sig')
+                            generation_errors.append("Excel generation failed - converted to CSV")
                         except:
                             # Final fallback
-                            filename = f"data_fallback_{timestamp}.txt"
-                            file_bytes = f"Error generating {original_format}\n\nOriginal request: {prompt}\n\nPlease try with a smaller dataset or different format.".encode('utf-8')
-                            output_format = 'txt'
+                            filename = f"data_error_{timestamp}.txt"
+                            file_bytes = f"Error generating Excel:\n{str(e)}\n\nRaw response:\n{response_content}".encode('utf-8')
+                            generation_errors.append("Excel generation failed - saved raw response")
                 
-                if output_format == 'docx':
-                    # Add note if this was a fallback
-                    doc_content = response_content
-                    if original_format != 'docx' and original_format:
-                        doc_content = f"# Data Report\n\n*Note: This document was generated as a fallback from {original_format} format.*\n\n---\n\n" + doc_content
-                    # Keep the existing DOCX generation code as requested
+                elif output_format == 'docx':
+                    # Keep existing DOCX generation code as it's working
                     doc_content = response_content
                     
                     try:
@@ -4549,7 +4416,7 @@ Output ONLY the JSON array, no other text. Example:
                                 # Add as plain text
                                 doc.add_paragraph(element.get_text())
                         
-                        # Add page numbers (note: this is a simple version)
+                        # Add page break at end
                         doc.add_page_break()
                         
                         buffer = BytesIO()
@@ -4587,7 +4454,7 @@ Output ONLY the JSON array, no other text. Example:
         
         # For large responses, just show a summary
         if response_content and len(response_content) > 5000:
-            response_data["response"] = f"Generated {output_format.upper()} file with data. Download to view."
+            response_data["response"] = f"Generated {output_format.upper() if output_format else 'content'}. Download to view full content."
         else:
             response_data["response"] = response_content
         
@@ -4614,17 +4481,6 @@ Output ONLY the JSON array, no other text. Example:
                 "timestamp": timestamp,
                 "model_temperature": temperature
             }
-            
-            # Add note about sampling for large requests
-            if output_format == 'excel' and original_format == 'excel':
-                number_match = re.search(r'(\d{3,})\+?\s*(reviews?|records?|rows?|entries|items?|products?|customers?|transactions?)', prompt.lower())
-                if number_match and int(number_match.group(1)) >= 500:
-                    response_data["generation_metadata"]["note"] = f"Generated 100 representative {number_match.group(2)} (requested {number_match.group(1)})"
-            
-            # Add fallback info if format changed
-            if original_format and original_format != output_format:
-                response_data["generation_metadata"]["original_format"] = original_format
-                response_data["generation_metadata"]["fallback_reason"] = f"{original_format.upper()} generation failed"
         
         # Add warnings if any
         if generation_errors:
