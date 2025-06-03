@@ -33,7 +33,7 @@ import PyPDF2
 import chardet
 from bs4 import BeautifulSoup
 import markdown2
-
+from io import BytesIO
 # Data processing
 import pandas as pd
 import numpy as np
@@ -4627,7 +4627,6 @@ async def extract_reviews(
                 # Handle Excel files
                 try:
                     import pandas as pd
-                    from io import BytesIO
                     
                     excel_file = BytesIO(file_content)
                     excel_data = pd.ExcelFile(excel_file)
@@ -5040,10 +5039,6 @@ def create_docx_from_content(content: str, images: Optional[List[bytes]] = None)
     Returns:
         DOCX file as bytes
     """
-    from docx import Document
-    from docx.shared import Inches
-    from io import BytesIO
-    import re
     from PIL import Image as PILImage
     
     # Create document
