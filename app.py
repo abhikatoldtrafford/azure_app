@@ -71,8 +71,8 @@ app.add_middleware(
     expose_headers=["Content-Disposition", "Content-Type", "Content-Length"]
 )
 # Azure OpenAI client configuration
-AZURE_ENDPOINT = "https://prodhubfinnew-openai-97de.openai.azure.com/" # Replace with your endpoint if different
-AZURE_API_KEY = "97fa8c02f9e64e8ea5434987b11fe6f4" # Replace with your key if different
+AZURE_ENDPOINT = "https://kb-stellar.openai.azure.com/" # Replace with your endpoint if different
+AZURE_API_KEY = "bc0ba854d3644d7998a5034af62d03ce" # Replace with your key if different
 AZURE_API_VERSION = "2024-12-01-preview"
 DOWNLOADS_DIR = "/tmp/chat_downloads"  # Use /tmp for Azure App Service
 MAX_DOWNLOAD_FILES = 10  # Keep only 10 most recent files
