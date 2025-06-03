@@ -1679,7 +1679,7 @@ async def image_analysis(client: AzureOpenAI, image_data: bytes, filename: str, 
 
         # Use the existing client instead of creating a new one
         response = client.chat.completions.create(
-            model="gpt-4.1",  # Ensure this model supports vision
+            model="gpt-4.1-mini",  # Ensure this model supports vision
             messages=[{
                 "role": "user",
                 "content": [
@@ -2169,7 +2169,7 @@ You are the ultimate AI companion - equally comfortable discussing cooking recip
     try:
         assistant = client.beta.assistants.create(
             name=f"pm_copilot_{int(time.time())}",
-            model="gpt-4.1",  # Ensure this model is deployed
+            model="gpt-4.1-mini",  # Ensure this model is deployed
             instructions=system_prompt,
             tools=assistant_tools,
             tool_resources=assistant_tool_resources,
@@ -2892,7 +2892,7 @@ async def process_conversation(
                                                     "id": f"chatcmpl-{run_id or 'stream'}",
                                                     "object": "chat.completion.chunk",
                                                     "created": int(time.time()),
-                                                    "model": "gpt-4.1",
+                                                    "model": "gpt-4.1-mini",
                                                     "choices": [{
                                                         "index": 0,
                                                         "delta": {
@@ -2912,7 +2912,7 @@ async def process_conversation(
                                                     "id": f"chatcmpl-{run_id or 'stream'}",
                                                     "object": "chat.completion.chunk",
                                                     "created": int(time.time()),
-                                                    "model": "gpt-4.1",
+                                                    "model": "gpt-4.1-mini",
                                                     "choices": [{
                                                         "index": 0,
                                                         "delta": {
@@ -2936,7 +2936,7 @@ async def process_conversation(
                                 "id": f"chatcmpl-{run_id or 'stream'}",
                                 "object": "chat.completion.chunk",
                                 "created": int(time.time()),
-                                "model": "gpt-4.1",
+                                "model": "gpt-4.1-mini",
                                 "choices": [{
                                     "index": 0,
                                     "delta": {
@@ -2953,7 +2953,7 @@ async def process_conversation(
                             "id": f"chatcmpl-{run_id or 'stream'}",
                             "object": "chat.completion.chunk",
                             "created": int(time.time()),
-                            "model": "gpt-4.1",
+                            "model": "gpt-4.1-mini",
                             "choices": [{
                                 "index": 0,
                                 "delta": {},
@@ -2975,7 +2975,7 @@ async def process_conversation(
                                 "id": f"chatcmpl-{run_id or 'stream'}",
                                 "object": "chat.completion.chunk",
                                 "created": int(time.time()),
-                                "model": "gpt-4.1",
+                                "model": "gpt-4.1-mini",
                                 "choices": [{
                                     "index": 0,
                                     "delta": {
@@ -3049,7 +3049,7 @@ async def process_conversation(
                                             "id": f"chatcmpl-{run_id or 'stream'}",
                                             "object": "chat.completion.chunk",
                                             "created": int(time.time()),
-                                            "model": "gpt-4.1",
+                                            "model": "gpt-4.1-mini",
                                             "choices": [{
                                                 "index": 0,
                                                 "delta": {
@@ -3086,7 +3086,7 @@ async def process_conversation(
                                             "id": f"chatcmpl-{run_id or 'stream'}",
                                             "object": "chat.completion.chunk",
                                             "created": int(time.time()),
-                                            "model": "gpt-4.1",
+                                            "model": "gpt-4.1-mini",
                                             "choices": [{
                                                 "index": 0,
                                                 "delta": {
@@ -3112,7 +3112,7 @@ async def process_conversation(
                                     "id": f"chatcmpl-{run_id or 'stream'}",
                                     "object": "chat.completion.chunk",
                                     "created": int(time.time()),
-                                    "model": "gpt-4.1",
+                                    "model": "gpt-4.1-mini",
                                     "choices": [{
                                         "index": 0,
                                         "delta": {
@@ -3144,7 +3144,7 @@ async def process_conversation(
                                         "id": f"chatcmpl-{run_id or 'stream'}",
                                         "object": "chat.completion.chunk",
                                         "created": int(time.time()),
-                                        "model": "gpt-4.1",
+                                        "model": "gpt-4.1-mini",
                                         "choices": [{
                                             "index": 0,
                                             "delta": {
@@ -3164,7 +3164,7 @@ async def process_conversation(
                         "id": f"chatcmpl-{run_id or 'stream'}",
                         "object": "chat.completion.chunk",
                         "created": int(time.time()),
-                        "model": "gpt-4.1",
+                        "model": "gpt-4.1-mini",
                         "choices": [{
                             "index": 0,
                             "delta": {
@@ -3224,7 +3224,7 @@ async def process_conversation(
                                                 "id": f"chatcmpl-{run_id}",
                                                 "object": "chat.completion.chunk",
                                                 "created": int(time.time()),
-                                                "model": "gpt-4.1",
+                                                "model": "gpt-4.1-mini",
                                                 "choices": [{
                                                     "index": 0,
                                                     "delta": {
@@ -3240,7 +3240,7 @@ async def process_conversation(
                                             "id": f"chatcmpl-{run_id}",
                                             "object": "chat.completion.chunk",
                                             "created": int(time.time()),
-                                            "model": "gpt-4.1",
+                                            "model": "gpt-4.1-mini",
                                             "choices": [{
                                                 "index": 0,
                                                 "delta": {},
@@ -3257,7 +3257,7 @@ async def process_conversation(
                                 "id": f"chatcmpl-{run_id}",
                                 "object": "chat.completion.chunk",
                                 "created": int(time.time()),
-                                "model": "gpt-4.1",
+                                "model": "gpt-4.1-mini",
                                 "choices": [{
                                     "index": 0,
                                     "delta": {
@@ -3281,7 +3281,7 @@ async def process_conversation(
                                 "id": f"chatcmpl-{run_id}",
                                 "object": "chat.completion.chunk",
                                 "created": int(time.time()),
-                                "model": "gpt-4.1",
+                                "model": "gpt-4.1-mini",
                                 "choices": [{
                                     "index": 0,
                                     "delta": {
@@ -3301,7 +3301,7 @@ async def process_conversation(
                 "id": "chatcmpl-error",
                 "object": "chat.completion.chunk",
                 "created": int(time.time()),
-                "model": "gpt-4.1",
+                "model": "gpt-4.1-mini",
                 "choices": [{
                     "index": 0,
                     "delta": {
@@ -3334,7 +3334,7 @@ async def process_conversation(
                 try:
                     assistant_obj = client.beta.assistants.create(
                         name=f"recovery_assistant_{int(time.time())}",
-                        model="gpt-4.1",
+                        model="gpt-4.1-mini",
                         instructions="You are a helpful assistant recovering from a system error.",
                     )
                     assistant = assistant_obj.id
@@ -3349,7 +3349,7 @@ async def process_conversation(
             try:
                 assistant_obj = client.beta.assistants.create(
                     name="default_conversation_assistant",
-                    model="gpt-4.1",
+                    model="gpt-4.1-mini",
                     instructions="You are a helpful conversation assistant.",
                 )
                 assistant = assistant_obj.id
@@ -3483,8 +3483,21 @@ async def process_conversation(
                         
                         # Handle failed/cancelled/expired run
                         elif run_status.status in ["failed", "cancelled", "expired"]:
-                            logging.error(f"Run ended with status: {run_status.status}")
-                            return JSONResponse(content={"response": f"Sorry, I encountered an error and couldn't complete your request. Run status: {run_status.status}. Please try again."})
+                            error_details = ""
+                            if run_status.status == "failed" and hasattr(run_status, 'last_error') and run_status.last_error:
+                                error_details = f" Error: {run_status.last_error.message if hasattr(run_status.last_error, 'message') else str(run_status.last_error)}"
+                                error_code = run_status.last_error.code if hasattr(run_status.last_error, 'code') else 'unknown'
+                                logging.error(f"Run failed with error code '{error_code}': {error_details}")
+                            else:
+                                logging.error(f"Run ended with status: {run_status.status}")
+                            
+                            # Try to provide a more helpful error message
+                            if "rate_limit" in error_details.lower():
+                                return JSONResponse(content={"response": "I'm experiencing high demand. Please try again in a moment."})
+                            elif "context_length" in error_details.lower():
+                                return JSONResponse(content={"response": "The conversation has become too long. Please start a new conversation."})
+                            else:
+                                return JSONResponse(content={"response": f"Sorry, I encountered an error. {error_details if error_details else 'Please try again.'}"})
                         
                         # Handle tool calls
                         elif run_status.status == "requires_action":
@@ -3880,7 +3893,7 @@ async def test_download_functionality():
 async def chat_completion(
     request: Request,
     prompt: str = Form(...),
-    model: str = Form("gpt-4.1"),
+    model: str = Form("gpt-4.1-mini"),
     temperature: float = Form(0.8),
     max_tokens: int = Form(1000),
     system_message: Optional[str] = Form(None),
@@ -3900,6 +3913,7 @@ async def chat_completion(
     import mimetypes
     import traceback
     from io import StringIO, BytesIO
+    import asyncio
     
     client = create_client()
     
@@ -3930,21 +3944,20 @@ CRITICAL RULES:
   ]
 }
 
-2. Generate 50-100 rows of realistic, diverse data
+2. Generate 25-50 rows of realistic, diverse data (to avoid token limits)
 3. Keep values simple - no commas or special characters that break CSV
 4. Use appropriate column names based on the request
 5. Ensure all rows have the same number of values as columns
+6. Keep responses concise to avoid rate limits
 
 Example for product reviews:
 {
   "columns": ["id", "username", "rating", "title", "review", "date", "verified", "helpful_votes"],
   "data": [
-    ["1", "john_doe", "5", "Amazing product", "This product exceeded my expectations in every way", "2024-06-01", "true", "42"],
-    ["2", "jane_smith", "4", "Very good quality", "Happy with my purchase but shipping was slow", "2024-06-02", "true", "18"]
+    ["1", "john_doe", "5", "Amazing product", "This product exceeded my expectations", "2024-06-01", "true", "42"],
+    ["2", "jane_smith", "4", "Very good quality", "Happy with my purchase", "2024-06-02", "true", "18"]
   ]
-}
-
-IMPORTANT: Generate exactly what was requested. Be creative with the data but keep the format strict."""
+}"""
 
             elif output_format == 'excel':
                 system_message = """You are a JSON data generator that outputs structured data for Excel conversion.
@@ -3964,10 +3977,10 @@ CRITICAL RULES:
   }
 }
 
-2. Generate 50-100 rows of realistic data per sheet
-3. You can create multiple sheets if appropriate for the request
+2. Generate 25-50 rows of realistic data per sheet (to avoid token limits)
+3. Maximum 2 sheets to keep response size manageable
 4. Use appropriate data types (numbers should be numbers, not strings)
-5. Include a summary sheet if the request seems to warrant it
+5. Keep data concise to avoid rate limits
 
 Example for sales data:
 {
@@ -3978,19 +3991,9 @@ Example for sales data:
         ["ORD-001", "2024-06-01", "ABC Corp", "Widget Pro", 5, 29.99, 149.95],
         ["ORD-002", "2024-06-01", "XYZ Ltd", "Gadget Plus", 3, 49.99, 149.97]
       ]
-    },
-    "Summary": {
-      "columns": ["Metric", "Value"],
-      "data": [
-        ["Total Orders", 100],
-        ["Total Revenue", 15000],
-        ["Average Order Value", 150]
-      ]
     }
   }
-}
-
-Generate comprehensive data with multiple sheets if it makes sense for the request."""
+}"""
 
             elif output_format == 'docx':
                 system_message = """You are a professional document generator creating comprehensive, publication-ready documents.
@@ -4001,6 +4004,8 @@ Use rich markdown formatting to create EXTENSIVE documents (10-50+ pages worth):
 ## Executive Summary (500-1000 words)
 [Comprehensive overview with key findings, recommendations, and impact analysis]
 
+## Table of Contents
+[Auto-generated based on your extensive content]
 
 ## 1. Introduction (1000-2000 words)
 ### 1.1 Background
@@ -4069,24 +4074,23 @@ Remember: You are a GENERATIVE AI. Be creative, thorough, and produce substantia
             # Extract any specific number mentioned in the prompt
             number_match = re.search(r'(\d+)\s*(reviews?|records?|rows?|entries|items?|products?|customers?|transactions?)', prompt.lower())
             if number_match:
-                requested_count = min(int(number_match.group(1)), 100)  # Cap at 100 for simplicity
+                requested_count = min(int(number_match.group(1)), 50)  # Cap at 50 to avoid rate limits
                 enhanced_prompt += f"\n\nGenerate exactly {requested_count} rows of data."
             else:
-                enhanced_prompt += "\n\nGenerate 50-100 rows of comprehensive, realistic data."
+                enhanced_prompt += "\n\nGenerate 30-40 rows of comprehensive, realistic data."
             
-            enhanced_prompt += "\n\nRemember: Output ONLY the JSON object with 'columns' and 'data' arrays. No other text."
+            enhanced_prompt += "\n\nRemember: Output ONLY the JSON object with 'columns' and 'data' arrays. Keep it concise."
         
         elif output_format == 'excel':
             # Extract number if mentioned
             number_match = re.search(r'(\d+)\s*(reviews?|records?|rows?|entries|items?|products?|customers?|transactions?)', prompt.lower())
             if number_match:
-                requested_count = min(int(number_match.group(1)), 100)  # Cap at 100
+                requested_count = min(int(number_match.group(1)), 50)  # Cap at 50
                 enhanced_prompt += f"\n\nGenerate {requested_count} rows of data in the main sheet."
             else:
-                enhanced_prompt += "\n\nGenerate 50-100 rows of data with appropriate sheets."
+                enhanced_prompt += "\n\nGenerate 30-40 rows of data."
             
-            enhanced_prompt += "\n\nIf appropriate, include a Summary sheet with key statistics."
-            enhanced_prompt += "\n\nRemember: Output ONLY the JSON object with 'sheets'. No other text."
+            enhanced_prompt += "\n\nKeep the response concise. Output ONLY the JSON object with 'sheets'. No other text."
         
         elif output_format == 'docx':
             if 'page' not in prompt.lower() and 'comprehensive' not in prompt.lower():
@@ -4133,44 +4137,71 @@ Remember: You are a GENERATIVE AI. Be creative, thorough, and produce substantia
         
         messages.append({"role": "user", "content": user_content})
         
-        # Set appropriate max_tokens
+        # Set appropriate max_tokens - REDUCED for rate limit handling
         actual_max_tokens = max_tokens
         if output_format in ['excel', 'csv']:
-            actual_max_tokens = max(max_tokens, 8000)
+            actual_max_tokens = min(max_tokens, 3000)  # Reduced from 8000
         elif output_format == 'docx':
-            actual_max_tokens = max(max_tokens, 12000)
+            actual_max_tokens = max(max_tokens, 8000)  # Keep higher for documents
         else:
             actual_max_tokens = max(max_tokens, 4000)
+        
+        # Add small delay to avoid rate limits
+        if output_format in ['excel', 'csv']:
+            await asyncio.sleep(0.5)  # 500ms delay before API call
         
         # Make the API call with response_format for structured outputs
         response_content = None
         completion = None
         
-        try:
-            request_params = {
-                "model": model,
-                "messages": messages,
-                "temperature": 0.7 if output_format in ['csv', 'excel'] else temperature,
-                "max_tokens": actual_max_tokens
-            }
-            
-            # Add response_format for CSV and Excel
-            if output_format in ['csv', 'excel']:
-                request_params["response_format"] = {"type": "json_object"}
-            
-            completion = client.chat.completions.create(**request_params)
-            response_content = completion.choices[0].message.content
-            
-        except Exception as e:
-            logging.error(f"OpenAI API error: {e}")
-            return JSONResponse(
-                status_code=503,
-                content={
-                    "status": "error",
-                    "error": "AI service temporarily unavailable",
-                    "message": "Please try again in a moment"
+        # Retry logic for rate limits
+        max_retries = 3
+        retry_delay = 1
+        
+        for attempt in range(max_retries):
+            try:
+                request_params = {
+                    "model": model,
+                    "messages": messages,
+                    "temperature": 0.5 if output_format in ['csv', 'excel'] else temperature,  # Lower temperature
+                    "max_tokens": actual_max_tokens
                 }
-            )
+                
+                # Add response_format for CSV and Excel
+                if output_format in ['csv', 'excel']:
+                    request_params["response_format"] = {"type": "json_object"}
+                
+                completion = client.chat.completions.create(**request_params)
+                response_content = completion.choices[0].message.content
+                break  # Success, exit retry loop
+                
+            except Exception as e:
+                if "429" in str(e) or "Too Many Requests" in str(e):
+                    if attempt < max_retries - 1:
+                        logging.warning(f"Rate limit hit, retrying in {retry_delay} seconds... (attempt {attempt + 1}/{max_retries})")
+                        await asyncio.sleep(retry_delay)
+                        retry_delay *= 2  # Exponential backoff
+                        continue
+                    else:
+                        logging.error(f"Rate limit exceeded after {max_retries} attempts")
+                        return JSONResponse(
+                            status_code=429,
+                            content={
+                                "status": "error",
+                                "error": "Rate limit exceeded",
+                                "message": "Please try again in a few moments. Consider reducing the amount of data requested."
+                            }
+                        )
+                else:
+                    logging.error(f"OpenAI API error: {e}")
+                    return JSONResponse(
+                        status_code=503,
+                        content={
+                            "status": "error",
+                            "error": "AI service temporarily unavailable",
+                            "message": "Please try again in a moment"
+                        }
+                    )
         
         # Generate file if format specified
         download_url = None
@@ -4248,15 +4279,14 @@ Remember: You are a GENERATIVE AI. Be creative, thorough, and produce substantia
                                         worksheet = writer.sheets[safe_sheet_name]
                                         worksheet.auto_filter.ref = worksheet.dimensions
                                         
-                                        # Auto-adjust column widths
-                                        for column in df.columns[:20]:  # First 20 columns only
+                                        # Auto-adjust column widths (limit processing)
+                                        for idx, column in enumerate(df.columns[:10]):  # Only first 10 columns
                                             column_length = max(
                                                 df[column].astype(str).map(len).max(),
                                                 len(str(column))
                                             )
-                                            col_idx = df.columns.get_loc(column)
-                                            if col_idx < 26:
-                                                col_letter = chr(65 + col_idx)
+                                            if idx < 26:
+                                                col_letter = chr(65 + idx)
                                                 worksheet.column_dimensions[col_letter].width = min(column_length + 2, 40)
                                         
                                         sheets_created += 1
@@ -4503,7 +4533,7 @@ async def extract_reviews(
     request: Request,
     file: UploadFile = Form(...),
     columns: Optional[str] = Form("user,review,rating,date,source"),
-    model: str = Form("gpt-4.1"),
+    model: str = Form("gpt-4.1-mini"),
     temperature: float = Form(0.1),
     output_format: str = Form("csv"),
     max_text_length: int = Form(50000)  # Increased from 10000
@@ -5267,7 +5297,7 @@ async def comprehensive_health_check():
             
             # Try a simple completion to verify model access
             test_completion = client.chat.completions.create(
-                model="gpt-4.1",
+                model="gpt-4.1-mini",
                 messages=[{"role": "user", "content": "Hi"}],
                 max_tokens=5,
                 temperature=0
@@ -5283,7 +5313,7 @@ async def comprehensive_health_check():
             # Try basic completion only
             try:
                 test_completion = client.chat.completions.create(
-                    model="gpt-4.1",
+                    model="gpt-4.1-mini",
                     messages=[{"role": "user", "content": "Hi"}],
                     max_tokens=5
                 )
@@ -5419,7 +5449,7 @@ async def comprehensive_health_check():
             result = await chat_completion(
                 request=mock_request,
                 prompt="test",
-                model="gpt-4.1",
+                model="gpt-4.1-mini",
                 temperature=0,
                 max_tokens=1
             )
@@ -5593,7 +5623,7 @@ async def test_specific_endpoint(
             result = await chat_completion(
                 request=mock_request,
                 prompt=test_data or "Hello, this is a test",
-                model="gpt-4.1",
+                model="gpt-4.1-mini",
                 temperature=0.5,
                 max_tokens=50
             )
@@ -5617,7 +5647,7 @@ async def test_specific_endpoint(
                 request=mock_request,
                 file=mock_file,
                 columns="user,review,rating",
-                model="gpt-4.1",
+                model="gpt-4.1-mini",
                 temperature=0.1,
                 output_format="csv"
             )
