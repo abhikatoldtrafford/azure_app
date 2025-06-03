@@ -5669,7 +5669,7 @@ from fastapi.responses import HTMLResponse
 @app.get("/", response_class=HTMLResponse)
 async def serve_chatbot():
     """Serve the modern chatbot interface at the root endpoint"""
-    return """<!DOCTYPE html>
+    return r"""<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
