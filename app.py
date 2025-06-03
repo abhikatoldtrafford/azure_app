@@ -5662,28 +5662,24 @@ async def test_specific_endpoint(
         test_results["traceback"] = traceback.format_exc()
     
     return JSONResponse(test_results)
-from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
-
-app = FastAPI()
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_chatbot():
+    """Serve the modern chatbot interface at the root endpoint"""
     return """<!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Assistant</title>
     <style>
-        /* ==========================
-           Variables & Global Resets
-           ========================== */
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
+
         :root {
             --bg-primary: #212121;
             --bg-secondary: #171717;
@@ -5696,56 +5692,53 @@ async def serve_chatbot():
             --shadow: rgba(0, 0, 0, 0.5);
             --message-user: #303030;
             --message-assistant: #1a1a1a;
-            --radius: 8px;
-            --transition-speed: 0.2s;
-            --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-        }
-        html, body {
-            width: 100%;
-            height: 100%;
-            background-color: var(--bg-primary);
-            color: var(--text-primary);
-            font-family: var(--font-family);
-            overflow: hidden;
-        }
-        a {
-            color: inherit;
-            text-decoration: none;
         }
 
-        /* ==========================
-           Header
-           ========================== */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Header */
         .header {
             background-color: var(--bg-secondary);
             border-bottom: 1px solid var(--border);
+            padding: 0 20px;
             height: 60px;
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 0 20px;
             flex-shrink: 0;
         }
+
         .header-left {
             display: flex;
             align-items: center;
             gap: 12px;
         }
+
         .menu-btn {
             background: none;
             border: none;
             color: var(--text-primary);
             cursor: pointer;
             padding: 8px;
-            border-radius: var(--radius);
-            transition: background-color var(--transition-speed);
+            border-radius: 8px;
+            transition: background-color 0.2s;
             display: flex;
             align-items: center;
             justify-content: center;
         }
+
         .menu-btn:hover {
             background-color: var(--bg-tertiary);
         }
+
         .app-title {
             font-size: 18px;
             font-weight: 600;
@@ -5753,35 +5746,33 @@ async def serve_chatbot():
             align-items: center;
             gap: 8px;
         }
+
         .model-selector {
             background-color: var(--bg-tertiary);
             border: 1px solid var(--border);
             color: var(--text-primary);
             padding: 8px 16px;
-            border-radius: var(--radius);
+            border-radius: 8px;
             cursor: pointer;
             font-size: 14px;
             display: flex;
             align-items: center;
             gap: 8px;
-            transition: background-color var(--transition-speed);
+            transition: all 0.2s;
         }
+
         .model-selector:hover {
             background-color: #333;
         }
 
-        /* ==========================
-           Layout
-           ========================== */
+        /* Layout */
         .main-container {
             display: flex;
             flex: 1;
             overflow: hidden;
         }
 
-        /* ==========================
-           Sidebar
-           ========================== */
+        /* Sidebar */
         .sidebar {
             width: 260px;
             background-color: var(--bg-secondary);
@@ -5790,62 +5781,71 @@ async def serve_chatbot():
             flex-direction: column;
             transition: transform 0.3s ease;
         }
+
         .sidebar.closed {
             transform: translateX(-100%);
             margin-left: -260px;
         }
+
         .new-chat-btn {
             margin: 16px;
             padding: 12px;
-            background-color: var(--bg-tertiary);
+            background-color: transparent;
             border: 1px solid var(--border);
-            border-radius: var(--radius);
+            border-radius: 8px;
             color: var(--text-primary);
             cursor: pointer;
             display: flex;
             align-items: center;
             gap: 12px;
             font-size: 14px;
-            transition: background-color var(--transition-speed);
+            transition: all 0.2s;
         }
+
         .new-chat-btn:hover {
-            background-color: #333;
+            background-color: var(--bg-tertiary);
         }
+
         .chat-history {
             flex: 1;
             overflow-y: auto;
             padding: 0 16px;
         }
+
         .chat-history-item {
             padding: 12px;
-            border-radius: var(--radius);
+            border-radius: 8px;
             cursor: pointer;
             margin-bottom: 4px;
-            transition: background-color var(--transition-speed), color var(--transition-speed);
+            transition: background-color 0.2s;
             font-size: 14px;
             display: flex;
             align-items: center;
             gap: 8px;
             color: var(--text-secondary);
         }
+
         .chat-history-item:hover {
             background-color: var(--bg-tertiary);
             color: var(--text-primary);
         }
+
         .chat-history-item.active {
             background-color: var(--bg-tertiary);
             color: var(--text-primary);
         }
+
         .sidebar-footer {
             padding: 16px;
             border-top: 1px solid var(--border);
         }
+
         .upload-btn {
             width: 100%;
             padding: 10px;
-            background-color: var(--bg-tertiary);
+            background-color: transparent;
             border: 1px solid var(--border);
-            border-radius: var(--radius);
+            border-radius: 8px;
             color: var(--text-secondary);
             cursor: pointer;
             display: flex;
@@ -5853,32 +5853,34 @@ async def serve_chatbot():
             justify-content: center;
             gap: 8px;
             font-size: 14px;
-            transition: background-color var(--transition-speed), color var(--transition-speed);
+            transition: all 0.2s;
         }
+
         .upload-btn:hover {
-            background-color: #333;
+            background-color: var(--bg-tertiary);
             color: var(--text-primary);
         }
 
-        /* ==========================
-           Chat Area
-           ========================== */
+        /* Chat Area */
         .chat-area {
             flex: 1;
             display: flex;
             flex-direction: column;
             background-color: var(--bg-primary);
         }
+
         .messages-container {
             flex: 1;
             overflow-y: auto;
             padding: 20px 0;
         }
+
         .message-wrapper {
             display: flex;
             justify-content: center;
             padding: 20px 0;
         }
+
         .message {
             max-width: 800px;
             width: 100%;
@@ -5886,6 +5888,7 @@ async def serve_chatbot():
             display: flex;
             gap: 20px;
         }
+
         .message-avatar {
             width: 30px;
             height: 30px;
@@ -5897,41 +5900,40 @@ async def serve_chatbot():
             font-weight: 600;
             flex-shrink: 0;
         }
+
         .user-avatar {
             background-color: #5436da;
             color: white;
         }
+
         .assistant-avatar {
             background-color: var(--accent);
             color: white;
         }
+
         .message-content {
             flex: 1;
             line-height: 1.6;
             word-wrap: break-word;
-            background-color: var(--message-user);
-            border-radius: var(--radius);
-            padding: 12px 16px;
-            position: relative;
-            font-size: 15px;
         }
-        .assistant-avatar + .message-content {
-            background-color: var(--message-assistant);
-        }
+
         .message-content p {
             margin-bottom: 12px;
         }
+
         .message-content p:last-child {
             margin-bottom: 0;
         }
+
         .message-content pre {
             background-color: var(--bg-tertiary);
             border: 1px solid var(--border);
-            border-radius: var(--radius);
+            border-radius: 6px;
             padding: 16px;
             overflow-x: auto;
             margin: 12px 0;
         }
+
         .message-content code {
             background-color: var(--bg-tertiary);
             padding: 2px 6px;
@@ -5939,19 +5941,19 @@ async def serve_chatbot():
             font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
             font-size: 14px;
         }
+
         .message-content pre code {
             background-color: transparent;
             padding: 0;
         }
 
-        /* ==========================
-           Typing Indicator
-           ========================== */
+        /* Typing indicator */
         .typing-indicator {
             display: flex;
             gap: 4px;
             padding: 10px 0;
         }
+
         .typing-dot {
             width: 8px;
             height: 8px;
@@ -5959,12 +5961,15 @@ async def serve_chatbot():
             border-radius: 50%;
             animation: typing 1.4s ease-in-out infinite;
         }
+
         .typing-dot:nth-child(2) {
             animation-delay: 0.2s;
         }
+
         .typing-dot:nth-child(3) {
             animation-delay: 0.4s;
         }
+
         @keyframes typing {
             0%, 60%, 100% {
                 opacity: 0.3;
@@ -5974,33 +5979,34 @@ async def serve_chatbot():
             }
         }
 
-        /* ==========================
-           Input Area
-           ========================== */
+        /* Input Area */
         .input-area {
             border-top: 1px solid var(--border);
             background-color: var(--bg-primary);
-            padding: 20px 0;
-            flex-shrink: 0;
+            padding: 20px;
         }
+
         .input-container {
             max-width: 800px;
             margin: 0 auto;
             position: relative;
         }
+
         .input-wrapper {
             background-color: var(--bg-secondary);
             border: 1px solid var(--border);
-            border-radius: var(--radius);
+            border-radius: 12px;
             display: flex;
             align-items: flex-end;
             padding: 12px;
             gap: 12px;
-            transition: border-color var(--transition-speed);
+            transition: border-color 0.2s;
         }
+
         .input-wrapper:focus-within {
             border-color: #555;
         }
+
         .chat-input {
             flex: 1;
             background: none;
@@ -6013,82 +6019,87 @@ async def serve_chatbot():
             line-height: 1.5;
             font-family: inherit;
         }
+
         .chat-input::placeholder {
             color: var(--text-secondary);
         }
+
         .input-actions {
             display: flex;
             gap: 8px;
             align-items: center;
         }
+
         .attach-btn {
             background: none;
             border: none;
             color: var(--text-secondary);
             cursor: pointer;
             padding: 8px;
-            border-radius: var(--radius);
-            transition: background-color var(--transition-speed), color var(--transition-speed);
+            border-radius: 6px;
+            transition: all 0.2s;
             display: flex;
             align-items: center;
             justify-content: center;
         }
+
         .attach-btn:hover {
             background-color: var(--bg-tertiary);
             color: var(--text-primary);
         }
+
         .send-btn {
             background-color: var(--accent);
             border: none;
             color: white;
             cursor: pointer;
             padding: 8px;
-            border-radius: var(--radius);
-            transition: background-color var(--transition-speed);
+            border-radius: 6px;
+            transition: all 0.2s;
             display: flex;
             align-items: center;
             justify-content: center;
         }
+
         .send-btn:hover:not(:disabled) {
             background-color: var(--accent-hover);
         }
+
         .send-btn:disabled {
             opacity: 0.5;
             cursor: not-allowed;
         }
 
-        /* ==========================
-           File Upload Indicator
-           ========================== */
+        /* File upload indicator */
         .file-indicator {
             display: flex;
             align-items: center;
             gap: 8px;
             padding: 8px 12px;
             background-color: var(--bg-tertiary);
-            border-radius: var(--radius);
+            border-radius: 6px;
             font-size: 14px;
             margin-bottom: 12px;
         }
+
         .remove-file {
             cursor: pointer;
             color: var(--text-secondary);
-            transition: color var(--transition-speed);
-            font-size: 16px;
+            transition: color 0.2s;
         }
+
         .remove-file:hover {
             color: var(--text-primary);
         }
 
-        /* ==========================
-           Suggestions
-           ========================== */
+        /* Suggestions */
         .suggestions {
             display: flex;
             gap: 8px;
             margin-top: 12px;
             flex-wrap: wrap;
         }
+
         .suggestion-chip {
             padding: 8px 16px;
             background-color: var(--bg-secondary);
@@ -6096,18 +6107,17 @@ async def serve_chatbot():
             border-radius: 20px;
             font-size: 14px;
             cursor: pointer;
-            transition: background-color var(--transition-speed), color var(--transition-speed), transform var(--transition-speed);
+            transition: all 0.2s;
             color: var(--text-secondary);
         }
+
         .suggestion-chip:hover {
             background-color: var(--bg-tertiary);
             color: var(--text-primary);
             transform: translateY(-1px);
         }
 
-        /* ==========================
-           Toast Notifications
-           ========================== */
+        /* Toast notifications */
         .toast {
             position: fixed;
             bottom: 20px;
@@ -6116,19 +6126,22 @@ async def serve_chatbot():
             background-color: var(--bg-tertiary);
             color: var(--text-primary);
             padding: 16px 24px;
-            border-radius: var(--radius);
+            border-radius: 8px;
             box-shadow: 0 4px 12px var(--shadow);
             font-size: 14px;
             opacity: 0;
             animation: toastIn 0.3s forwards;
             z-index: 1000;
         }
+
         .toast.error {
             background-color: #dc3545;
         }
+
         .toast.success {
             background-color: var(--accent);
         }
+
         @keyframes toastIn {
             to {
                 opacity: 1;
@@ -6136,9 +6149,7 @@ async def serve_chatbot():
             }
         }
 
-        /* ==========================
-           Responsive Adjustments
-           ========================== */
+        /* Responsive */
         @media (max-width: 768px) {
             .sidebar {
                 position: fixed;
@@ -6146,41 +6157,34 @@ async def serve_chatbot():
                 z-index: 100;
                 box-shadow: 2px 0 8px var(--shadow);
             }
+
             .sidebar.closed {
                 box-shadow: none;
             }
+
             .message {
                 padding: 0 16px;
             }
+
             .input-area {
                 padding: 16px;
             }
-            .app-title {
-                font-size: 16px;
-            }
-            .model-selector {
-                font-size: 13px;
-                padding: 6px 12px;
-            }
-            .new-chat-btn {
-                padding: 10px 12px;
-                font-size: 13px;
-            }
         }
 
-        /* ==========================
-           Scrollbar Styling
-           ========================== */
+        /* Scrollbar */
         ::-webkit-scrollbar {
             width: 8px;
         }
+
         ::-webkit-scrollbar-track {
             background: var(--bg-secondary);
         }
+
         ::-webkit-scrollbar-thumb {
             background: var(--bg-tertiary);
             border-radius: 4px;
         }
+
         ::-webkit-scrollbar-thumb:hover {
             background: #444;
         }
@@ -6190,7 +6194,7 @@ async def serve_chatbot():
     <!-- Header -->
     <div class="header">
         <div class="header-left">
-            <button class="menu-btn" onclick="toggleSidebar()" aria-label="Toggle Sidebar">
+            <button class="menu-btn" onclick="toggleSidebar()">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <line x1="3" y1="12" x2="21" y2="12"></line>
                     <line x1="3" y1="6" x2="21" y2="6"></line>
@@ -6202,7 +6206,7 @@ async def serve_chatbot():
                 <span>AI Assistant</span>
             </div>
         </div>
-        <button class="model-selector" id="modelSelector" aria-label="Select Model">
+        <button class="model-selector">
             <span>GPT-4 Model</span>
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
                 <polyline points="4 6 8 10 12 6"></polyline>
@@ -6213,8 +6217,8 @@ async def serve_chatbot():
     <!-- Main Container -->
     <div class="main-container">
         <!-- Sidebar -->
-        <div class="sidebar closed" id="sidebar">
-            <button class="new-chat-btn" onclick="createNewChat()" aria-label="New Chat">
+        <div class="sidebar" id="sidebar">
+            <button class="new-chat-btn" onclick="createNewChat()">
                 <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
                     <line x1="10" y1="5" x2="10" y2="15"></line>
                     <line x1="5" y1="10" x2="15" y2="10"></line>
@@ -6227,15 +6231,15 @@ async def serve_chatbot():
             </div>
             
             <div class="sidebar-footer">
-                <button class="upload-btn" onclick="document.getElementById('fileInput').click()" aria-label="Upload Files">
+                <button class="upload-btn" onclick="document.getElementById('fileInput').click()">
                     <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M10 15V3M10 3L6 7M10 3L14 7M3 13V17H17V13"></path>
                     </svg>
                     <span>Upload files</span>
                 </button>
-                <input type="file" id="fileInput" style="display: none;"
-                       accept=".txt,.pdf,.docx,.html,.xlsx,.csv,.jpg,.jpeg,.png,.gif,.bmp,.webp"
-                       onchange="handleFileUpload(event)" multiple />
+                <input type="file" id="fileInput" style="display: none;" 
+                       accept=".txt,.pdf,.docx,.html,.xlsx,.csv,.jpg,.jpeg,.png,.gif,.bmp,.webp" 
+                       onchange="handleFileUpload(event)" multiple>
             </div>
         </div>
 
@@ -6257,7 +6261,7 @@ async def serve_chatbot():
                 <div class="input-container">
                     <div id="fileIndicator" style="display: none;" class="file-indicator">
                         <span id="fileName"></span>
-                        <span class="remove-file" onclick="removeFile()" aria-label="Remove File">✕</span>
+                        <span class="remove-file" onclick="removeFile()">✕</span>
                     </div>
                     <div class="input-wrapper">
                         <textarea 
@@ -6268,12 +6272,12 @@ async def serve_chatbot():
                             onkeydown="handleKeyDown(event)"
                             oninput="autoResize(this)"></textarea>
                         <div class="input-actions">
-                            <button class="attach-btn" onclick="document.getElementById('fileInput').click()" aria-label="Attach File">
+                            <button class="attach-btn" onclick="document.getElementById('fileInput').click()">
                                 <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
                                     <path d="M10.5 13.5L6.5 9.5C5.5 8.5 5.5 7 6.5 6C7.5 5 9 5 10 6L14 10C15.5 11.5 15.5 13.5 14 15C12.5 16.5 10.5 16.5 9 15L5 11"></path>
                                 </svg>
                             </button>
-                            <button class="send-btn" id="sendBtn" onclick="sendMessage()" aria-label="Send Message">
+                            <button class="send-btn" id="sendBtn" onclick="sendMessage()">
                                 <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
                                     <path d="M2 10L18 2L10 18L8 11L2 10Z"></path>
                                 </svg>
@@ -6289,14 +6293,10 @@ async def serve_chatbot():
     </div>
 
     <script>
-        // ==========================
         // API Configuration
-        // ==========================
         const API_BASE_URL = window.location.origin;
 
-        // ==========================
         // Application State
-        // ==========================
         let state = {
             assistantId: null,
             sessionId: null,
@@ -6309,46 +6309,37 @@ async def serve_chatbot():
             threadCounter: 1
         };
 
-        // ==========================
-        // Initialization
-        // ==========================
+        // Initialize
         document.addEventListener('DOMContentLoaded', () => {
             createNewChat();
         });
 
-        // ==========================
-        // Sidebar Toggle
-        // ==========================
+        // Toggle sidebar
         function toggleSidebar() {
             const sidebar = document.getElementById('sidebar');
             sidebar.classList.toggle('closed');
         }
 
-        // ==========================
-        // Toast Notifications
-        // ==========================
+        // Show toast notification
         function showToast(message, type = 'info') {
             const toast = document.createElement('div');
             toast.className = `toast ${type}`;
             toast.textContent = message;
             document.body.appendChild(toast);
+            
             setTimeout(() => {
                 toast.style.opacity = '0';
                 setTimeout(() => toast.remove(), 300);
             }, 3000);
         }
 
-        // ==========================
-        // Auto-resize Textarea
-        // ==========================
+        // Auto-resize textarea
         function autoResize(textarea) {
             textarea.style.height = 'auto';
             textarea.style.height = textarea.scrollHeight + 'px';
         }
 
-        // ==========================
-        // Key Down Handler
-        // ==========================
+        // Handle key down
         function handleKeyDown(event) {
             if (event.key === 'Enter' && !event.shiftKey) {
                 event.preventDefault();
@@ -6356,44 +6347,46 @@ async def serve_chatbot():
             }
         }
 
-        // ==========================
-        // Create New Chat Thread
-        // ==========================
-        function createNewChat() {
+        // Create new chat
+        async function createNewChat() {
             const threadId = 'thread_' + Date.now();
             const threadName = `Chat ${state.threadCounter++}`;
-
+            
             state.threads[threadId] = {
                 name: threadName,
                 created: new Date().toISOString(),
                 messages: []
             };
+            
             state.activeThread = threadId;
             state.chatHistory[threadId] = [];
-
+            
             updateChatHistory();
             clearMessages();
-            addMessage('assistant', "Hello! I'm your AI assistant. How can I help you today?");
+            addMessage('assistant', 'Hello! I\\'m your AI assistant. How can I help you today?');
         }
 
-        // ==========================
-        // Initialize Assistant
-        // ==========================
+        // Initialize assistant (called automatically on first message)
         async function initializeAssistant() {
             try {
                 const formData = new FormData();
+                
                 if (state.uploadedFile) {
                     formData.append('file', state.uploadedFile);
                 }
+
                 const response = await fetch(`${API_BASE_URL}/initiate-chat`, {
                     method: 'POST',
                     body: formData
                 });
+
                 if (!response.ok) throw new Error('Failed to initialize assistant');
+
                 const data = await response.json();
                 state.assistantId = data.assistant;
                 state.sessionId = data.session;
                 state.vectorStoreId = data.vector_store;
+
                 return true;
             } catch (error) {
                 showToast('Failed to initialize assistant', 'error');
@@ -6402,41 +6395,46 @@ async def serve_chatbot():
             }
         }
 
-        // ==========================
-        // Send Message
-        // ==========================
+        // Send message
         async function sendMessage() {
-            const inputEl = document.getElementById('chatInput');
-            const message = inputEl.value.trim();
+            const input = document.getElementById('chatInput');
+            const message = input.value.trim();
+            
             if (!message || state.isStreaming) return;
 
-            // Initialize assistant if needed
+            // Initialize assistant if not already done
             if (!state.assistantId) {
-                const ok = await initializeAssistant();
-                if (!ok) return;
+                const initialized = await initializeAssistant();
+                if (!initialized) return;
             }
 
-            // Clear input & reset height
-            inputEl.value = '';
-            inputEl.style.height = 'auto';
-
-            // Add user message to UI
+            // Clear input and reset height
+            input.value = '';
+            input.style.height = 'auto';
+            
+            // Add user message
             addMessage('user', message);
+            
+            // Store in chat history
+            if (!state.chatHistory[state.activeThread]) {
+                state.chatHistory[state.activeThread] = [];
+            }
             state.chatHistory[state.activeThread].push({ role: 'user', content: message });
-
+            
+            // Start streaming
             state.isStreaming = true;
             updateSendButton();
-
-            // Add assistant placeholder
-            const placeholderId = addMessage('assistant', '', true);
-
+            
+            // Add assistant message placeholder
+            const assistantMessageId = addMessage('assistant', '', true);
+            
             try {
-                const url = `${API_BASE_URL}/conversation?` + new URLSearchParams({
+                const response = await fetch(`${API_BASE_URL}/conversation?` + new URLSearchParams({
                     session: state.sessionId,
                     assistant: state.assistantId,
                     prompt: message
-                });
-                const response = await fetch(url);
+                }));
+
                 if (!response.ok) throw new Error('Failed to get response');
 
                 const reader = response.body.getReader();
@@ -6446,155 +6444,159 @@ async def serve_chatbot():
                 while (true) {
                     const { done, value } = await reader.read();
                     if (done) break;
+
                     const chunk = decoder.decode(value);
-                    const lines = chunk.split('\n');
+                    const lines = chunk.split('\\n');
+
                     for (const line of lines) {
                         if (line.startsWith('data: ')) {
                             const data = line.slice(6);
-                            if (data === '[DONE]') break;
+                            
+                            if (data === '[DONE]') {
+                                break;
+                            }
+
                             try {
                                 const json = JSON.parse(data);
-                                const delta = json.choices?.[0]?.delta?.content;
-                                if (delta) {
-                                    assistantResponse += delta;
-                                    updateMessage(placeholderId, assistantResponse);
+                                if (json.choices && json.choices[0].delta && json.choices[0].delta.content) {
+                                    assistantResponse += json.choices[0].delta.content;
+                                    updateMessage(assistantMessageId, assistantResponse);
                                 }
-                            } catch (err) {
-                                console.error('Error parsing SSE:', err);
+                            } catch (e) {
+                                console.error('Error parsing SSE:', e);
                             }
                         }
                     }
                 }
 
-                state.chatHistory[state.activeThread].push({
-                    role: 'assistant',
-                    content: assistantResponse
-                });
+                // Store assistant response
+                state.chatHistory[state.activeThread].push({ role: 'assistant', content: assistantResponse });
+                
+                // Generate suggestions
                 generateSuggestions(message, assistantResponse);
+                
             } catch (error) {
                 showToast('Failed to get response', 'error');
                 console.error(error);
-                removeMessage(placeholderId);
+                removeMessage(assistantMessageId);
             } finally {
                 state.isStreaming = false;
                 updateSendButton();
             }
         }
 
-        // ==========================
-        // Add Message to UI
-        // ==========================
+        // Add message to chat
         function addMessage(role, content, isStreaming = false) {
             const container = document.getElementById('messagesContainer');
             const messageId = 'msg_' + Date.now();
-
-            const wrapper = document.createElement('div');
-            wrapper.className = 'message-wrapper';
-            wrapper.id = messageId;
-
-            const msgDiv = document.createElement('div');
-            msgDiv.className = 'message';
-
+            
+            const messageWrapper = document.createElement('div');
+            messageWrapper.className = 'message-wrapper';
+            messageWrapper.id = messageId;
+            
+            const message = document.createElement('div');
+            message.className = 'message';
+            
             const avatar = document.createElement('div');
             avatar.className = `message-avatar ${role}-avatar`;
             avatar.textContent = role === 'user' ? 'U' : 'AI';
-
+            
             const contentDiv = document.createElement('div');
             contentDiv.className = 'message-content';
-
+            
             if (isStreaming && role === 'assistant') {
-                contentDiv.innerHTML = `
-                    <div class="typing-indicator">
-                        <div class="typing-dot"></div>
-                        <div class="typing-dot"></div>
-                        <div class="typing-dot"></div>
-                    </div>`;
+                contentDiv.innerHTML = '<div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>';
             } else {
                 contentDiv.innerHTML = formatMessage(content);
             }
-
-            msgDiv.appendChild(avatar);
-            msgDiv.appendChild(contentDiv);
-            wrapper.appendChild(msgDiv);
-            container.appendChild(wrapper);
-
+            
+            message.appendChild(avatar);
+            message.appendChild(contentDiv);
+            messageWrapper.appendChild(message);
+            container.appendChild(messageWrapper);
+            
             container.scrollTop = container.scrollHeight;
+            
             return messageId;
         }
 
-        // ==========================
-        // Update Existing Message
-        // ==========================
+        // Update message content
         function updateMessage(messageId, content) {
-            const wrapper = document.getElementById(messageId);
-            if (!wrapper) return;
-            const contentDiv = wrapper.querySelector('.message-content');
-            contentDiv.innerHTML = formatMessage(content);
-            const container = document.getElementById('messagesContainer');
-            container.scrollTop = container.scrollHeight;
+            const message = document.getElementById(messageId);
+            if (message) {
+                const contentDiv = message.querySelector('.message-content');
+                contentDiv.innerHTML = formatMessage(content);
+                
+                const container = document.getElementById('messagesContainer');
+                container.scrollTop = container.scrollHeight;
+            }
         }
 
-        // ==========================
-        // Remove Message (on Error)
-        // ==========================
+        // Remove message
         function removeMessage(messageId) {
-            const wrapper = document.getElementById(messageId);
-            if (wrapper) wrapper.remove();
+            const message = document.getElementById(messageId);
+            if (message) message.remove();
         }
 
-        // ==========================
-        // Clear All Messages
-        // ==========================
+        // Clear messages
         function clearMessages() {
-            document.getElementById('messagesContainer').innerHTML = '';
+            const container = document.getElementById('messagesContainer');
+            container.innerHTML = '';
         }
 
-        // ==========================
-        // Format Message (Markdown-lite)
-        // ==========================
-        function formatMessage(text) {
-            let formatted = text
-                .replace(/```([\\s\\S]*?)```/g, '<pre><code>$1</code></pre>')
+        // Format message content
+        function formatMessage(content) {
+            // Basic markdown formatting
+            let formatted = content
+                .replace(/```(.*?)```/gs, '<pre><code>$1</code></pre>')
                 .replace(/`([^`]+)`/g, '<code>$1</code>')
                 .replace(/\\*\\*(.*?)\\*\\*/g, '<strong>$1</strong>')
                 .replace(/\\*(.*?)\\*/g, '<em>$1</em>')
                 .replace(/\\n/g, '</p><p>');
+            
             return `<p>${formatted}</p>`;
         }
 
-        // ==========================
-        // Generate Follow-Up Suggestions
-        // ==========================
-        async function generateSuggestions(userMsg, assistantMsg) {
+        // Generate suggestions
+        async function generateSuggestions(userMessage, assistantResponse) {
             try {
-                const prompt = `Based on this conversation:\nUser: ${userMsg}\nAssistant: ${assistantMsg}\n\nGenerate 2 natural follow-up questions (4-5 words each), separated by '|'.`;
+                const prompt = `Based on this conversation:
+User: ${userMessage}
+Assistant: ${assistantResponse}
+
+Generate 2 different natural follow-up questions, each in 4-5 words. Separate with |. Just the questions.`;
+
                 const response = await fetch(`${API_BASE_URL}/chat?` + new URLSearchParams({
                     session: state.sessionId,
                     assistant: state.assistantId,
                     prompt: prompt
                 }));
-                if (!response.ok) return;
-                const data = await response.json();
-                const suggestions = data.response.split('|').map(s => s.trim()).filter(s => s).slice(0, 2);
-                if (suggestions.length) displaySuggestions(suggestions);
-            } catch (err) {
-                console.error('Error generating suggestions:', err);
+
+                if (response.ok) {
+                    const data = await response.json();
+                    const suggestions = data.response.split('|').map(s => s.trim()).filter(s => s).slice(0, 2);
+                    
+                    if (suggestions.length > 0) {
+                        displaySuggestions(suggestions);
+                    }
+                }
+            } catch (error) {
+                console.error('Error generating suggestions:', error);
             }
         }
 
-        // ==========================
-        // Display Suggestion Chips
-        // ==========================
+        // Display suggestions
         function displaySuggestions(suggestions) {
             const container = document.getElementById('suggestions');
             container.innerHTML = '';
             container.style.display = 'flex';
-            suggestions.forEach(text => {
+            
+            suggestions.forEach(suggestion => {
                 const chip = document.createElement('button');
                 chip.className = 'suggestion-chip';
-                chip.textContent = text;
+                chip.textContent = suggestion;
                 chip.onclick = () => {
-                    document.getElementById('chatInput').value = text;
+                    document.getElementById('chatInput').value = suggestion;
                     sendMessage();
                     container.style.display = 'none';
                 };
@@ -6602,34 +6604,32 @@ async def serve_chatbot():
             });
         }
 
-        // ==========================
-        // Handle File Upload (Sidebar)
-        // ==========================
+        // Handle file upload
         async function handleFileUpload(event) {
             const file = event.target.files[0];
             if (!file) return;
+            
             state.uploadedFile = file;
-
+            
             // Show file indicator
             document.getElementById('fileIndicator').style.display = 'flex';
             document.getElementById('fileName').textContent = file.name;
-
-            // If assistant already initialized, upload immediately
+            
+            // If assistant exists, upload immediately
             if (state.assistantId) {
                 await uploadFileToAssistant(file);
             }
-
+            
             showToast(`File "${file.name}" ready to upload`, 'success');
         }
 
-        // ==========================
-        // Upload File to Assistant
-        // ==========================
+        // Upload file to assistant
         async function uploadFileToAssistant(file) {
             try {
                 const formData = new FormData();
                 formData.append('file', file);
                 formData.append('assistant', state.assistantId);
+                
                 if (state.sessionId) {
                     formData.append('session', state.sessionId);
                 }
@@ -6640,6 +6640,7 @@ async def serve_chatbot():
                 });
 
                 if (!response.ok) throw new Error('Failed to upload file');
+                
                 showToast(`File "${file.name}" uploaded successfully`, 'success');
             } catch (error) {
                 showToast('Failed to upload file', 'error');
@@ -6647,18 +6648,14 @@ async def serve_chatbot():
             }
         }
 
-        // ==========================
-        // Remove Attached File
-        // ==========================
+        // Remove file
         function removeFile() {
             state.uploadedFile = null;
             document.getElementById('fileIndicator').style.display = 'none';
             document.getElementById('fileInput').value = '';
         }
 
-        // ==========================
-        // Enable/Disable Send Button
-        // ==========================
+        // Update send button state
         function updateSendButton() {
             const btn = document.getElementById('sendBtn');
             const input = document.getElementById('chatInput');
@@ -6666,39 +6663,40 @@ async def serve_chatbot():
             input.disabled = state.isStreaming;
         }
 
-        // ==========================
-        // Update Chat History Sidebar
-        // ==========================
+        // Update chat history UI
         function updateChatHistory() {
             const container = document.getElementById('chatHistory');
             container.innerHTML = '';
+            
             Object.entries(state.threads).forEach(([threadId, thread]) => {
                 const item = document.createElement('div');
                 item.className = `chat-history-item ${threadId === state.activeThread ? 'active' : ''}`;
                 item.onclick = () => switchThread(threadId);
-
+                
                 const icon = document.createElement('span');
                 icon.textContent = '💬';
-
+                
                 const name = document.createElement('span');
                 name.textContent = thread.name;
-
+                
                 item.appendChild(icon);
                 item.appendChild(name);
                 container.appendChild(item);
             });
         }
 
-        // ==========================
-        // Switch Chat Thread
-        // ==========================
+        // Switch thread
         function switchThread(threadId) {
             state.activeThread = threadId;
             updateChatHistory();
+            
+            // Restore chat messages
             clearMessages();
-            state.chatHistory[threadId].forEach(msg => {
-                addMessage(msg.role, msg.content);
-            });
+            if (state.chatHistory[threadId]) {
+                state.chatHistory[threadId].forEach(msg => {
+                    addMessage(msg.role, msg.content);
+                });
+            }
         }
     </script>
 </body>
