@@ -2809,17 +2809,6 @@ async def upload_file(
                 os.remove(file_path)
             except OSError as e:
                 logging.error(f"Error removing temporary file {file_path}: {e}")
-@app.get("/conversation")
-async def conversation(
-    session: Optional[str] = None,
-    prompt: Optional[str] = None,
-    assistant: Optional[str] = None
-):
-    """
-    Handles conversation queries with streaming response.
-    """
-    return await process_conversation(session, prompt, assistant, stream_output=True)
-
 
 
 # No changes needed for the process_conversation function
@@ -3649,8 +3638,16 @@ async def process_conversation(
         logging.error(f"Error in /{endpoint_type} endpoint setup: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to process {endpoint_type} request: {str(e)}")
 
-
-
+@app.get("/conversation")
+async def conversation(
+    session: Optional[str] = None,
+    prompt: Optional[str] = None,
+    assistant: Optional[str] = None
+):
+    """
+    Handles conversation queries with streaming response.
+    """
+    return await process_conversation(session, prompt, assistant, stream_output=True)
 
 @app.get("/chat")
 async def chat(
