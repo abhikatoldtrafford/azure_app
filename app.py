@@ -5668,14 +5668,13 @@ from fastapi.responses import HTMLResponse
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_chatbot():
-    """Serve the modern, feature-rich chatbot interface at the root endpoint"""
+    """Serve the modern chatbot interface at the root endpoint"""
     return """<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="theme-color" content="#10a37f">
-    <title>AI Product Assistant - Advanced Chat Interface</title>
+    <title>AI Product Management Assistant</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         * {
@@ -5686,25 +5685,41 @@ async def serve_chatbot():
         }
 
         :root {
-            --bg-primary: #0f0f0f;
-            --bg-secondary: #1a1a1a;
-            --bg-tertiary: #242424;
-            --bg-hover: #2a2a2a;
+            --primary: #10a37f;
+            --primary-hover: #0d8d6c;
+            --danger: #dc3545;
+            --warning: #ffc107;
+            --success: #28a745;
+            --info: #17a2b8;
+            
+            /* Light theme */
+            --bg-primary: #ffffff;
+            --bg-secondary: #f5f5f5;
+            --bg-tertiary: #e9ecef;
+            --text-primary: #212529;
+            --text-secondary: #6c757d;
+            --border: #dee2e6;
+            --shadow: rgba(0, 0, 0, 0.1);
+            --message-user: #007bff;
+            --message-assistant: #f8f9fa;
+            --code-bg: #f5f5f5;
+            --sidebar-bg: #f8f9fa;
+            --input-bg: #ffffff;
+        }
+
+        [data-theme="dark"] {
+            --bg-primary: #1a1a1a;
+            --bg-secondary: #2d2d2d;
+            --bg-tertiary: #404040;
             --text-primary: #ffffff;
-            --text-secondary: #b4b4b4;
-            --text-tertiary: #7c7c7c;
-            --accent: #10a37f;
-            --accent-hover: #0d8d6c;
-            --accent-light: rgba(16, 163, 127, 0.1);
-            --border: #2d2d2d;
-            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
-            --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
-            --gradient-start: #10a37f;
-            --gradient-end: #0d8d6c;
-            --error: #ef4444;
-            --warning: #f59e0b;
-            --success: #10b981;
-            --info: #3b82f6;
+            --text-secondary: #a0a0a0;
+            --border: #404040;
+            --shadow: rgba(0, 0, 0, 0.3);
+            --message-user: #0066cc;
+            --message-assistant: #2d2d2d;
+            --code-bg: #2d2d2d;
+            --sidebar-bg: #252525;
+            --input-bg: #2d2d2d;
         }
 
         body {
@@ -5715,13 +5730,12 @@ async def serve_chatbot():
             overflow: hidden;
             display: flex;
             flex-direction: column;
-            position: relative;
+            transition: background-color 0.3s, color 0.3s;
         }
 
         /* Header */
         .header {
-            background: linear-gradient(180deg, var(--bg-secondary) 0%, rgba(26, 26, 26, 0.8) 100%);
-            backdrop-filter: blur(10px);
+            background-color: var(--bg-secondary);
             border-bottom: 1px solid var(--border);
             padding: 0 20px;
             height: 60px;
@@ -5729,32 +5743,36 @@ async def serve_chatbot():
             align-items: center;
             justify-content: space-between;
             flex-shrink: 0;
-            position: relative;
-            z-index: 50;
+            transition: background-color 0.3s;
         }
 
-        .header-left, .header-right {
+        .header-left {
             display: flex;
             align-items: center;
             gap: 12px;
         }
 
-        .menu-btn, .settings-btn {
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .menu-btn, .theme-toggle {
             background: none;
             border: none;
             color: var(--text-primary);
             cursor: pointer;
             padding: 8px;
             border-radius: 8px;
-            transition: all 0.2s;
+            transition: background-color 0.2s;
             display: flex;
             align-items: center;
             justify-content: center;
-            position: relative;
         }
 
-        .menu-btn:hover, .settings-btn:hover {
-            background-color: var(--bg-hover);
+        .menu-btn:hover, .theme-toggle:hover {
+            background-color: var(--bg-tertiary);
         }
 
         .app-title {
@@ -5762,20 +5780,26 @@ async def serve_chatbot():
             font-weight: 600;
             display: flex;
             align-items: center;
-            gap: 10px;
-            background: linear-gradient(135deg, var(--gradient-start) 0%, var(--gradient-end) 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+            gap: 8px;
         }
 
-        .model-badge {
+        .model-selector {
             background-color: var(--bg-tertiary);
             border: 1px solid var(--border);
-            color: var(--text-secondary);
-            padding: 6px 12px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 500;
+            color: var(--text-primary);
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s;
+        }
+
+        .model-selector:hover {
+            background-color: var(--bg-tertiary);
+            transform: translateY(-1px);
         }
 
         /* Layout */
@@ -5788,41 +5812,39 @@ async def serve_chatbot():
 
         /* Sidebar */
         .sidebar {
-            width: 280px;
-            background: linear-gradient(180deg, var(--bg-secondary) 0%, rgba(26, 26, 26, 0.95) 100%);
+            width: 260px;
+            background-color: var(--sidebar-bg);
             border-right: 1px solid var(--border);
             display: flex;
             flex-direction: column;
-            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            position: relative;
-            z-index: 40;
+            transition: transform 0.3s ease, background-color 0.3s;
         }
 
         .sidebar.closed {
             transform: translateX(-100%);
-            margin-left: -280px;
+            margin-left: -260px;
         }
 
         .new-chat-btn {
             margin: 16px;
-            padding: 14px;
-            background: linear-gradient(135deg, var(--gradient-start) 0%, var(--gradient-end) 100%);
+            padding: 12px;
+            background: linear-gradient(135deg, var(--primary), var(--primary-hover));
             border: none;
-            border-radius: 12px;
+            border-radius: 8px;
             color: white;
             cursor: pointer;
             display: flex;
             align-items: center;
             gap: 12px;
             font-size: 14px;
-            font-weight: 600;
-            transition: all 0.3s;
-            box-shadow: var(--shadow);
+            font-weight: 500;
+            transition: all 0.2s;
+            box-shadow: 0 2px 8px rgba(16, 163, 127, 0.3);
         }
 
         .new-chat-btn:hover {
             transform: translateY(-2px);
-            box-shadow: var(--shadow-lg);
+            box-shadow: 0 4px 12px rgba(16, 163, 127, 0.4);
         }
 
         .chat-history {
@@ -5832,81 +5854,80 @@ async def serve_chatbot():
         }
 
         .chat-history-item {
-            padding: 12px 16px;
-            border-radius: 10px;
+            padding: 12px;
+            border-radius: 8px;
             cursor: pointer;
             margin-bottom: 4px;
             transition: all 0.2s;
             font-size: 14px;
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 8px;
             color: var(--text-secondary);
             position: relative;
             overflow: hidden;
         }
 
-        .chat-history-item::before {
+        .chat-history-item:hover {
+            background-color: var(--bg-tertiary);
+            color: var(--text-primary);
+            padding-left: 16px;
+        }
+
+        .chat-history-item.active {
+            background-color: var(--bg-tertiary);
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+
+        .chat-history-item.active::before {
             content: '';
             position: absolute;
             left: 0;
             top: 0;
-            height: 100%;
+            bottom: 0;
             width: 3px;
-            background: var(--accent);
-            transform: scaleX(0);
-            transition: transform 0.2s;
+            background-color: var(--primary);
         }
 
-        .chat-history-item:hover {
-            background-color: var(--bg-hover);
-            color: var(--text-primary);
-        }
-
-        .chat-history-item.active {
-            background-color: var(--accent-light);
-            color: var(--text-primary);
-        }
-
-        .chat-history-item.active::before {
-            transform: scaleX(1);
-        }
-
-        .sidebar-actions {
+        .sidebar-section {
             padding: 16px;
             border-top: 1px solid var(--border);
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
+        }
+
+        .sidebar-section-title {
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+            letter-spacing: 0.5px;
         }
 
         .action-btn {
             width: 100%;
-            padding: 12px;
-            background-color: transparent;
+            padding: 10px;
+            background-color: var(--bg-tertiary);
             border: 1px solid var(--border);
-            border-radius: 10px;
-            color: var(--text-secondary);
+            border-radius: 8px;
+            color: var(--text-primary);
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 10px;
+            gap: 8px;
             font-size: 14px;
-            font-weight: 500;
             transition: all 0.2s;
+            margin-bottom: 8px;
         }
 
         .action-btn:hover {
-            background-color: var(--bg-hover);
-            color: var(--text-primary);
-            border-color: var(--accent);
+            background-color: var(--bg-secondary);
+            transform: translateY(-1px);
         }
 
-        .action-btn.primary {
-            background: linear-gradient(135deg, var(--gradient-start) 0%, var(--gradient-end) 100%);
-            border: none;
-            color: white;
+        .action-btn:last-child {
+            margin-bottom: 0;
         }
 
         /* Chat Area */
@@ -5914,9 +5935,7 @@ async def serve_chatbot():
             flex: 1;
             display: flex;
             flex-direction: column;
-            background: radial-gradient(ellipse at top, var(--bg-secondary) 0%, var(--bg-primary) 50%);
-            position: relative;
-            overflow: hidden;
+            background-color: var(--bg-primary);
         }
 
         .messages-container {
@@ -5929,14 +5948,14 @@ async def serve_chatbot():
         .message-wrapper {
             display: flex;
             justify-content: center;
-            padding: 20px 0;
-            animation: messageSlide 0.3s ease-out;
+            padding: 12px 0;
+            animation: messageSlideIn 0.3s ease-out;
         }
 
-        @keyframes messageSlide {
+        @keyframes messageSlideIn {
             from {
                 opacity: 0;
-                transform: translateY(20px);
+                transform: translateY(10px);
             }
             to {
                 opacity: 1;
@@ -5952,6 +5971,10 @@ async def serve_chatbot():
             gap: 16px;
         }
 
+        .message.user-message {
+            flex-direction: row-reverse;
+        }
+
         .message-avatar {
             width: 36px;
             height: 36px;
@@ -5959,24 +5982,35 @@ async def serve_chatbot():
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 16px;
+            font-size: 14px;
             font-weight: 600;
             flex-shrink: 0;
-            box-shadow: var(--shadow);
+            box-shadow: 0 2px 8px var(--shadow);
         }
 
         .user-avatar {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
         }
 
         .assistant-avatar {
-            background: linear-gradient(135deg, var(--gradient-start) 0%, var(--gradient-end) 100%);
+            background: linear-gradient(135deg, var(--primary), var(--primary-hover));
+            color: white;
         }
 
         .message-content {
             flex: 1;
             line-height: 1.6;
             word-wrap: break-word;
+            background-color: var(--message-assistant);
+            padding: 16px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px var(--shadow);
+        }
+
+        .user-message .message-content {
+            background-color: var(--message-user);
+            color: white;
         }
 
         .message-content p {
@@ -5988,9 +6022,9 @@ async def serve_chatbot():
         }
 
         .message-content pre {
-            background-color: var(--bg-tertiary);
+            background-color: var(--code-bg);
             border: 1px solid var(--border);
-            border-radius: 8px;
+            border-radius: 6px;
             padding: 16px;
             overflow-x: auto;
             margin: 12px 0;
@@ -5998,7 +6032,7 @@ async def serve_chatbot():
         }
 
         .message-content code {
-            background-color: var(--bg-tertiary);
+            background-color: var(--code-bg);
             padding: 2px 6px;
             border-radius: 4px;
             font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
@@ -6010,49 +6044,51 @@ async def serve_chatbot():
             padding: 0;
         }
 
-        .message-content table {
-            border-collapse: collapse;
-            width: 100%;
-            margin: 12px 0;
-            overflow-x: auto;
-            display: block;
-        }
-
-        .message-content th, .message-content td {
+        .copy-code-btn {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background-color: var(--bg-secondary);
             border: 1px solid var(--border);
-            padding: 8px 12px;
-            text-align: left;
+            border-radius: 4px;
+            padding: 4px 8px;
+            font-size: 12px;
+            cursor: pointer;
+            opacity: 0;
+            transition: opacity 0.2s;
         }
 
-        .message-content th {
-            background-color: var(--bg-tertiary);
-            font-weight: 600;
+        .message-content pre:hover .copy-code-btn {
+            opacity: 1;
         }
 
+        /* Message Actions */
         .message-actions {
             display: flex;
             gap: 8px;
-            margin-top: 12px;
+            margin-top: 8px;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .message-wrapper:hover .message-actions {
+            opacity: 1;
         }
 
         .message-action-btn {
             background: none;
             border: 1px solid var(--border);
-            color: var(--text-secondary);
-            padding: 6px 12px;
-            border-radius: 6px;
+            border-radius: 4px;
+            padding: 4px 8px;
             font-size: 12px;
             cursor: pointer;
+            color: var(--text-secondary);
             transition: all 0.2s;
-            display: flex;
-            align-items: center;
-            gap: 6px;
         }
 
         .message-action-btn:hover {
-            background-color: var(--bg-hover);
+            background-color: var(--bg-tertiary);
             color: var(--text-primary);
-            border-color: var(--accent);
         }
 
         /* Typing indicator */
@@ -6065,7 +6101,7 @@ async def serve_chatbot():
         .typing-dot {
             width: 8px;
             height: 8px;
-            background-color: var(--accent);
+            background-color: var(--text-secondary);
             border-radius: 50%;
             animation: typing 1.4s ease-in-out infinite;
         }
@@ -6081,20 +6117,20 @@ async def serve_chatbot():
         @keyframes typing {
             0%, 60%, 100% {
                 opacity: 0.3;
-                transform: scale(0.8);
+                transform: translateY(0);
             }
             30% {
                 opacity: 1;
-                transform: scale(1);
+                transform: translateY(-10px);
             }
         }
 
         /* Input Area */
         .input-area {
-            background: linear-gradient(180deg, rgba(26, 26, 26, 0.8) 0%, var(--bg-secondary) 100%);
-            backdrop-filter: blur(10px);
             border-top: 1px solid var(--border);
+            background-color: var(--bg-secondary);
             padding: 20px;
+            transition: background-color 0.3s;
         }
 
         .input-container {
@@ -6104,20 +6140,20 @@ async def serve_chatbot():
         }
 
         .input-wrapper {
-            background-color: var(--bg-tertiary);
+            background-color: var(--input-bg);
             border: 1px solid var(--border);
-            border-radius: 16px;
+            border-radius: 12px;
             display: flex;
             align-items: flex-end;
             padding: 12px;
             gap: 12px;
             transition: all 0.2s;
-            box-shadow: var(--shadow);
+            box-shadow: 0 2px 8px var(--shadow);
         }
 
         .input-wrapper:focus-within {
-            border-color: var(--accent);
-            box-shadow: 0 0 0 3px var(--accent-light);
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(16, 163, 127, 0.1);
         }
 
         .chat-input {
@@ -6134,7 +6170,7 @@ async def serve_chatbot():
         }
 
         .chat-input::placeholder {
-            color: var(--text-tertiary);
+            color: var(--text-secondary);
         }
 
         .input-actions {
@@ -6143,13 +6179,13 @@ async def serve_chatbot():
             align-items: center;
         }
 
-        .input-action-btn {
+        .icon-btn {
             background: none;
             border: none;
             color: var(--text-secondary);
             cursor: pointer;
             padding: 8px;
-            border-radius: 8px;
+            border-radius: 6px;
             transition: all 0.2s;
             display: flex;
             align-items: center;
@@ -6157,120 +6193,46 @@ async def serve_chatbot():
             position: relative;
         }
 
-        .input-action-btn:hover {
-            background-color: var(--bg-hover);
+        .icon-btn:hover {
+            background-color: var(--bg-tertiary);
             color: var(--text-primary);
         }
 
+        .icon-btn.active {
+            color: var(--primary);
+        }
+
         .send-btn {
-            background: linear-gradient(135deg, var(--gradient-start) 0%, var(--gradient-end) 100%);
+            background-color: var(--primary);
             border: none;
             color: white;
             cursor: pointer;
             padding: 8px 16px;
-            border-radius: 10px;
+            border-radius: 6px;
             transition: all 0.2s;
             display: flex;
             align-items: center;
+            justify-content: center;
             gap: 8px;
-            font-weight: 600;
-            box-shadow: var(--shadow);
+            font-weight: 500;
         }
 
         .send-btn:hover:not(:disabled) {
-            transform: translateY(-2px);
-            box-shadow: var(--shadow-lg);
+            background-color: var(--primary-hover);
+            transform: translateY(-1px);
         }
 
         .send-btn:disabled {
             opacity: 0.5;
             cursor: not-allowed;
-            transform: none;
         }
 
-        /* Enhanced Features Panel */
-        .features-panel {
-            position: absolute;
-            bottom: 80px;
-            left: 20px;
-            right: 20px;
-            max-width: 800px;
-            margin: 0 auto;
-            background: var(--bg-secondary);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 20px;
-            box-shadow: var(--shadow-lg);
-            display: none;
-            z-index: 100;
-            animation: slideUp 0.3s ease-out;
-        }
-
-        @keyframes slideUp {
-            from {
-                opacity: 0;
-                transform: translateY(20px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        .features-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 12px;
-            margin-top: 16px;
-        }
-
-        .feature-card {
-            background: var(--bg-tertiary);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 16px;
-            cursor: pointer;
-            transition: all 0.2s;
+        /* File indicators */
+        .files-container {
             display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-
-        .feature-card:hover {
-            background: var(--bg-hover);
-            border-color: var(--accent);
-            transform: translateY(-2px);
-        }
-
-        .feature-icon {
-            width: 40px;
-            height: 40px;
-            background: var(--accent-light);
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 20px;
-            margin-bottom: 8px;
-        }
-
-        .feature-title {
-            font-weight: 600;
-            color: var(--text-primary);
-        }
-
-        .feature-desc {
-            font-size: 12px;
-            color: var(--text-secondary);
-            line-height: 1.4;
-        }
-
-        /* File Upload Indicator */
-        .file-indicators {
-            display: flex;
-            flex-wrap: wrap;
             gap: 8px;
             margin-bottom: 12px;
+            flex-wrap: wrap;
         }
 
         .file-indicator {
@@ -6279,49 +6241,36 @@ async def serve_chatbot():
             gap: 8px;
             padding: 8px 12px;
             background-color: var(--bg-tertiary);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            font-size: 13px;
+            border-radius: 6px;
+            font-size: 14px;
             animation: fadeIn 0.3s ease-out;
         }
 
         @keyframes fadeIn {
             from {
                 opacity: 0;
-                transform: scale(0.9);
+                transform: translateY(-10px);
             }
             to {
                 opacity: 1;
-                transform: scale(1);
+                transform: translateY(0);
             }
         }
 
         .file-icon {
-            width: 20px;
-            height: 20px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: var(--accent-light);
-            border-radius: 4px;
-            font-size: 12px;
+            width: 16px;
+            height: 16px;
         }
 
         .remove-file {
             cursor: pointer;
-            color: var(--text-tertiary);
+            color: var(--text-secondary);
             transition: color 0.2s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            width: 20px;
-            height: 20px;
-            border-radius: 4px;
+            margin-left: 4px;
         }
 
         .remove-file:hover {
-            color: var(--error);
-            background: rgba(239, 68, 68, 0.1);
+            color: var(--danger);
         }
 
         /* Suggestions */
@@ -6330,65 +6279,68 @@ async def serve_chatbot():
             gap: 8px;
             margin-top: 12px;
             flex-wrap: wrap;
-            animation: fadeIn 0.3s ease-out;
+            opacity: 0;
+            animation: fadeIn 0.3s ease-out forwards;
+            animation-delay: 0.5s;
         }
 
         .suggestion-chip {
-            padding: 10px 16px;
-            background: linear-gradient(135deg, var(--bg-tertiary) 0%, var(--bg-hover) 100%);
+            padding: 8px 16px;
+            background-color: var(--bg-tertiary);
             border: 1px solid var(--border);
-            border-radius: 24px;
+            border-radius: 20px;
             font-size: 14px;
             cursor: pointer;
             transition: all 0.2s;
             color: var(--text-secondary);
-            font-weight: 500;
         }
 
         .suggestion-chip:hover {
-            background: linear-gradient(135deg, var(--accent-light) 0%, rgba(16, 163, 127, 0.2) 100%);
-            color: var(--text-primary);
+            background-color: var(--primary);
+            color: white;
             transform: translateY(-2px);
-            border-color: var(--accent);
+            box-shadow: 0 4px 8px var(--shadow);
         }
 
         /* Modal */
         .modal {
+            display: none;
             position: fixed;
             top: 0;
             left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.8);
-            backdrop-filter: blur(5px);
-            display: none;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        .modal.active {
+            display: flex;
             align-items: center;
             justify-content: center;
-            z-index: 1000;
-            padding: 20px;
         }
 
         .modal-content {
-            background: var(--bg-secondary);
-            border: 1px solid var(--border);
-            border-radius: 16px;
+            background-color: var(--bg-primary);
+            border-radius: 12px;
             padding: 24px;
             max-width: 500px;
-            width: 100%;
+            width: 90%;
             max-height: 80vh;
             overflow-y: auto;
-            box-shadow: var(--shadow-lg);
-            animation: modalIn 0.3s ease-out;
+            animation: slideIn 0.3s ease-out;
+            box-shadow: 0 10px 40px var(--shadow);
         }
 
-        @keyframes modalIn {
+        @keyframes slideIn {
             from {
+                transform: translateY(20px);
                 opacity: 0;
-                transform: scale(0.9);
             }
             to {
+                transform: translateY(0);
                 opacity: 1;
-                transform: scale(1);
             }
         }
 
@@ -6407,16 +6359,18 @@ async def serve_chatbot():
         .modal-close {
             background: none;
             border: none;
-            color: var(--text-secondary);
+            font-size: 24px;
             cursor: pointer;
-            padding: 8px;
-            border-radius: 8px;
-            transition: all 0.2s;
+            color: var(--text-secondary);
+            transition: color 0.2s;
         }
 
         .modal-close:hover {
-            background: var(--bg-hover);
             color: var(--text-primary);
+        }
+
+        .modal-body {
+            margin-bottom: 20px;
         }
 
         .form-group {
@@ -6426,15 +6380,15 @@ async def serve_chatbot():
         .form-label {
             display: block;
             margin-bottom: 8px;
-            font-size: 14px;
             font-weight: 500;
             color: var(--text-secondary);
+            font-size: 14px;
         }
 
         .form-input, .form-select, .form-textarea {
             width: 100%;
-            padding: 10px 12px;
-            background: var(--bg-tertiary);
+            padding: 10px;
+            background-color: var(--bg-secondary);
             border: 1px solid var(--border);
             border-radius: 8px;
             color: var(--text-primary);
@@ -6444,8 +6398,8 @@ async def serve_chatbot():
 
         .form-input:focus, .form-select:focus, .form-textarea:focus {
             outline: none;
-            border-color: var(--accent);
-            box-shadow: 0 0 0 3px var(--accent-light);
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(16, 163, 127, 0.1);
         }
 
         .form-textarea {
@@ -6453,62 +6407,39 @@ async def serve_chatbot():
             min-height: 100px;
         }
 
-        .form-actions {
+        .modal-footer {
             display: flex;
             gap: 12px;
             justify-content: flex-end;
-            margin-top: 24px;
         }
 
         .btn {
             padding: 10px 20px;
+            border: none;
             border-radius: 8px;
-            font-size: 14px;
-            font-weight: 600;
+            font-weight: 500;
             cursor: pointer;
             transition: all 0.2s;
-            border: none;
+            font-size: 14px;
         }
 
         .btn-primary {
-            background: linear-gradient(135deg, var(--gradient-start) 0%, var(--gradient-end) 100%);
+            background-color: var(--primary);
             color: white;
         }
 
         .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: var(--shadow);
+            background-color: var(--primary-hover);
+            transform: translateY(-1px);
         }
 
         .btn-secondary {
-            background: var(--bg-tertiary);
+            background-color: var(--bg-tertiary);
             color: var(--text-primary);
-            border: 1px solid var(--border);
         }
 
         .btn-secondary:hover {
-            background: var(--bg-hover);
-            border-color: var(--accent);
-        }
-
-        /* Progress Indicator */
-        .progress-container {
-            position: fixed;
-            top: 60px;
-            left: 0;
-            right: 0;
-            height: 4px;
-            background: var(--bg-secondary);
-            z-index: 100;
-            display: none;
-        }
-
-        .progress-bar {
-            height: 100%;
-            background: linear-gradient(90deg, var(--gradient-start) 0%, var(--gradient-end) 100%);
-            width: 0%;
-            transition: width 0.3s ease;
-            box-shadow: 0 0 10px var(--accent);
+            background-color: var(--bg-secondary);
         }
 
         /* Toast notifications */
@@ -6516,72 +6447,62 @@ async def serve_chatbot():
             position: fixed;
             bottom: 20px;
             right: 20px;
-            z-index: 1000;
+            z-index: 2000;
             display: flex;
             flex-direction: column;
             gap: 12px;
-            pointer-events: none;
         }
 
         .toast {
-            background: var(--bg-tertiary);
+            background-color: var(--bg-tertiary);
             color: var(--text-primary);
-            padding: 16px 20px;
-            border-radius: 12px;
-            box-shadow: var(--shadow-lg);
+            padding: 16px 24px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px var(--shadow);
             font-size: 14px;
             display: flex;
             align-items: center;
             gap: 12px;
+            animation: toastSlideIn 0.3s ease-out;
+            position: relative;
             min-width: 300px;
-            pointer-events: auto;
-            animation: toastIn 0.3s ease-out;
-            border: 1px solid var(--border);
+        }
+
+        @keyframes toastSlideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
         }
 
         .toast.error {
-            background: rgba(239, 68, 68, 0.1);
-            border-color: var(--error);
-        }
-
-        .toast.success {
-            background: rgba(16, 185, 129, 0.1);
-            border-color: var(--success);
-        }
-
-        .toast.info {
-            background: rgba(59, 130, 246, 0.1);
-            border-color: var(--info);
-        }
-
-        .toast.warning {
-            background: rgba(245, 158, 11, 0.1);
-            border-color: var(--warning);
-        }
-
-        .toast-icon {
-            width: 20px;
-            height: 20px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 50%;
-        }
-
-        .toast.error .toast-icon {
-            background: var(--error);
+            background-color: var(--danger);
             color: white;
         }
 
-        .toast.success .toast-icon {
-            background: var(--success);
+        .toast.success {
+            background-color: var(--success);
+            color: white;
+        }
+
+        .toast.info {
+            background-color: var(--info);
             color: white;
         }
 
         .toast-close {
-            margin-left: auto;
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: none;
+            border: none;
+            color: inherit;
             cursor: pointer;
-            opacity: 0.5;
+            opacity: 0.7;
             transition: opacity 0.2s;
         }
 
@@ -6589,18 +6510,39 @@ async def serve_chatbot():
             opacity: 1;
         }
 
-        @keyframes toastIn {
-            from {
-                opacity: 0;
-                transform: translateX(100%);
-            }
+        /* Loading states */
+        .loading {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid transparent;
+            border-top-color: currentColor;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
             to {
-                opacity: 1;
-                transform: translateX(0);
+                transform: rotate(360deg);
             }
         }
 
-        /* Mobile Responsive */
+        /* Progress bar */
+        .progress-bar {
+            height: 4px;
+            background-color: var(--bg-tertiary);
+            border-radius: 2px;
+            overflow: hidden;
+            margin: 8px 0;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background-color: var(--primary);
+            transition: width 0.3s ease;
+        }
+
+        /* Mobile responsive */
         @media (max-width: 768px) {
             .sidebar {
                 position: fixed;
@@ -6613,19 +6555,8 @@ async def serve_chatbot():
                 box-shadow: none;
             }
 
-            .sidebar-overlay {
-                position: fixed;
-                top: 0;
-                left: 0;
-                right: 0;
-                bottom: 0;
-                background: rgba(0, 0, 0, 0.5);
-                display: none;
-                z-index: 90;
-            }
-
-            .sidebar-overlay.active {
-                display: block;
+            .header {
+                padding: 0 16px;
             }
 
             .message {
@@ -6636,29 +6567,38 @@ async def serve_chatbot():
                 padding: 16px;
             }
 
-            .features-panel {
-                left: 16px;
-                right: 16px;
-                bottom: 76px;
-            }
-
-            .features-grid {
-                grid-template-columns: 1fr;
+            .modal-content {
+                margin: 20px;
+                max-width: calc(100% - 40px);
             }
 
             .toast-container {
                 left: 20px;
                 right: 20px;
-                bottom: 80px;
             }
 
             .toast {
                 min-width: auto;
-                width: 100%;
             }
 
-            .modal-content {
-                margin: 20px;
+            .app-title span:first-child {
+                display: none;
+            }
+
+            .message-avatar {
+                width: 32px;
+                height: 32px;
+                font-size: 12px;
+            }
+
+            .message-content {
+                padding: 12px;
+            }
+
+            .suggestions {
+                overflow-x: auto;
+                flex-wrap: nowrap;
+                -webkit-overflow-scrolling: touch;
             }
         }
 
@@ -6678,121 +6618,56 @@ async def serve_chatbot():
         }
 
         ::-webkit-scrollbar-thumb:hover {
-            background: var(--bg-hover);
+            background: var(--border);
         }
 
-        /* Loading Animation */
-        .loading-spinner {
-            display: inline-block;
-            width: 16px;
-            height: 16px;
-            border: 2px solid var(--text-secondary);
-            border-top-color: var(--accent);
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-        }
-
-        @keyframes spin {
-            to {
-                transform: rotate(360deg);
-            }
-        }
-
-        /* Copy button for code blocks */
-        .code-block-wrapper {
-            position: relative;
-        }
-
-        .copy-code-btn {
+        /* Accessibility */
+        .sr-only {
             position: absolute;
-            top: 8px;
-            right: 8px;
-            background: var(--bg-hover);
-            border: 1px solid var(--border);
-            color: var(--text-secondary);
-            padding: 4px 8px;
-            border-radius: 6px;
-            font-size: 12px;
-            cursor: pointer;
-            transition: all 0.2s;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border-width: 0;
         }
 
-        .copy-code-btn:hover {
-            background: var(--accent);
-            color: white;
-            border-color: var(--accent);
+        /* Focus styles */
+        button:focus-visible,
+        input:focus-visible,
+        textarea:focus-visible,
+        select:focus-visible {
+            outline: 2px solid var(--primary);
+            outline-offset: 2px;
         }
 
-        /* Markdown table styling */
-        .markdown-table {
-            overflow-x: auto;
-            margin: 16px 0;
-        }
+        /* Print styles */
+        @media print {
+            .header,
+            .sidebar,
+            .input-area,
+            .message-actions,
+            .toast-container {
+                display: none !important;
+            }
 
-        .markdown-table table {
-            min-width: 100%;
-            border-collapse: collapse;
-        }
+            .chat-area {
+                padding: 20px;
+            }
 
-        .markdown-table th {
-            background: var(--bg-tertiary);
-            font-weight: 600;
-            text-align: left;
-            padding: 12px;
-            border: 1px solid var(--border);
-        }
-
-        .markdown-table td {
-            padding: 10px 12px;
-            border: 1px solid var(--border);
-        }
-
-        .markdown-table tr:hover {
-            background: var(--bg-hover);
-        }
-
-        /* Empty state */
-        .empty-state {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100%;
-            padding: 40px;
-            text-align: center;
-        }
-
-        .empty-state-icon {
-            font-size: 64px;
-            margin-bottom: 24px;
-            opacity: 0.3;
-        }
-
-        .empty-state-title {
-            font-size: 24px;
-            font-weight: 600;
-            margin-bottom: 12px;
-            color: var(--text-primary);
-        }
-
-        .empty-state-desc {
-            color: var(--text-secondary);
-            max-width: 400px;
-            margin-bottom: 24px;
-            line-height: 1.6;
+            .message-wrapper {
+                break-inside: avoid;
+            }
         }
     </style>
 </head>
 <body>
-    <!-- Progress Bar -->
-    <div class="progress-container" id="progressContainer">
-        <div class="progress-bar" id="progressBar"></div>
-    </div>
-
     <!-- Header -->
     <div class="header">
         <div class="header-left">
-            <button class="menu-btn" onclick="toggleSidebar()" aria-label="Toggle sidebar">
+            <button class="menu-btn" onclick="toggleSidebar()" aria-label="Toggle menu">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <line x1="3" y1="12" x2="21" y2="12"></line>
                     <line x1="3" y1="6" x2="21" y2="6"></line>
@@ -6801,15 +6676,20 @@ async def serve_chatbot():
             </button>
             <div class="app-title">
                 <span>🚀</span>
-                <span>AI Product Assistant</span>
+                <span>Product Management AI</span>
             </div>
         </div>
         <div class="header-right">
-            <span class="model-badge">GPT-4</span>
-            <button class="settings-btn" onclick="showSettings()" aria-label="Settings">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="3"></circle>
-                    <path d="M12 1v6m0 6v6m-9-9h6m6 0h6"></path>
+            <button class="model-selector" onclick="showModelSettings()">
+                <span id="modelName">GPT-4.1 Mini</span>
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="4 6 8 10 12 6"></polyline>
+                </svg>
+            </button>
+            <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="10" cy="10" r="5"></circle>
+                    <path d="M10 1v2M10 17v2M19 10h-2M3 10H1M16.36 16.36l-1.42-1.42M5.06 5.06L3.64 3.64M16.36 3.64l-1.42 1.42M5.06 14.94l-1.42 1.42"></path>
                 </svg>
             </button>
         </div>
@@ -6817,50 +6697,54 @@ async def serve_chatbot():
 
     <!-- Main Container -->
     <div class="main-container">
-        <!-- Sidebar Overlay for Mobile -->
-        <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
-
         <!-- Sidebar -->
         <div class="sidebar" id="sidebar">
             <button class="new-chat-btn" onclick="createNewChat()">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M12 4v16m8-8H4"></path>
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="10" y1="5" x2="10" y2="15"></line>
+                    <line x1="5" y1="10" x2="15" y2="10"></line>
                 </svg>
-                <span>New Chat</span>
+                <span>New chat</span>
             </button>
             
             <div class="chat-history" id="chatHistory">
                 <!-- Chat history items will be populated here -->
             </div>
             
-            <div class="sidebar-actions">
+            <div class="sidebar-section">
+                <div class="sidebar-section-title">Quick Actions</div>
                 <button class="action-btn" onclick="showGenerateModal()">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                        <polyline points="14 2 14 8 20 8"></polyline>
-                        <line x1="12" y1="18" x2="12" y2="12"></line>
-                        <line x1="9" y1="15" x2="15" y2="15"></line>
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2v6h-6M2 14v-6h6"></path>
+                        <path d="M14 8A6 6 0 0 0 8 2L2 8M2 8a6 6 0 0 0 6 6l6-6"></path>
                     </svg>
                     <span>Generate Document</span>
                 </button>
                 <button class="action-btn" onclick="showExtractReviewsModal()">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                        <polyline points="14 2 14 8 20 8"></polyline>
-                        <line x1="16" y1="13" x2="8" y2="13"></line>
-                        <line x1="16" y1="17" x2="8" y2="17"></line>
-                        <polyline points="10 9 9 9 8 9"></polyline>
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="2" y="2" width="12" height="12" rx="2"></rect>
+                        <line x1="6" y1="6" x2="10" y2="6"></line>
+                        <line x1="6" y1="10" x2="10" y2="10"></line>
                     </svg>
                     <span>Extract Reviews</span>
                 </button>
-                <button class="action-btn primary" onclick="downloadChat()">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                        <polyline points="7 10 12 15 17 10"></polyline>
-                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                <button class="action-btn" onclick="downloadChat()">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M8 12V4M8 12l-3-3M8 12l3-3"></path>
+                        <path d="M14 12v2a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-2"></path>
                     </svg>
                     <span>Download Chat</span>
                 </button>
+                <button class="action-btn" onclick="document.getElementById('fileInput').click()">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M8 4v8M8 4L5 7M8 4l3 3"></path>
+                        <path d="M2 12v2a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-2"></path>
+                    </svg>
+                    <span>Upload Files</span>
+                </button>
+                <input type="file" id="fileInput" style="display: none;" 
+                       accept=".txt,.pdf,.docx,.html,.xlsx,.csv,.jpg,.jpeg,.png,.gif,.bmp,.webp" 
+                       onchange="handleFileUpload(event)" multiple>
             </div>
         </div>
 
@@ -6868,82 +6752,58 @@ async def serve_chatbot():
         <div class="chat-area">
             <div class="messages-container" id="messagesContainer">
                 <!-- Welcome message -->
-                <div class="empty-state" id="emptyState">
-                    <div class="empty-state-icon">🤖</div>
-                    <div class="empty-state-title">Welcome to AI Product Assistant</div>
-                    <div class="empty-state-desc">
-                        I can help you with product management tasks, document generation, data analysis, and more. 
-                        Start by typing a message or try one of the features below.
-                    </div>
-                    <button class="btn btn-primary" onclick="toggleFeatures()">
-                        Explore Features
-                    </button>
-                </div>
-            </div>
-
-            <!-- Features Panel -->
-            <div class="features-panel" id="featuresPanel">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <h3 style="margin: 0;">Quick Actions</h3>
-                    <button class="modal-close" onclick="toggleFeatures()">×</button>
-                </div>
-                <div class="features-grid">
-                    <div class="feature-card" onclick="insertPrompt('Create a comprehensive PRD for a new feature')">
-                        <div class="feature-icon">📋</div>
-                        <div class="feature-title">Create PRD</div>
-                        <div class="feature-desc">Generate a detailed Product Requirements Document</div>
-                    </div>
-                    <div class="feature-card" onclick="insertPrompt('Analyze the uploaded data and provide insights')">
-                        <div class="feature-icon">📊</div>
-                        <div class="feature-title">Data Analysis</div>
-                        <div class="feature-desc">Analyze CSV/Excel files with advanced insights</div>
-                    </div>
-                    <div class="feature-card" onclick="insertPrompt('Generate a competitive analysis report')">
-                        <div class="feature-icon">🔍</div>
-                        <div class="feature-title">Competitive Analysis</div>
-                        <div class="feature-desc">Create detailed competitive landscape analysis</div>
-                    </div>
-                    <div class="feature-card" onclick="insertPrompt('Create user personas for our product')">
-                        <div class="feature-icon">👥</div>
-                        <div class="feature-title">User Personas</div>
-                        <div class="feature-desc">Develop detailed user personas and journeys</div>
+                <div class="message-wrapper">
+                    <div class="message">
+                        <div class="message-avatar assistant-avatar">AI</div>
+                        <div class="message-content">
+                            <p>👋 Welcome to your AI Product Management Assistant!</p>
+                            <p>I can help you with:</p>
+                            <ul>
+                                <li>📄 Creating and reviewing PRDs</li>
+                                <li>📊 Analyzing data from CSV/Excel files</li>
+                                <li>🔍 Extracting insights from documents</li>
+                                <li>📝 Generating reports and documentation</li>
+                                <li>💡 Product strategy and roadmap planning</li>
+                            </ul>
+                            <p>Try uploading a file or asking me anything about product management!</p>
+                        </div>
                     </div>
                 </div>
             </div>
 
             <div class="input-area">
                 <div class="input-container">
-                    <div class="file-indicators" id="fileIndicators" style="display: none;">
+                    <div id="filesContainer" class="files-container" style="display: none;">
                         <!-- File indicators will be populated here -->
                     </div>
                     <div class="input-wrapper">
                         <textarea 
                             class="chat-input" 
                             id="chatInput" 
-                            placeholder="Ask me anything... (Shift+Enter for new line)"
+                            placeholder="Ask me anything..."
                             rows="1"
                             onkeydown="handleKeyDown(event)"
                             oninput="autoResize(this)"></textarea>
                         <div class="input-actions">
-                            <button class="input-action-btn" onclick="document.getElementById('fileInput').click()" 
-                                    title="Attach files (PDF, Word, Excel, CSV, Images)">
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
+                            <button class="icon-btn" onclick="document.getElementById('fileInput').click()" 
+                                    title="Attach files" aria-label="Attach files">
+                                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M10.5 13.5L6.5 9.5C5.5 8.5 5.5 7 6.5 6C7.5 5 9 5 10 6L14 10C15.5 11.5 15.5 13.5 14 15C12.5 16.5 10.5 16.5 9 15L5 11"></path>
                                 </svg>
                             </button>
-                            <button class="input-action-btn" onclick="toggleFeatures()" title="Quick actions">
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <rect x="3" y="3" width="7" height="7"></rect>
-                                    <rect x="14" y="3" width="7" height="7"></rect>
-                                    <rect x="14" y="14" width="7" height="7"></rect>
-                                    <rect x="3" y="14" width="7" height="7"></rect>
+                            <button class="icon-btn" onclick="toggleVoiceInput()" 
+                                    title="Voice input" aria-label="Voice input" id="voiceBtn">
+                                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M10 1v8a3 3 0 0 0 6 0V1"></path>
+                                    <path d="M6 10a4 4 0 0 0 8 0"></path>
+                                    <line x1="10" y1="14" x2="10" y2="19"></line>
+                                    <line x1="7" y1="19" x2="13" y2="19"></line>
                                 </svg>
                             </button>
                             <button class="send-btn" id="sendBtn" onclick="sendMessage()">
-                                <span id="sendBtnText">Send</span>
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <line x1="22" y1="2" x2="11" y2="13"></line>
-                                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                                <span>Send</span>
+                                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M2 8L14 2L8 14L6 9L2 8Z"></path>
                                 </svg>
                             </button>
                         </div>
@@ -6956,35 +6816,40 @@ async def serve_chatbot():
         </div>
     </div>
 
-    <!-- Toast Container -->
-    <div class="toast-container" id="toastContainer"></div>
-
     <!-- Generate Document Modal -->
     <div class="modal" id="generateModal">
         <div class="modal-content">
             <div class="modal-header">
-                <h3 class="modal-title">Generate Document</h3>
-                <button class="modal-close" onclick="closeModal('generateModal')">×</button>
+                <h2 class="modal-title">Generate Document</h2>
+                <button class="modal-close" onclick="closeModal('generateModal')">&times;</button>
             </div>
-            <form onsubmit="generateDocument(event)">
+            <div class="modal-body">
                 <div class="form-group">
-                    <label class="form-label">Document Type</label>
-                    <select class="form-select" id="docFormat" required>
-                        <option value="">Select format...</option>
+                    <label class="form-label" for="generatePrompt">What would you like to generate?</label>
+                    <textarea class="form-textarea" id="generatePrompt" 
+                              placeholder="E.g., Create a PRD for a mobile app that helps users track their fitness goals..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="outputFormat">Output Format</label>
+                    <select class="form-select" id="outputFormat">
+                        <option value="">Text Response</option>
                         <option value="docx">Word Document (.docx)</option>
-                        <option value="csv">CSV Spreadsheet (.csv)</option>
-                        <option value="excel">Excel Workbook (.xlsx)</option>
+                        <option value="csv">CSV File (.csv)</option>
+                        <option value="excel">Excel File (.xlsx)</option>
                     </select>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Prompt</label>
-                    <textarea class="form-textarea" id="docPrompt" placeholder="Describe what you want to generate..." required></textarea>
+                    <label class="form-label" for="temperature">Creativity Level</label>
+                    <input type="range" class="form-input" id="temperature" 
+                           min="0" max="1" step="0.1" value="0.8"
+                           oninput="updateTemperatureLabel(this.value)">
+                    <small id="temperatureLabel" style="color: var(--text-secondary)">Balanced (0.8)</small>
                 </div>
-                <div class="form-actions">
-                    <button type="button" class="btn btn-secondary" onclick="closeModal('generateModal')">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Generate</button>
-                </div>
-            </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('generateModal')">Cancel</button>
+                <button class="btn btn-primary" onclick="generateDocument()">Generate</button>
+            </div>
         </div>
     </div>
 
@@ -6992,69 +6857,72 @@ async def serve_chatbot():
     <div class="modal" id="extractReviewsModal">
         <div class="modal-content">
             <div class="modal-header">
-                <h3 class="modal-title">Extract Reviews</h3>
-                <button class="modal-close" onclick="closeModal('extractReviewsModal')">×</button>
+                <h2 class="modal-title">Extract Reviews</h2>
+                <button class="modal-close" onclick="closeModal('extractReviewsModal')">&times;</button>
             </div>
-            <form onsubmit="extractReviews(event)">
+            <div class="modal-body">
                 <div class="form-group">
-                    <label class="form-label">Upload File</label>
+                    <label class="form-label" for="reviewFile">Select File</label>
                     <input type="file" class="form-input" id="reviewFile" 
-                           accept=".txt,.pdf,.docx,.html" required>
+                           accept=".txt,.pdf,.docx,.html">
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Columns (comma-separated)</label>
+                    <label class="form-label" for="reviewColumns">Columns (comma-separated)</label>
                     <input type="text" class="form-input" id="reviewColumns" 
-                           value="user,review,rating,date,source" 
+                           value="user,review,rating,date,source"
                            placeholder="user,review,rating,date,source">
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Output Format</label>
-                    <select class="form-select" id="reviewFormat" required>
-                        <option value="csv">CSV</option>
-                        <option value="excel">Excel</option>
+                    <label class="form-label" for="reviewFormat">Output Format</label>
+                    <select class="form-select" id="reviewFormat">
+                        <option value="csv">CSV File (.csv)</option>
+                        <option value="excel">Excel File (.xlsx)</option>
                     </select>
                 </div>
-                <div class="form-actions">
-                    <button type="button" class="btn btn-secondary" onclick="closeModal('extractReviewsModal')">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Extract</button>
-                </div>
-            </form>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('extractReviewsModal')">Cancel</button>
+                <button class="btn btn-primary" onclick="extractReviews()">Extract</button>
+            </div>
         </div>
     </div>
 
-    <!-- Settings Modal -->
-    <div class="modal" id="settingsModal">
+    <!-- Model Settings Modal -->
+    <div class="modal" id="modelSettingsModal">
         <div class="modal-content">
             <div class="modal-header">
-                <h3 class="modal-title">Settings</h3>
-                <button class="modal-close" onclick="closeModal('settingsModal')">×</button>
+                <h2 class="modal-title">Model Settings</h2>
+                <button class="modal-close" onclick="closeModal('modelSettingsModal')">&times;</button>
             </div>
-            <div class="form-group">
-                <label class="form-label">Model</label>
-                <select class="form-select" id="modelSelect">
-                    <option value="gpt-4.1-mini">GPT-4.1 Mini</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label class="form-label">Temperature</label>
-                <input type="range" class="form-input" id="temperatureSlider" 
-                       min="0" max="1" step="0.1" value="0.7">
-                <div style="display: flex; justify-content: space-between; font-size: 12px; color: var(--text-secondary);">
-                    <span>Precise</span>
-                    <span id="temperatureValue">0.7</span>
-                    <span>Creative</span>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label" for="modelSelect">Model</label>
+                    <select class="form-select" id="modelSelect" onchange="updateModelName()">
+                        <option value="gpt-4.1-mini" selected>GPT-4.1 Mini (Fast & Efficient)</option>
+                        <option value="gpt-4">GPT-4 (Most Capable)</option>
+                        <option value="gpt-3.5-turbo">GPT-3.5 Turbo (Fastest)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="maxTokens">Max Response Length</label>
+                    <input type="number" class="form-input" id="maxTokens" 
+                           value="2000" min="100" max="4000">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="systemPrompt">System Prompt (Optional)</label>
+                    <textarea class="form-textarea" id="systemPrompt" 
+                              placeholder="Add custom instructions for the AI..."></textarea>
                 </div>
             </div>
-            <div class="form-actions">
-                <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('modelSettingsModal')">Cancel</button>
+                <button class="btn btn-primary" onclick="saveModelSettings()">Save</button>
             </div>
         </div>
     </div>
 
-    <!-- Hidden file input -->
-    <input type="file" id="fileInput" style="display: none;" 
-           accept=".txt,.pdf,.docx,.html,.xlsx,.csv,.jpg,.jpeg,.png,.gif,.bmp,.webp" 
-           onchange="handleFileUpload(event)" multiple>
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
 
     <script>
         // API Configuration
@@ -7071,170 +6939,104 @@ async def serve_chatbot():
             uploadedFiles: [],
             isStreaming: false,
             threadCounter: 1,
-            temperature: 0.7,
-            pendingFiles: []
+            model: 'gpt-4.1-mini',
+            maxTokens: 2000,
+            systemPrompt: '',
+            theme: localStorage.getItem('theme') || 'light',
+            voiceRecognition: null,
+            isListening: false
         };
 
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
-            loadState();
+            // Set initial theme
+            document.documentElement.setAttribute('data-theme', state.theme);
+            
+            // Initialize voice recognition if available
+            if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                state.voiceRecognition = new SpeechRecognition();
+                state.voiceRecognition.continuous = false;
+                state.voiceRecognition.interimResults = true;
+                
+                state.voiceRecognition.onresult = (event) => {
+                    const transcript = Array.from(event.results)
+                        .map(result => result[0].transcript)
+                        .join('');
+                    document.getElementById('chatInput').value = transcript;
+                    autoResize(document.getElementById('chatInput'));
+                };
+                
+                state.voiceRecognition.onend = () => {
+                    state.isListening = false;
+                    updateVoiceButton();
+                };
+            }
+            
+            // Create initial chat
             createNewChat();
-            setupEventListeners();
-            checkHealth();
+            
+            // Add keyboard shortcuts
+            document.addEventListener('keydown', handleGlobalKeyDown);
         });
 
-        // Load state from localStorage
-        function loadState() {
-            const savedState = localStorage.getItem('aiAssistantState');
-            if (savedState) {
-                try {
-                    const parsed = JSON.parse(savedState);
-                    state = { ...state, ...parsed };
-                    updateChatHistory();
-                } catch (e) {
-                    console.error('Failed to load state:', e);
-                }
-            }
+        // Theme management
+        function toggleTheme() {
+            state.theme = state.theme === 'light' ? 'dark' : 'light';
+            document.documentElement.setAttribute('data-theme', state.theme);
+            localStorage.setItem('theme', state.theme);
+            showToast(`Switched to ${state.theme} mode`, 'info');
         }
 
-        // Save state to localStorage
-        function saveState() {
-            try {
-                const stateToSave = {
-                    threads: state.threads,
-                    threadCounter: state.threadCounter,
-                    temperature: state.temperature
-                };
-                localStorage.setItem('aiAssistantState', JSON.stringify(stateToSave));
-            } catch (e) {
-                console.error('Failed to save state:', e);
-            }
-        }
-
-        // Setup event listeners
-        function setupEventListeners() {
-            // Temperature slider
-            const tempSlider = document.getElementById('temperatureSlider');
-            tempSlider.addEventListener('input', (e) => {
-                document.getElementById('temperatureValue').textContent = e.target.value;
-                state.temperature = parseFloat(e.target.value);
-            });
-
-            // Handle clicks outside modals
-            document.querySelectorAll('.modal').forEach(modal => {
-                modal.addEventListener('click', (e) => {
-                    if (e.target === modal) {
-                        closeModal(modal.id);
-                    }
-                });
-            });
-        }
-
-        // Check API health
-        async function checkHealth() {
-            try {
-                const response = await fetch(`${API_BASE_URL}/health`);
-                if (!response.ok) {
-                    showToast('API connection issue detected', 'warning');
-                }
-            } catch (error) {
-                showToast('Cannot connect to API', 'error');
-            }
-        }
-
-        // Toggle sidebar
+        // Sidebar management
         function toggleSidebar() {
             const sidebar = document.getElementById('sidebar');
-            const overlay = document.getElementById('sidebarOverlay');
             sidebar.classList.toggle('closed');
-            if (window.innerWidth <= 768) {
-                overlay.classList.toggle('active');
-            }
         }
 
-        // Toggle features panel
-        function toggleFeatures() {
-            const panel = document.getElementById('featuresPanel');
-            panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
-        }
-
-        // Show settings
-        function showSettings() {
-            showModal('settingsModal');
-        }
-
-        // Save settings
-        function saveSettings() {
-            closeModal('settingsModal');
-            saveState();
-            showToast('Settings saved', 'success');
-        }
-
-        // Show modal
-        function showModal(modalId) {
-            document.getElementById(modalId).style.display = 'flex';
-        }
-
-        // Close modal
-        function closeModal(modalId) {
-            document.getElementById(modalId).style.display = 'none';
-        }
-
-        // Show toast notification
-        function showToast(message, type = 'info', duration = 5000) {
+        // Toast notifications
+        function showToast(message, type = 'info', duration = 3000) {
             const container = document.getElementById('toastContainer');
             const toast = document.createElement('div');
             toast.className = `toast ${type}`;
             
-            const icon = document.createElement('div');
-            icon.className = 'toast-icon';
-            icon.innerHTML = type === 'error' ? '✕' : type === 'success' ? '✓' : type === 'warning' ? '!' : 'i';
+            const icon = {
+                'success': '✓',
+                'error': '✗',
+                'info': 'ℹ',
+                'warning': '⚠'
+            }[type] || 'ℹ';
             
-            const text = document.createElement('span');
-            text.textContent = message;
+            toast.innerHTML = `
+                <span>${icon}</span>
+                <span>${message}</span>
+                <button class="toast-close" onclick="this.parentElement.remove()">✕</button>
+            `;
             
-            const close = document.createElement('span');
-            close.className = 'toast-close';
-            close.innerHTML = '×';
-            close.onclick = () => removeToast(toast);
-            
-            toast.appendChild(icon);
-            toast.appendChild(text);
-            toast.appendChild(close);
             container.appendChild(toast);
             
-            setTimeout(() => removeToast(toast), duration);
-        }
-
-        // Remove toast
-        function removeToast(toast) {
-            toast.style.animation = 'toastOut 0.3s forwards';
-            setTimeout(() => toast.remove(), 300);
-        }
-
-        // Show progress
-        function showProgress(percent = 0) {
-            const container = document.getElementById('progressContainer');
-            const bar = document.getElementById('progressBar');
-            container.style.display = 'block';
-            bar.style.width = percent + '%';
-        }
-
-        // Hide progress
-        function hideProgress() {
             setTimeout(() => {
-                document.getElementById('progressContainer').style.display = 'none';
-            }, 300);
+                toast.style.opacity = '0';
+                setTimeout(() => toast.remove(), 300);
+            }, duration);
+        }
+
+        // Modal management
+        function showModal(modalId) {
+            document.getElementById(modalId).classList.add('active');
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.remove('active');
         }
 
         // Auto-resize textarea
         function autoResize(textarea) {
             textarea.style.height = 'auto';
-            const newHeight = Math.min(textarea.scrollHeight, 200);
-            textarea.style.height = newHeight + 'px';
+            textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px';
         }
 
-        // Handle key down
+        // Handle keyboard events
         function handleKeyDown(event) {
             if (event.key === 'Enter' && !event.shiftKey) {
                 event.preventDefault();
@@ -7242,16 +7044,47 @@ async def serve_chatbot():
             }
         }
 
-        // Insert prompt
-        function insertPrompt(prompt) {
-            const input = document.getElementById('chatInput');
-            input.value = prompt;
-            autoResize(input);
-            toggleFeatures();
-            input.focus();
+        function handleGlobalKeyDown(event) {
+            // Ctrl/Cmd + K for new chat
+            if ((event.ctrlKey || event.metaKey) && event.key === 'k') {
+                event.preventDefault();
+                createNewChat();
+            }
+            // Ctrl/Cmd + / for focus input
+            if ((event.ctrlKey || event.metaKey) && event.key === '/') {
+                event.preventDefault();
+                document.getElementById('chatInput').focus();
+            }
         }
 
-        // Create new chat
+        // Voice input
+        function toggleVoiceInput() {
+            if (!state.voiceRecognition) {
+                showToast('Voice input not supported in your browser', 'error');
+                return;
+            }
+            
+            if (state.isListening) {
+                state.voiceRecognition.stop();
+                state.isListening = false;
+            } else {
+                state.voiceRecognition.start();
+                state.isListening = true;
+                showToast('Listening...', 'info');
+            }
+            updateVoiceButton();
+        }
+
+        function updateVoiceButton() {
+            const btn = document.getElementById('voiceBtn');
+            if (state.isListening) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+        }
+
+        // Chat management
         async function createNewChat() {
             const threadId = 'thread_' + Date.now();
             const threadName = `Chat ${state.threadCounter++}`;
@@ -7265,43 +7098,54 @@ async def serve_chatbot():
             state.activeThread = threadId;
             state.chatHistory[threadId] = [];
             state.uploadedFiles = [];
-            state.pendingFiles = [];
             
-            // Reset assistant info for new chat
+            // Reset assistant for new chat
             state.assistantId = null;
             state.sessionId = null;
             state.vectorStoreId = null;
             
             updateChatHistory();
             clearMessages();
+            showWelcomeMessage();
             updateFileIndicators();
-            saveState();
-            
-            // Show empty state
-            document.getElementById('emptyState').style.display = 'flex';
+        }
+
+        function showWelcomeMessage() {
+            addMessage('assistant', `👋 Welcome to your AI Product Management Assistant!
+
+I can help you with:
+- 📄 Creating and reviewing PRDs
+- 📊 Analyzing data from CSV/Excel files
+- 🔍 Extracting insights from documents
+- 📝 Generating reports and documentation
+- 💡 Product strategy and roadmap planning
+
+Try uploading a file or asking me anything about product management!`);
         }
 
         // Initialize assistant
         async function initializeAssistant() {
-            showProgress(20);
             try {
                 const formData = new FormData();
                 
-                // Add pending files
-                for (const file of state.pendingFiles) {
+                // Add all uploaded files
+                for (const file of state.uploadedFiles) {
                     formData.append('file', file);
                 }
+                
+                // Add system prompt if provided
+                if (state.systemPrompt) {
+                    formData.append('context', state.systemPrompt);
+                }
 
-                showProgress(40);
                 const response = await fetch(`${API_BASE_URL}/initiate-chat`, {
                     method: 'POST',
                     body: formData
                 });
 
-                showProgress(80);
                 if (!response.ok) {
-                    const error = await response.text();
-                    throw new Error(error || 'Failed to initialize assistant');
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to initialize assistant');
                 }
 
                 const data = await response.json();
@@ -7309,15 +7153,9 @@ async def serve_chatbot():
                 state.sessionId = data.session;
                 state.vectorStoreId = data.vector_store;
 
-                // Move pending files to uploaded
-                state.uploadedFiles.push(...state.pendingFiles);
-                state.pendingFiles = [];
-
-                showProgress(100);
-                hideProgress();
+                showToast('Assistant initialized successfully', 'success');
                 return true;
             } catch (error) {
-                hideProgress();
                 showToast('Failed to initialize assistant: ' + error.message, 'error');
                 console.error(error);
                 return false;
@@ -7331,9 +7169,6 @@ async def serve_chatbot():
             
             if (!message || state.isStreaming) return;
 
-            // Hide empty state
-            document.getElementById('emptyState').style.display = 'none';
-
             // Initialize assistant if not already done
             if (!state.assistantId) {
                 const initialized = await initializeAssistant();
@@ -7344,6 +7179,9 @@ async def serve_chatbot():
             input.value = '';
             input.style.height = 'auto';
             
+            // Hide suggestions
+            document.getElementById('suggestions').style.display = 'none';
+            
             // Add user message
             addMessage('user', message);
             
@@ -7352,6 +7190,13 @@ async def serve_chatbot():
                 state.chatHistory[state.activeThread] = [];
             }
             state.chatHistory[state.activeThread].push({ role: 'user', content: message });
+            
+            // Update thread name if it's the first message
+            if (state.chatHistory[state.activeThread].length === 1) {
+                const threadName = message.substring(0, 30) + (message.length > 30 ? '...' : '');
+                state.threads[state.activeThread].name = threadName;
+                updateChatHistory();
+            }
             
             // Start streaming
             state.isStreaming = true;
@@ -7368,22 +7213,21 @@ async def serve_chatbot():
                 }));
 
                 if (!response.ok) {
-                    const error = await response.text();
-                    throw new Error(error || 'Failed to get response');
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to get response');
                 }
 
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
                 let assistantResponse = '';
-                let buffer = '';
+                let isProcessing = false;
 
                 while (true) {
                     const { done, value } = await reader.read();
                     if (done) break;
 
-                    buffer += decoder.decode(value, { stream: true });
-                    const lines = buffer.split('\n');
-                    buffer = lines.pop() || '';
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n');
 
                     for (const line of lines) {
                         if (line.startsWith('data: ')) {
@@ -7393,15 +7237,26 @@ async def serve_chatbot():
                                 break;
                             }
 
-                            if (data.trim()) {
-                                try {
-                                    const json = JSON.parse(data);
-                                    if (json.choices && json.choices[0].delta && json.choices[0].delta.content) {
-                                        assistantResponse += json.choices[0].delta.content;
-                                        updateMessage(assistantMessageId, assistantResponse);
-                                    }
-                                } catch (e) {
-                                    console.error('Error parsing SSE:', e, data);
+                            // Handle status messages
+                            if (data.includes('[Processing data analysis request...]') || 
+                                data.includes('[Data analysis complete]') ||
+                                data.includes('[Generating response based on analysis...]')) {
+                                isProcessing = true;
+                                updateMessage(assistantMessageId, assistantResponse + '\n\n' + data, false);
+                                continue;
+                            }
+
+                            try {
+                                const json = JSON.parse(data);
+                                if (json.choices && json.choices[0].delta && json.choices[0].delta.content) {
+                                    assistantResponse += json.choices[0].delta.content;
+                                    updateMessage(assistantMessageId, assistantResponse, isProcessing);
+                                }
+                            } catch (e) {
+                                // Not JSON, might be plain text
+                                if (data.trim()) {
+                                    assistantResponse += data;
+                                    updateMessage(assistantMessageId, assistantResponse, isProcessing);
                                 }
                             }
                         }
@@ -7409,16 +7264,13 @@ async def serve_chatbot():
                 }
 
                 // Store assistant response
-                state.chatHistory[state.activeThread].push({ role: 'assistant', content: assistantResponse });
-                
-                // Add message actions
-                addMessageActions(assistantMessageId, assistantResponse);
+                state.chatHistory[state.activeThread].push({ 
+                    role: 'assistant', 
+                    content: assistantResponse 
+                });
                 
                 // Generate suggestions
                 generateSuggestions(message, assistantResponse);
-                
-                // Save state
-                saveState();
                 
             } catch (error) {
                 showToast('Failed to get response: ' + error.message, 'error');
@@ -7430,7 +7282,7 @@ async def serve_chatbot():
             }
         }
 
-        // Add message to chat
+        // Message management
         function addMessage(role, content, isStreaming = false) {
             const container = document.getElementById('messagesContainer');
             const messageId = 'msg_' + Date.now();
@@ -7440,7 +7292,7 @@ async def serve_chatbot():
             messageWrapper.id = messageId;
             
             const message = document.createElement('div');
-            message.className = 'message';
+            message.className = `message ${role}-message`;
             
             const avatar = document.createElement('div');
             avatar.className = `message-avatar ${role}-avatar`;
@@ -7457,87 +7309,71 @@ async def serve_chatbot():
             
             message.appendChild(avatar);
             message.appendChild(contentDiv);
+            
+            // Add message actions for assistant messages
+            if (role === 'assistant' && !isStreaming) {
+                const actions = document.createElement('div');
+                actions.className = 'message-actions';
+                actions.innerHTML = `
+                    <button class="message-action-btn" onclick="copyMessage('${messageId}')">Copy</button>
+                    <button class="message-action-btn" onclick="regenerateMessage('${messageId}')">Regenerate</button>
+                `;
+                contentDiv.appendChild(actions);
+            }
+            
             messageWrapper.appendChild(message);
             container.appendChild(messageWrapper);
             
+            // Scroll to bottom
             container.scrollTop = container.scrollHeight;
             
             return messageId;
         }
 
-        // Update message content
-        function updateMessage(messageId, content) {
+        function updateMessage(messageId, content, isProcessing = false) {
             const message = document.getElementById(messageId);
             if (message) {
                 const contentDiv = message.querySelector('.message-content');
-                contentDiv.innerHTML = formatMessage(content);
+                const formattedContent = formatMessage(content);
+                
+                if (isProcessing) {
+                    contentDiv.innerHTML = formattedContent;
+                } else {
+                    contentDiv.innerHTML = formattedContent + `
+                        <div class="message-actions">
+                            <button class="message-action-btn" onclick="copyMessage('${messageId}')">Copy</button>
+                            <button class="message-action-btn" onclick="regenerateMessage('${messageId}')">Regenerate</button>
+                        </div>
+                    `;
+                }
+                
+                // Add copy buttons to code blocks
+                contentDiv.querySelectorAll('pre').forEach(pre => {
+                    if (!pre.querySelector('.copy-code-btn')) {
+                        const copyBtn = document.createElement('button');
+                        copyBtn.className = 'copy-code-btn';
+                        copyBtn.textContent = 'Copy';
+                        copyBtn.onclick = () => copyCode(pre);
+                        pre.appendChild(copyBtn);
+                    }
+                });
                 
                 const container = document.getElementById('messagesContainer');
                 container.scrollTop = container.scrollHeight;
             }
         }
 
-        // Add message actions
-        function addMessageActions(messageId, content) {
-            const message = document.getElementById(messageId);
-            if (!message) return;
-            
-            const contentDiv = message.querySelector('.message-content');
-            const actions = document.createElement('div');
-            actions.className = 'message-actions';
-            
-            // Copy button
-            const copyBtn = document.createElement('button');
-            copyBtn.className = 'message-action-btn';
-            copyBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg> Copy';
-            copyBtn.onclick = () => copyToClipboard(content);
-            actions.appendChild(copyBtn);
-            
-            // Download as text button
-            const downloadBtn = document.createElement('button');
-            downloadBtn.className = 'message-action-btn';
-            downloadBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg> Save';
-            downloadBtn.onclick = () => downloadAsText(content);
-            actions.appendChild(downloadBtn);
-            
-            contentDiv.appendChild(actions);
-        }
-
-        // Copy to clipboard
-        async function copyToClipboard(text) {
-            try {
-                await navigator.clipboard.writeText(text);
-                showToast('Copied to clipboard', 'success');
-            } catch (err) {
-                showToast('Failed to copy', 'error');
-            }
-        }
-
-        // Download as text
-        function downloadAsText(content) {
-            const blob = new Blob([content], { type: 'text/plain' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `message_${new Date().toISOString()}.txt`;
-            a.click();
-            URL.revokeObjectURL(url);
-            showToast('Downloaded as text file', 'success');
-        }
-
-        // Remove message
         function removeMessage(messageId) {
             const message = document.getElementById(messageId);
             if (message) message.remove();
         }
 
-        // Clear messages
         function clearMessages() {
             const container = document.getElementById('messagesContainer');
             container.innerHTML = '';
         }
 
-        // Format message content with enhanced markdown support
+        // Message formatting
         function formatMessage(content) {
             if (!content) return '';
             
@@ -7547,71 +7383,175 @@ async def serve_chatbot():
                 .replace(/</g, '&lt;')
                 .replace(/>/g, '&gt;');
             
-            // Code blocks with syntax highlighting
-            formatted = formatted.replace(/```(\w*)\n([\s\S]*?)```/g, (match, lang, code) => {
-                return `<div class="code-block-wrapper"><pre><code class="language-${lang}">${code.trim()}</code></pre><button class="copy-code-btn" onclick="copyToClipboard('${code.trim().replace(/'/g, "\\'")}')">Copy</button></div>`;
+            // Format code blocks
+            formatted = formatted.replace(/```([\s\S]*?)```/g, (match, code) => {
+                return `<pre><code>${code.trim()}</code></pre>`;
             });
             
-            // Inline code
+            // Format inline code
             formatted = formatted.replace(/`([^`]+)`/g, '<code>$1</code>');
             
-            // Tables
-            formatted = formatted.replace(/\n\|(.+)\|\n\|[-:\s|]+\|\n((?:\|.+\|\n)*)/g, (match, header, body) => {
-                const headers = header.split('|').map(h => h.trim()).filter(h => h);
-                const rows = body.trim().split('\n').map(row => 
-                    row.split('|').map(cell => cell.trim()).filter(cell => cell)
-                );
-                
-                let table = '<div class="markdown-table"><table><thead><tr>';
-                headers.forEach(h => table += `<th>${h}</th>`);
-                table += '</tr></thead><tbody>';
-                rows.forEach(row => {
-                    table += '<tr>';
-                    row.forEach(cell => table += `<td>${cell}</td>`);
-                    table += '</tr>';
-                });
-                table += '</tbody></table></div>';
-                return table;
-            });
+            // Format bold
+            formatted = formatted.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
             
-            // Bold
-            formatted = formatted.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+            // Format italic
+            formatted = formatted.replace(/\*(.*?)\*/g, '<em>$1</em>');
             
-            // Italic
-            formatted = formatted.replace(/\*(.+?)\*/g, '<em>$1</em>');
-            
-            // Headers
-            formatted = formatted.replace(/^### (.+)$/gm, '<h3>$1</h3>');
-            formatted = formatted.replace(/^## (.+)$/gm, '<h2>$1</h2>');
-            formatted = formatted.replace(/^# (.+)$/gm, '<h1>$1</h1>');
-            
-            // Lists
-            formatted = formatted.replace(/^\* (.+)$/gm, '<li>$1</li>');
+            // Format lists
+            formatted = formatted.replace(/^- (.+)$/gm, '<li>$1</li>');
             formatted = formatted.replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>');
-            formatted = formatted.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
             
-            // Links
-            formatted = formatted.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
-            
-            // Line breaks
+            // Format paragraphs
             formatted = formatted.replace(/\n\n/g, '</p><p>');
             formatted = formatted.replace(/\n/g, '<br>');
             
             return `<p>${formatted}</p>`;
         }
 
-        // Generate suggestions
+        // Message actions
+        function copyMessage(messageId) {
+            const message = document.getElementById(messageId);
+            if (message) {
+                const content = message.querySelector('.message-content').innerText;
+                navigator.clipboard.writeText(content).then(() => {
+                    showToast('Message copied to clipboard', 'success');
+                });
+            }
+        }
+
+        function copyCode(pre) {
+            const code = pre.querySelector('code').innerText;
+            navigator.clipboard.writeText(code).then(() => {
+                showToast('Code copied to clipboard', 'success');
+            });
+        }
+
+        async function regenerateMessage(messageId) {
+            // Find the user message before this assistant message
+            const messages = Array.from(document.querySelectorAll('.message-wrapper'));
+            const currentIndex = messages.findIndex(m => m.id === messageId);
+            
+            if (currentIndex > 0) {
+                const previousMessage = messages[currentIndex - 1];
+                const userContent = previousMessage.querySelector('.message-content').innerText;
+                
+                // Remove the current assistant message
+                removeMessage(messageId);
+                
+                // Resend the user message
+                document.getElementById('chatInput').value = userContent;
+                await sendMessage();
+            }
+        }
+
+        // File handling
+        async function handleFileUpload(event) {
+            const files = Array.from(event.target.files);
+            if (!files.length) return;
+            
+            // Add files to state
+            state.uploadedFiles.push(...files);
+            updateFileIndicators();
+            
+            // If assistant exists, upload immediately
+            if (state.assistantId) {
+                for (const file of files) {
+                    await uploadFileToAssistant(file);
+                }
+            } else {
+                showToast(`${files.length} file(s) ready to upload`, 'info');
+            }
+        }
+
+        async function uploadFileToAssistant(file) {
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('assistant', state.assistantId);
+                
+                if (state.sessionId) {
+                    formData.append('session', state.sessionId);
+                }
+
+                const response = await fetch(`${API_BASE_URL}/upload-file`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to upload file');
+                }
+                
+                showToast(`File "${file.name}" uploaded successfully`, 'success');
+            } catch (error) {
+                showToast(`Failed to upload "${file.name}": ${error.message}`, 'error');
+                console.error(error);
+            }
+        }
+
+        function updateFileIndicators() {
+            const container = document.getElementById('filesContainer');
+            
+            if (state.uploadedFiles.length === 0) {
+                container.style.display = 'none';
+                return;
+            }
+            
+            container.style.display = 'flex';
+            container.innerHTML = state.uploadedFiles.map((file, index) => `
+                <div class="file-indicator">
+                    <span class="file-icon">${getFileIcon(file.name)}</span>
+                    <span>${file.name}</span>
+                    <span class="remove-file" onclick="removeFile(${index})">✕</span>
+                </div>
+            `).join('');
+        }
+
+        function getFileIcon(filename) {
+            const ext = filename.split('.').pop().toLowerCase();
+            const icons = {
+                'pdf': '📄',
+                'doc': '📝',
+                'docx': '📝',
+                'xls': '📊',
+                'xlsx': '📊',
+                'csv': '📊',
+                'txt': '📃',
+                'html': '🌐',
+                'jpg': '🖼️',
+                'jpeg': '🖼️',
+                'png': '🖼️',
+                'gif': '🖼️'
+            };
+            return icons[ext] || '📎';
+        }
+
+        function removeFile(index) {
+            state.uploadedFiles.splice(index, 1);
+            updateFileIndicators();
+            document.getElementById('fileInput').value = '';
+        }
+
+        // Suggestions
         async function generateSuggestions(userMessage, assistantResponse) {
             try {
                 const response = await fetch(`${API_BASE_URL}/chat?` + new URLSearchParams({
                     session: state.sessionId,
                     assistant: state.assistantId,
-                    prompt: `Based on this conversation:\nUser: ${userMessage}\nAssistant: ${assistantResponse}\n\nGenerate 3 different natural follow-up questions, each in 4-7 words that would help continue this conversation productively. Separate with |. Just the questions, nothing else.`
+                    prompt: `Based on this conversation:
+User: ${userMessage}
+Assistant: ${assistantResponse.substring(0, 500)}...
+
+Generate 3 natural follow-up questions (4-7 words each). Separate with |. Just the questions.`
                 }));
 
                 if (response.ok) {
                     const data = await response.json();
-                    const suggestions = data.response.split('|').map(s => s.trim()).filter(s => s && s.length > 0).slice(0, 3);
+                    const suggestions = data.response.split('|')
+                        .map(s => s.trim())
+                        .filter(s => s && s.length > 0)
+                        .slice(0, 3);
                     
                     if (suggestions.length > 0) {
                         displaySuggestions(suggestions);
@@ -7622,7 +7562,6 @@ async def serve_chatbot():
             }
         }
 
-        // Display suggestions
         function displaySuggestions(suggestions) {
             const container = document.getElementById('suggestions');
             container.innerHTML = '';
@@ -7641,150 +7580,230 @@ async def serve_chatbot():
             });
         }
 
-        // Handle file upload
-        async function handleFileUpload(event) {
-            const files = Array.from(event.target.files);
-            if (!files.length) return;
-            
-            // Add to pending files
-            state.pendingFiles.push(...files);
-            
-            // If assistant exists, upload immediately
-            if (state.assistantId) {
-                showProgress(20);
-                for (let i = 0; i < files.length; i++) {
-                    const file = files[i];
-                    const progress = 20 + (60 * (i + 1) / files.length);
-                    showProgress(progress);
-                    await uploadFileToAssistant(file);
-                }
-                hideProgress();
-                
-                // Move from pending to uploaded
-                state.uploadedFiles.push(...files);
-                state.pendingFiles = state.pendingFiles.filter(f => !files.includes(f));
-            }
-            
-            updateFileIndicators();
-            event.target.value = ''; // Reset input
+        // Document generation
+        function showGenerateModal() {
+            showModal('generateModal');
+            document.getElementById('generatePrompt').focus();
         }
 
-        // Upload file to assistant
-        async function uploadFileToAssistant(file) {
-            try {
-                const formData = new FormData();
-                formData.append('file', file);
-                formData.append('assistant', state.assistantId);
-                
-                if (state.sessionId) {
-                    formData.append('session', state.sessionId);
-                }
-
-                const response = await fetch(`${API_BASE_URL}/upload-file`, {
-                    method: 'POST',
-                    body: formData
-                });
-
-                if (!response.ok) {
-                    const error = await response.text();
-                    throw new Error(error || 'Failed to upload file');
-                }
-                
-                const data = await response.json();
-                showToast(`File "${file.name}" uploaded successfully`, 'success');
-                return data;
-            } catch (error) {
-                showToast(`Failed to upload "${file.name}": ${error.message}`, 'error');
-                console.error(error);
-                throw error;
-            }
-        }
-
-        // Update file indicators
-        function updateFileIndicators() {
-            const container = document.getElementById('fileIndicators');
-            const allFiles = [...state.uploadedFiles, ...state.pendingFiles];
+        async function generateDocument() {
+            const prompt = document.getElementById('generatePrompt').value.trim();
+            const outputFormat = document.getElementById('outputFormat').value;
+            const temperature = parseFloat(document.getElementById('temperature').value);
             
-            if (allFiles.length === 0) {
-                container.style.display = 'none';
+            if (!prompt) {
+                showToast('Please enter what you want to generate', 'error');
                 return;
             }
             
-            container.style.display = 'flex';
-            container.innerHTML = '';
+            closeModal('generateModal');
+            showToast('Generating document...', 'info');
             
-            allFiles.forEach((file, index) => {
-                const indicator = document.createElement('div');
-                indicator.className = 'file-indicator';
+            try {
+                const formData = new FormData();
+                formData.append('prompt', prompt);
+                formData.append('model', state.model);
+                formData.append('temperature', temperature);
+                formData.append('max_tokens', state.maxTokens);
                 
-                const icon = document.createElement('div');
-                icon.className = 'file-icon';
-                icon.textContent = getFileIcon(file.name);
+                if (outputFormat) {
+                    formData.append('output_format', outputFormat);
+                }
                 
-                const name = document.createElement('span');
-                name.textContent = file.name;
+                if (state.systemPrompt) {
+                    formData.append('system_message', state.systemPrompt);
+                }
                 
-                const remove = document.createElement('span');
-                remove.className = 'remove-file';
-                remove.innerHTML = '×';
-                remove.onclick = () => removeFile(index);
+                // Add any uploaded files
+                for (const file of state.uploadedFiles) {
+                    formData.append('files', file);
+                }
                 
-                indicator.appendChild(icon);
-                indicator.appendChild(name);
-                indicator.appendChild(remove);
-                container.appendChild(indicator);
-            });
+                const response = await fetch(`${API_BASE_URL}/completion`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.message || 'Failed to generate document');
+                }
+                
+                const data = await response.json();
+                
+                if (data.download_url) {
+                    showToast('Document generated successfully!', 'success');
+                    
+                    // Add to chat
+                    addMessage('user', `Generate: ${prompt}`);
+                    addMessage('assistant', `Document generated successfully! 
+                    
+[Download ${data.filename}](${data.download_url})
+
+${data.warnings ? 'Warnings: ' + data.warnings.join(', ') : ''}`);
+                    
+                    // Auto-download
+                    window.open(data.download_url, '_blank');
+                } else {
+                    // Text response
+                    addMessage('user', `Generate: ${prompt}`);
+                    addMessage('assistant', data.response);
+                }
+                
+                // Clear the form
+                document.getElementById('generatePrompt').value = '';
+                
+            } catch (error) {
+                showToast('Failed to generate document: ' + error.message, 'error');
+                console.error(error);
+            }
         }
 
-        // Get file icon based on extension
-        function getFileIcon(filename) {
-            const ext = filename.split('.').pop().toLowerCase();
-            const icons = {
-                pdf: '📄',
-                doc: '📝', docx: '📝',
-                xls: '📊', xlsx: '📊', csv: '📊',
-                txt: '📃',
-                jpg: '🖼️', jpeg: '🖼️', png: '🖼️', gif: '🖼️',
-                html: '🌐'
+        function updateTemperatureLabel(value) {
+            const label = document.getElementById('temperatureLabel');
+            const labels = {
+                '0': 'Precise (0)',
+                '0.1': 'Very Focused (0.1)',
+                '0.2': 'Focused (0.2)',
+                '0.3': 'Slightly Focused (0.3)',
+                '0.4': 'Balanced-Focused (0.4)',
+                '0.5': 'Balanced (0.5)',
+                '0.6': 'Balanced-Creative (0.6)',
+                '0.7': 'Slightly Creative (0.7)',
+                '0.8': 'Creative (0.8)',
+                '0.9': 'Very Creative (0.9)',
+                '1': 'Maximum Creativity (1.0)'
             };
-            return icons[ext] || '📎';
+            label.textContent = labels[value] || `Custom (${value})`;
         }
 
-        // Remove file
-        function removeFile(index) {
-            const allFiles = [...state.uploadedFiles, ...state.pendingFiles];
-            if (index < state.uploadedFiles.length) {
-                state.uploadedFiles.splice(index, 1);
-            } else {
-                state.pendingFiles.splice(index - state.uploadedFiles.length, 1);
-            }
-            updateFileIndicators();
+        // Review extraction
+        function showExtractReviewsModal() {
+            showModal('extractReviewsModal');
         }
 
-        // Update send button state
-        function updateSendButton() {
-            const btn = document.getElementById('sendBtn');
-            const input = document.getElementById('chatInput');
-            const btnText = document.getElementById('sendBtnText');
+        async function extractReviews() {
+            const fileInput = document.getElementById('reviewFile');
+            const file = fileInput.files[0];
+            const columns = document.getElementById('reviewColumns').value;
+            const outputFormat = document.getElementById('reviewFormat').value;
             
-            btn.disabled = state.isStreaming;
-            input.disabled = state.isStreaming;
+            if (!file) {
+                showToast('Please select a file', 'error');
+                return;
+            }
             
-            if (state.isStreaming) {
-                btnText.textContent = 'Stop';
-                btn.innerHTML = '<span class="loading-spinner"></span> Generating...';
-            } else {
-                btnText.textContent = 'Send';
-                btn.innerHTML = '<span id="sendBtnText">Send</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>';
+            closeModal('extractReviewsModal');
+            showToast('Extracting reviews...', 'info');
+            
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('columns', columns);
+                formData.append('model', state.model);
+                formData.append('temperature', '0.1');
+                formData.append('output_format', outputFormat);
+                
+                const response = await fetch(`${API_BASE_URL}/extract-reviews`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.message || 'Failed to extract reviews');
+                }
+                
+                const data = await response.json();
+                
+                showToast(`Extracted ${data.review_count} reviews successfully!`, 'success');
+                
+                // Add to chat
+                addMessage('user', `Extract reviews from ${file.name}`);
+                addMessage('assistant', `Successfully extracted ${data.review_count} reviews!
+                
+[Download ${data.filename}](${data.download_url})
+
+Columns: ${data.columns.join(', ')}`);
+                
+                // Auto-download
+                window.open(data.download_url, '_blank');
+                
+                // Clear the form
+                fileInput.value = '';
+                
+            } catch (error) {
+                showToast('Failed to extract reviews: ' + error.message, 'error');
+                console.error(error);
             }
         }
 
-        // Update chat history UI
+        // Download chat
+        async function downloadChat() {
+            if (!state.sessionId) {
+                showToast('No active chat to download', 'error');
+                return;
+            }
+            
+            showToast('Preparing chat download...', 'info');
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/download-chat?` + new URLSearchParams({
+                    session: state.sessionId,
+                    assistant: state.assistantId
+                }));
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to download chat');
+                }
+                
+                const data = await response.json();
+                
+                showToast('Chat downloaded successfully!', 'success');
+                
+                // Auto-download
+                window.open(data.download_url, '_blank');
+                
+            } catch (error) {
+                showToast('Failed to download chat: ' + error.message, 'error');
+                console.error(error);
+            }
+        }
+
+        // Model settings
+        function showModelSettings() {
+            showModal('modelSettingsModal');
+            document.getElementById('modelSelect').value = state.model;
+            document.getElementById('maxTokens').value = state.maxTokens;
+            document.getElementById('systemPrompt').value = state.systemPrompt;
+        }
+
+        function updateModelName() {
+            const select = document.getElementById('modelSelect');
+            const modelName = select.options[select.selectedIndex].text.split(' (')[0];
+            document.getElementById('modelName').textContent = modelName;
+        }
+
+        function saveModelSettings() {
+            state.model = document.getElementById('modelSelect').value;
+            state.maxTokens = parseInt(document.getElementById('maxTokens').value);
+            state.systemPrompt = document.getElementById('systemPrompt').value;
+            
+            updateModelName();
+            closeModal('modelSettingsModal');
+            showToast('Model settings saved', 'success');
+        }
+
+        // Chat history management
         function updateChatHistory() {
             const container = document.getElementById('chatHistory');
             container.innerHTML = '';
             
-            Object.entries(state.threads).reverse().forEach(([threadId, thread]) => {
+            const sortedThreads = Object.entries(state.threads)
+                .sort((a, b) => new Date(b[1].created) - new Date(a[1].created));
+            
+            sortedThreads.forEach(([threadId, thread]) => {
                 const item = document.createElement('div');
                 item.className = `chat-history-item ${threadId === state.activeThread ? 'active' : ''}`;
                 item.onclick = () => switchThread(threadId);
@@ -7801,216 +7820,81 @@ async def serve_chatbot():
             });
         }
 
-        // Switch thread
         function switchThread(threadId) {
-            if (state.isStreaming) {
-                showToast('Please wait for the current response to complete', 'warning');
-                return;
-            }
-            
             state.activeThread = threadId;
             updateChatHistory();
             
             // Restore chat messages
             clearMessages();
-            if (state.chatHistory[threadId] && state.chatHistory[threadId].length > 0) {
-                document.getElementById('emptyState').style.display = 'none';
+            if (state.chatHistory[threadId]) {
                 state.chatHistory[threadId].forEach(msg => {
-                    const msgId = addMessage(msg.role, msg.content);
-                    if (msg.role === 'assistant') {
-                        addMessageActions(msgId, msg.content);
-                    }
+                    addMessage(msg.role, msg.content);
                 });
             } else {
-                document.getElementById('emptyState').style.display = 'flex';
+                showWelcomeMessage();
             }
             
-            // Hide suggestions for old threads
-            document.getElementById('suggestions').style.display = 'none';
+            // Clear uploaded files for consistency
+            state.uploadedFiles = [];
+            updateFileIndicators();
         }
 
-        // Generate document
-        async function generateDocument(event) {
-            event.preventDefault();
+        // Update send button state
+        function updateSendButton() {
+            const btn = document.getElementById('sendBtn');
+            const input = document.getElementById('chatInput');
+            const isDisabled = state.isStreaming || !input.value.trim();
             
-            const format = document.getElementById('docFormat').value;
-            const prompt = document.getElementById('docPrompt').value;
+            btn.disabled = isDisabled;
+            input.disabled = state.isStreaming;
             
-            closeModal('generateModal');
-            showProgress(20);
-            
-            try {
-                const formData = new FormData();
-                formData.append('prompt', prompt);
-                formData.append('output_format', format);
-                formData.append('model', 'gpt-4.1-mini');
-                formData.append('temperature', state.temperature.toString());
-                formData.append('max_tokens', '8000');
-                
-                showProgress(40);
-                const response = await fetch(`${API_BASE_URL}/completion`, {
-                    method: 'POST',
-                    body: formData
-                });
-
-                showProgress(80);
-                if (!response.ok) {
-                    const error = await response.text();
-                    throw new Error(error || 'Failed to generate document');
-                }
-
-                const data = await response.json();
-                
-                if (data.download_url) {
-                    showProgress(100);
-                    hideProgress();
-                    
-                    // Download the file
-                    window.open(data.download_url, '_blank');
-                    showToast(`Document generated successfully! Format: ${format.toUpperCase()}`, 'success');
-                    
-                    // Add message to chat
-                    if (state.activeThread && state.assistantId) {
-                        addMessage('user', `Generate ${format} document: ${prompt}`);
-                        addMessage('assistant', `I've generated a ${format.toUpperCase()} document based on your request. The file has been downloaded to your device.\n\nFilename: ${data.filename}`);
-                    }
-                } else {
-                    throw new Error('No download URL received');
-                }
-            } catch (error) {
-                hideProgress();
-                showToast('Failed to generate document: ' + error.message, 'error');
-                console.error(error);
-            }
-            
-            // Reset form
-            document.getElementById('docFormat').value = '';
-            document.getElementById('docPrompt').value = '';
-        }
-
-        // Extract reviews
-        async function extractReviews(event) {
-            event.preventDefault();
-            
-            const file = document.getElementById('reviewFile').files[0];
-            const columns = document.getElementById('reviewColumns').value;
-            const format = document.getElementById('reviewFormat').value;
-            
-            if (!file) {
-                showToast('Please select a file', 'error');
-                return;
-            }
-            
-            closeModal('extractReviewsModal');
-            showProgress(20);
-            
-            try {
-                const formData = new FormData();
-                formData.append('file', file);
-                formData.append('columns', columns);
-                formData.append('output_format', format);
-                formData.append('model', 'gpt-4.1-mini');
-                formData.append('temperature', '0.1');
-                
-                showProgress(40);
-                const response = await fetch(`${API_BASE_URL}/extract-reviews`, {
-                    method: 'POST',
-                    body: formData
-                });
-
-                showProgress(80);
-                if (!response.ok) {
-                    const error = await response.text();
-                    throw new Error(error || 'Failed to extract reviews');
-                }
-
-                const data = await response.json();
-                
-                if (data.download_url) {
-                    showProgress(100);
-                    hideProgress();
-                    
-                    // Download the file
-                    window.open(data.download_url, '_blank');
-                    showToast(`Successfully extracted ${data.review_count} reviews!`, 'success');
-                    
-                    // Add message to chat
-                    if (state.activeThread && state.assistantId) {
-                        addMessage('user', `Extract reviews from ${file.name}`);
-                        addMessage('assistant', `I've extracted ${data.review_count} reviews from "${file.name}" and saved them to a ${format.toUpperCase()} file.\n\nFilename: ${data.filename}\nColumns: ${columns}`);
-                    }
-                } else {
-                    throw new Error('No download URL received');
-                }
-            } catch (error) {
-                hideProgress();
-                showToast('Failed to extract reviews: ' + error.message, 'error');
-                console.error(error);
-            }
-            
-            // Reset form
-            document.getElementById('reviewFile').value = '';
-        }
-
-        // Download chat
-        async function downloadChat() {
-            if (!state.sessionId || !state.activeThread) {
-                showToast('No active chat to download', 'warning');
-                return;
-            }
-            
-            showProgress(30);
-            
-            try {
-                const response = await fetch(`${API_BASE_URL}/download-chat?` + new URLSearchParams({
-                    session: state.sessionId,
-                    assistant: state.assistantId
-                }));
-
-                showProgress(70);
-                if (!response.ok) {
-                    const error = await response.text();
-                    throw new Error(error || 'Failed to download chat');
-                }
-
-                const data = await response.json();
-                
-                if (data.download_url) {
-                    showProgress(100);
-                    hideProgress();
-                    
-                    // Download the file
-                    window.open(data.download_url, '_blank');
-                    showToast('Chat downloaded successfully!', 'success');
-                } else {
-                    throw new Error('No download URL received');
-                }
-            } catch (error) {
-                hideProgress();
-                showToast('Failed to download chat: ' + error.message, 'error');
-                console.error(error);
+            if (state.isStreaming) {
+                btn.innerHTML = '<div class="loading"></div>';
+            } else {
+                btn.innerHTML = `
+                    <span>Send</span>
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M2 8L14 2L8 14L6 9L2 8Z"></path>
+                    </svg>
+                `;
             }
         }
 
-        // Show generate modal
-        function showGenerateModal() {
-            showModal('generateModal');
-        }
+        // Input validation
+        document.getElementById('chatInput').addEventListener('input', function() {
+            updateSendButton();
+        });
 
-        // Show extract reviews modal
-        function showExtractReviewsModal() {
-            showModal('extractReviewsModal');
-        }
+        // Close modals on outside click
+        document.querySelectorAll('.modal').forEach(modal => {
+            modal.addEventListener('click', function(e) {
+                if (e.target === this) {
+                    this.classList.remove('active');
+                }
+            });
+        });
 
-        // Periodic health check
-        setInterval(checkHealth, 60000); // Check every minute
+        // Handle window resize
+        let resizeTimeout;
+        window.addEventListener('resize', () => {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => {
+                // Close sidebar on mobile if window is resized
+                if (window.innerWidth < 768) {
+                    document.getElementById('sidebar').classList.add('closed');
+                }
+            }, 250);
+        });
+
+        // Service worker for offline support (optional)
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js').catch(() => {
+                // Service worker registration failed, app will work without offline support
+            });
+        }
     </script>
 </body>
 </html>"""
-
-async def serve_chatbot():
-    """Serve the chatbot interface at the root endpoint"""
-    return CHATBOT_HTML
 # Optional: Add a favicon endpoint
 @app.get("/favicon.ico")
 async def favicon():
