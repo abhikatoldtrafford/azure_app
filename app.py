@@ -3449,8 +3449,8 @@ async def process_conversation(
                 logging.info(f"Created run {run_id} for thread {session} (non-streaming mode)")
                 
                 # Poll for run completion
-                max_poll_attempts = 60  # 5 minute timeout with 5 second intervals
-                poll_interval = 5  # seconds
+                max_poll_attempts = 30  # 5 minute timeout with 5 second intervals
+                poll_interval = 10  # seconds
                 tool_outputs_submitted = False
                 tool_call_results = []
                 
