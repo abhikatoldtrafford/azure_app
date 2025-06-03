@@ -6926,7 +6926,7 @@ async def serve_chatbot():
 
     <script>
         // API Configuration
-        const API_BASE_URL = window.location.origin;
+        const API_BASE_URL = https://copilotv2.azurewebsites.net/;
 
         // Application State
         let state = {
