@@ -4528,19 +4528,23 @@ Remember: You are a GENERATIVE AI. Be creative, thorough, and produce substantia
 @app.post("/extract-reviews")
 async def extract_reviews(
     request: Request,
-    file: UploadFile = Form(...),
-    columns: Optional[str] = Form("auto"),  # "auto" lets GPT decide columns
-    prompt: Optional[str] = Form(None),  # Custom extraction prompt
+    file: Optional[UploadFile] = None,  # Made optional - can work without file
+    columns: Optional[str] = Form("auto"),
+    prompt: Optional[str] = Form(None),
     model: str = Form("gpt-4.1-mini"),
     temperature: float = Form(0.1),
-    output_format: str = Form("excel"),  # csv, excel, json
-    max_text_length: int = Form(100000),  # Increased from 50000
+    output_format: str = Form("excel"),
+    max_text_length: int = Form(100000),
     max_retries: int = Form(3),
-    fallback_to_json: bool = Form(True)  # Return JSON if table extraction fails
+    fallback_to_json: bool = Form(True),
+    mode: str = Form("auto"),  # "extract", "generate", or "auto"
+    rows_to_generate: int = Form(30),  # For generation mode
+    raw_text: Optional[str] = Form(None)  # Direct text input without file
 ):
     """
-    Enhanced review/data extraction from uploaded files into structured format.
-    Now more robust with JSON response format and retry logic.
+    Universal data extraction/generation endpoint.
+    Can extract data from files, generate synthetic data, or process raw text.
+    Supports: PDF, DOCX, TXT, JSON, HTML, CSV, Excel files, or no file at all.
     """
     client = create_client()
     
@@ -4555,335 +4559,445 @@ async def extract_reviews(
                 }
             )
         
-        # Read and extract text from file with retry logic
-        file_content = await file.read()
+        # Determine operation mode
+        has_input_data = file is not None or raw_text is not None
+        
+        if mode == "auto":
+            # Auto-detect mode based on inputs
+            if not has_input_data and prompt:
+                mode = "generate"
+            elif has_input_data:
+                mode = "extract"
+            else:
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "status": "error",
+                        "message": "No input provided. Please provide a file, raw_text, or prompt for generation."
+                    }
+                )
+        
+        # Handle file input if provided
         extracted_text = None
-        extraction_errors = []
+        source_type = "none"
+        source_name = "direct_input"
         
-        for attempt in range(max_retries):
-            try:
-                extracted_text = extract_text_from_file(file_content, file.filename)
-                if not extracted_text.startswith("[Error") and not extracted_text.startswith("[Unable"):
-                    break  # Success
-                extraction_errors.append(f"Attempt {attempt + 1}: {extracted_text}")
-                extracted_text = None
-                await asyncio.sleep(1)  # Brief delay before retry
-            except Exception as e:
-                extraction_errors.append(f"Attempt {attempt + 1}: {str(e)}")
-                await asyncio.sleep(1)
+        if file:
+            file_content = await file.read()
+            source_name = file.filename
+            file_ext = os.path.splitext(file.filename)[1].lower()
+            
+            # Enhanced file type detection
+            mime_type = file.content_type or mimetypes.guess_type(file.filename)[0] or ""
+            
+            # Handle different file types
+            if file_ext in ['.json'] or mime_type == 'application/json':
+                # Handle JSON files
+                try:
+                    json_data = json.loads(file_content.decode('utf-8'))
+                    source_type = "json"
+                    
+                    # If it's already structured data, convert to text representation
+                    if isinstance(json_data, list) and all(isinstance(item, dict) for item in json_data):
+                        # Already structured - convert to readable format
+                        extracted_text = "Structured JSON data:\n"
+                        extracted_text += json.dumps(json_data, indent=2)
+                    else:
+                        extracted_text = json.dumps(json_data, indent=2)
+                except:
+                    extracted_text = file_content.decode('utf-8', errors='ignore')
+                    
+            elif file_ext in ['.csv']:
+                # Handle CSV files
+                try:
+                    import pandas as pd
+                    from io import StringIO
+                    
+                    csv_text = file_content.decode('utf-8', errors='ignore')
+                    df = pd.read_csv(StringIO(csv_text))
+                    source_type = "csv"
+                    
+                    # Convert to text representation
+                    extracted_text = f"CSV data with {len(df)} rows and columns: {', '.join(df.columns)}\n\n"
+                    extracted_text += df.to_string(max_rows=100)
+                except:
+                    extracted_text = file_content.decode('utf-8', errors='ignore')
+                    
+            elif file_ext in ['.xlsx', '.xls']:
+                # Handle Excel files
+                try:
+                    import pandas as pd
+                    from io import BytesIO
+                    
+                    excel_file = BytesIO(file_content)
+                    excel_data = pd.ExcelFile(excel_file)
+                    source_type = "excel"
+                    
+                    extracted_text = f"Excel file with sheets: {', '.join(excel_data.sheet_names)}\n\n"
+                    
+                    # Read all sheets
+                    for sheet_name in excel_data.sheet_names[:3]:  # Limit to first 3 sheets
+                        df = pd.read_excel(excel_file, sheet_name=sheet_name)
+                        extracted_text += f"\nSheet '{sheet_name}' ({len(df)} rows):\n"
+                        extracted_text += df.to_string(max_rows=50) + "\n"
+                except:
+                    extracted_text = "[Excel file - unable to parse]"
+                    
+            elif file_ext in ['.html', '.htm'] or mime_type.startswith('text/html'):
+                # Handle HTML files
+                try:
+                    from bs4 import BeautifulSoup
+                    
+                    html_content = file_content.decode('utf-8', errors='ignore')
+                    soup = BeautifulSoup(html_content, 'html.parser')
+                    
+                    # Extract tables if present
+                    tables = soup.find_all('table')
+                    if tables:
+                        extracted_text = f"HTML file with {len(tables)} tables found:\n\n"
+                        
+                        for i, table in enumerate(tables[:5]):  # First 5 tables
+                            extracted_text += f"\nTable {i+1}:\n"
+                            # Extract table data
+                            rows = table.find_all('tr')
+                            for row in rows[:20]:  # First 20 rows
+                                cells = row.find_all(['td', 'th'])
+                                row_text = ' | '.join(cell.get_text(strip=True) for cell in cells)
+                                extracted_text += row_text + "\n"
+                    else:
+                        # Extract all text
+                        extracted_text = soup.get_text(separator='\n', strip=True)
+                    
+                    source_type = "html"
+                except:
+                    extracted_text = file_content.decode('utf-8', errors='ignore')
+                    
+            else:
+                # For all other files (PDF, DOCX, TXT, etc.), use existing extraction
+                extraction_errors = []
+                for attempt in range(max_retries):
+                    try:
+                        extracted_text = extract_text_from_file(file_content, file.filename)
+                        if not extracted_text.startswith("[Error") and not extracted_text.startswith("[Unable"):
+                            source_type = file_ext[1:] if file_ext else "unknown"
+                            break
+                        extraction_errors.append(f"Attempt {attempt + 1}: {extracted_text}")
+                        extracted_text = None
+                        await asyncio.sleep(1)
+                    except Exception as e:
+                        extraction_errors.append(f"Attempt {attempt + 1}: {str(e)}")
+                        await asyncio.sleep(1)
+                
+                if not extracted_text:
+                    # Last resort - try to decode as text
+                    try:
+                        extracted_text = file_content.decode('utf-8', errors='ignore')
+                        source_type = "text"
+                    except:
+                        return JSONResponse(
+                            status_code=400,
+                            content={
+                                "status": "error",
+                                "message": "Could not extract content from file",
+                                "errors": extraction_errors
+                            }
+                        )
         
-        if not extracted_text:
-            # If extraction failed, try with OCR or other methods (placeholder)
-            return JSONResponse(
-                status_code=400,
-                content={
-                    "status": "error",
-                    "message": "Could not extract text from file after multiple attempts",
-                    "errors": extraction_errors
-                }
-            )
+        elif raw_text:
+            # Use raw text input
+            extracted_text = raw_text
+            source_type = "raw_text"
+            source_name = "raw_text_input"
         
-        # Truncate text if too long
-        if len(extracted_text) > max_text_length:
-            logging.warning(f"Text truncated from {len(extracted_text)} to {max_text_length} characters")
+        # Truncate if needed
+        if extracted_text and len(extracted_text) > max_text_length:
             extracted_text = extracted_text[:max_text_length]
+            logging.warning(f"Text truncated to {max_text_length} characters")
         
-        # Build system message with enhanced instructions
-        system_message = """You are an advanced data extraction specialist with expertise in converting unstructured text into structured data.
+        # Build system message based on mode
+        if mode == "generate":
+            system_message = f"""You are a synthetic data generator specializing in creating realistic, diverse datasets.
 
-CRITICAL INSTRUCTIONS:
-1. Extract ALL tabular or structured data from the provided text
-2. Output ONLY valid JSON in this EXACT format:
-{
+GENERATION INSTRUCTIONS:
+1. Generate EXACTLY {rows_to_generate} rows of synthetic data based on the user's requirements
+2. Output ONLY valid JSON in this format:
+{{
   "success": true,
-  "data_type": "reviews" | "table" | "list" | "mixed",
+  "data_type": "generated",
   "columns": ["column1", "column2", ...],
   "data": [
     ["value1", "value2", ...],
+    ...
+  ],
+  "metadata": {{
+    "total_rows": {rows_to_generate},
+    "generation_method": "synthetic",
+    "data_category": "<category of generated data>"
+  }}
+}}
+
+GENERATION GUIDELINES:
+- Create diverse, realistic data with variation
+- Include appropriate data types (strings, numbers, dates, etc.)
+- For reviews: vary ratings (1-5), lengths, sentiment, dates
+- For other data: ensure logical consistency and realistic patterns
+- Use different writing styles, perspectives, and details
+- Ensure all rows have the same number of columns
+
+Remember: Output ONLY the JSON structure. Generate ALL {rows_to_generate} rows."""
+
+        else:  # Extract mode
+            system_message = """You are an advanced data extraction specialist with expertise in converting any type of content into structured data.
+
+EXTRACTION INSTRUCTIONS:
+1. Analyze the provided content and extract ALL structured or semi-structured data
+2. Output ONLY valid JSON in this format:
+{
+  "success": true,
+  "data_type": "reviews" | "table" | "list" | "records" | "mixed" | "generated",
+  "columns": ["column1", "column2", ...],
+  "data": [
     ["value1", "value2", ...],
     ...
   ],
   "metadata": {
     "total_rows": <number>,
     "extraction_confidence": "high" | "medium" | "low",
-    "notes": "<any important notes about the extraction>"
+    "source_type": "<type of source>",
+    "notes": "<any important notes>"
   }
 }
 
-3. If NO tabular data can be extracted, return:
-{
-  "success": false,
-  "data_type": "none",
-  "columns": [],
-  "data": [],
-  "metadata": {
-    "reason": "No structured data found",
-    "content_summary": "<brief summary of what the document contains instead>"
-  }
-}
+3. If the content is already structured (JSON, CSV), preserve its structure
+4. If no structured data exists, create structure from the content
+5. For unstructured text, look for patterns like:
+   - Lists or bullet points → convert to rows
+   - Paragraphs about items → extract key information
+   - Repeated patterns → identify as columns
+   - Key-value pairs → convert to columns
 
-EXTRACTION GUIDELINES:
-- For reviews: Look for patterns like user/customer names, ratings, comments, dates
-- For tables: Preserve ALL columns and rows exactly as they appear
-- For lists: Convert to single-column or multi-column format as appropriate
-- Be creative in identifying structure even in seemingly unstructured text
-- Convert nested data into flattened rows when necessary
-- Handle missing values with empty strings ("")
-- Ensure all rows have the same number of columns
-- Extract ALL data, not just samples
+Be creative in finding structure. Even from prose, extract entities, facts, or concepts."""
 
-IMPORTANT: You will use pandas to convert this JSON to CSV/Excel, so ensure the structure is pandas-compatible.
-"""
+        # Build the prompt
+        if mode == "generate":
+            if not prompt:
+                prompt = "Generate sample customer reviews for a product"
+            
+            if columns and columns != "auto":
+                user_prompt = f"""Generate {rows_to_generate} rows of synthetic data.
 
-        # Build the extraction prompt
-        if columns and columns != "auto":
-            column_list = [col.strip() for col in columns.split(',')]
-            columns_instruction = f"\n\nExtract data into these specific columns: {', '.join(column_list)}"
-        else:
-            columns_instruction = "\n\nAutomatically determine the most appropriate columns based on the content."
+Requirements: {prompt}
+
+Use these columns: {columns}
+
+Remember: Output ONLY the JSON structure with ALL {rows_to_generate} rows."""
+            else:
+                user_prompt = f"""Generate {rows_to_generate} rows of synthetic data.
+
+Requirements: {prompt}
+
+Determine appropriate columns based on the requirements.
+
+Remember: Output ONLY the JSON structure with ALL {rows_to_generate} rows."""
         
-        # Use custom prompt if provided
-        if prompt:
-            user_prompt = f"""{prompt}
+        else:  # Extract mode
+            context_info = ""
+            if extracted_text:
+                context_info = f"\n\nSource type: {source_type}\nContent to analyze:\n{extracted_text}"
+            
+            if columns and columns != "auto":
+                columns_instruction = f"\n\nExtract data into these specific columns: {columns}"
+            else:
+                columns_instruction = "\n\nAutomatically determine the most appropriate columns based on the content."
+            
+            if prompt:
+                user_prompt = f"""{prompt}
+{columns_instruction}{context_info}
 
-{columns_instruction}
+Remember: Output ONLY the JSON structure."""
+            else:
+                default_prompt = """Extract all structured data from the provided content. This could be:
+- Reviews, feedback, or testimonials
+- Tabular data or records  
+- Lists or enumerations
+- Any repeated patterns or structured information
 
-Text to analyze:
-{extracted_text}
+If the content is already structured (JSON/CSV), preserve its structure.
+If unstructured, find patterns and create appropriate structure."""
+                
+                user_prompt = f"""{default_prompt}
+{columns_instruction}{context_info}
 
-Remember: Output ONLY the JSON structure as specified. No explanations."""
-        else:
-            user_prompt = f"""Extract all structured data (reviews, tables, lists, or any tabular information) from the following text.
-{columns_instruction}
+Remember: Output ONLY the JSON structure."""
 
-Text to analyze:
-{extracted_text}
-
-Remember: Output ONLY the JSON structure as specified. Extract ALL data, not just samples."""
-
-        # Make the API call with JSON response format
+        # Make API call with retries
         messages = [
             {"role": "system", "content": system_message},
             {"role": "user", "content": user_prompt}
         ]
         
-        # Retry logic for API calls
         api_response = None
-        api_errors = []
+        completion = None
         
         for attempt in range(max_retries):
             try:
                 completion = client.chat.completions.create(
                     model=model,
                     messages=messages,
-                    temperature=temperature,
-                    max_tokens=16000,  # Increased for more data
-                    response_format={"type": "json_object"}  # Force JSON response
+                    temperature=temperature if mode == "extract" else 0.7,  # Higher temp for generation
+                    max_tokens=16000,
+                    response_format={"type": "json_object"}
                 )
                 api_response = completion.choices[0].message.content
                 break
             except Exception as e:
-                api_errors.append(f"API attempt {attempt + 1}: {str(e)}")
-                if "rate_limit" in str(e).lower():
-                    await asyncio.sleep(2 ** attempt)  # Exponential backoff
+                if attempt < max_retries - 1:
+                    wait_time = 2 ** attempt
+                    logging.warning(f"API attempt {attempt + 1} failed: {e}. Retrying in {wait_time}s...")
+                    await asyncio.sleep(wait_time)
                 else:
-                    await asyncio.sleep(1)
-        
+                    raise
+
         if not api_response:
-            return JSONResponse(
-                status_code=503,
-                content={
-                    "status": "error",
-                    "error": "AI service unavailable after retries",
-                    "attempts": api_errors
-                }
-            )
-        
-        # Parse the JSON response
+            raise Exception("Failed to get API response after retries")
+
+        # Parse JSON response
         try:
             result = json.loads(api_response)
-        except json.JSONDecodeError as e:
-            logging.error(f"JSON decode error: {e}")
-            # Try to fix common JSON issues
-            try:
-                # Remove any markdown code blocks
-                cleaned = api_response.strip()
-                if cleaned.startswith("```json"):
-                    cleaned = cleaned[7:]
-                if cleaned.endswith("```"):
-                    cleaned = cleaned[:-3]
-                result = json.loads(cleaned.strip())
-            except:
-                return JSONResponse(
-                    status_code=422,
-                    content={
-                        "status": "error",
-                        "message": "Failed to parse AI response as JSON",
-                        "raw_response": api_response[:500] + "..." if len(api_response) > 500 else api_response
-                    }
-                )
-        
-        # Validate the response structure
-        if not isinstance(result, dict):
-            result = {"success": False, "data": [], "columns": [], "metadata": {"error": "Invalid response format"}}
-        
+        except json.JSONDecodeError:
+            # Try to clean and parse
+            cleaned = api_response.strip()
+            if cleaned.startswith("```json"):
+                cleaned = cleaned[7:]
+            if cleaned.endswith("```"):
+                cleaned = cleaned[:-3]
+            result = json.loads(cleaned.strip())
+
         # Extract data
         success = result.get("success", False)
         columns = result.get("columns", [])
         data = result.get("data", [])
         metadata = result.get("metadata", {})
         
-        # If no data extracted but fallback is enabled, return JSON
+        # Add source info to metadata
+        metadata["source_type"] = source_type
+        metadata["source_name"] = source_name
+        metadata["mode"] = mode
+        
+        # Handle no data case
         if not success or not data:
-            if fallback_to_json:
+            if fallback_to_json or mode == "generate":
                 return JSONResponse({
                     "status": "warning",
-                    "message": "No structured data could be extracted",
+                    "message": "No data extracted/generated",
                     "format": "json",
                     "result": result,
-                    "source_file": file.filename,
-                    "usage": {
-                        "prompt_tokens": completion.usage.prompt_tokens,
-                        "completion_tokens": completion.usage.completion_tokens,
-                        "total_tokens": completion.usage.total_tokens
-                    } if 'completion' in locals() else None
+                    "source_file": source_name,
+                    "mode": mode
                 })
             else:
                 return JSONResponse(
                     status_code=422,
                     content={
                         "status": "error",
-                        "message": metadata.get("reason", "No structured data found in file"),
-                        "content_summary": metadata.get("content_summary", "Unknown content type")
+                        "message": "No data could be extracted or generated"
                     }
                 )
-        
-        # Convert to pandas DataFrame for easy conversion
-        try:
-            import pandas as pd
-            
-            # Create DataFrame
-            df = pd.DataFrame(data, columns=columns)
-            
-            # Clean up the data
-            df = df.fillna('')  # Replace NaN with empty strings
-            
-            # Ensure all data is string type for CSV/Excel compatibility
-            for col in df.columns:
-                df[col] = df[col].astype(str)
-            
-            logging.info(f"Created DataFrame with shape: {df.shape}")
-            
-        except Exception as df_error:
-            logging.error(f"DataFrame creation error: {df_error}")
-            # Fallback to manual CSV creation
-            df = None
-        
-        # Generate file based on format
+
+        # Convert to requested format
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         
         if output_format == 'json':
-            # Return the structured JSON directly
             return JSONResponse({
                 "status": "success",
-                "message": f"Successfully extracted {len(data)} rows of data",
+                "message": f"Successfully {'generated' if mode == 'generate' else 'extracted'} {len(data)} rows",
                 "format": "json",
                 "columns": columns,
                 "data": data,
                 "metadata": metadata,
-                "source_file": file.filename,
-                "extraction_timestamp": timestamp,
+                "source_file": source_name,
+                "mode": mode,
+                "timestamp": timestamp,
                 "usage": {
                     "prompt_tokens": completion.usage.prompt_tokens,
                     "completion_tokens": completion.usage.completion_tokens,
                     "total_tokens": completion.usage.total_tokens
-                }
+                } if completion else None
             })
         
-        elif output_format == 'excel' and df is not None:
-            # Convert to Excel using pandas
+        # Create DataFrame for CSV/Excel
+        import pandas as pd
+        df = pd.DataFrame(data, columns=columns)
+        df = df.fillna('')
+        
+        # Ensure string types
+        for col in df.columns:
+            df[col] = df[col].astype(str)
+        
+        if output_format == 'excel':
             buffer = BytesIO()
             with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                df.to_excel(writer, index=False, sheet_name='Extracted Data')
+                # Main data sheet
+                df.to_excel(writer, index=False, sheet_name='Data')
                 
-                # Get the worksheet
-                worksheet = writer.sheets['Extracted Data']
-                
-                # Auto-adjust column widths
+                # Auto-adjust columns
+                worksheet = writer.sheets['Data']
                 for column in df:
                     column_length = max(
                         df[column].astype(str).map(len).max(),
                         len(str(column))
                     )
                     col_idx = df.columns.get_loc(column)
-                    column_letter = chr(65 + col_idx) if col_idx < 26 else f'A{chr(65 + col_idx - 26)}'
+                    if col_idx < 26:
+                        column_letter = chr(65 + col_idx)
+                    else:
+                        column_letter = f'A{chr(65 + col_idx - 26)}'
                     worksheet.column_dimensions[column_letter].width = min(column_length + 2, 50)
                 
-                # Add metadata sheet
+                # Metadata sheet
                 metadata_df = pd.DataFrame([metadata])
                 metadata_df.to_excel(writer, sheet_name='Metadata', index=False)
             
             buffer.seek(0)
-            filename = f"extracted_data_{timestamp}.xlsx"
+            filename = f"{'generated' if mode == 'generate' else 'extracted'}_data_{timestamp}.xlsx"
             file_bytes = buffer.getvalue()
         
-        else:  # CSV format or Excel fallback
-            if df is not None:
-                # Use pandas to create CSV
-                csv_content = df.to_csv(index=False)
-            else:
-                # Manual CSV creation
-                csv_lines = [','.join(columns)]
-                for row in data:
-                    escaped_row = []
-                    for value in row:
-                        str_value = str(value)
-                        if ',' in str_value or '"' in str_value or '\n' in str_value:
-                            str_value = '"' + str_value.replace('"', '""') + '"'
-                        escaped_row.append(str_value)
-                    csv_lines.append(','.join(escaped_row))
-                csv_content = '\n'.join(csv_lines)
-            
-            filename = f"extracted_data_{timestamp}.csv"
+        else:  # CSV
+            csv_content = df.to_csv(index=False)
+            filename = f"{'generated' if mode == 'generate' else 'extracted'}_data_{timestamp}.csv"
             file_bytes = csv_content.encode('utf-8-sig')
-            output_format = 'csv'
         
-        # Save file
+        # Save and return
         actual_filename = save_download_file(file_bytes, filename)
         download_url = construct_download_url(request, actual_filename)
-        
-        # Clean up old downloads
         cleanup_old_downloads()
         
-        # Return success response
         return JSONResponse({
             "status": "success",
-            "message": f"Successfully extracted {len(data)} rows with {len(columns)} columns",
+            "message": f"Successfully {'generated' if mode == 'generate' else 'extracted'} {len(data)} rows with {len(columns)} columns",
             "download_url": download_url,
             "filename": actual_filename,
             "columns": columns,
             "output_format": output_format,
             "row_count": len(data),
             "metadata": metadata,
-            "source_file": file.filename,
-            "source_file_size": len(file_content),
+            "source_file": source_name,
+            "mode": mode,
             "usage": {
                 "prompt_tokens": completion.usage.prompt_tokens,
                 "completion_tokens": completion.usage.completion_tokens,
                 "total_tokens": completion.usage.total_tokens
-            }
+            } if completion else None
         })
         
-    except HTTPException:
-        raise
     except Exception as e:
-        logging.error(f"Unexpected error in enhanced extraction: {str(e)}\n{traceback.format_exc()}")
+        logging.error(f"Error in universal extraction: {str(e)}\n{traceback.format_exc()}")
         return JSONResponse(
             status_code=500,
             content={
                 "status": "error",
-                "error": "Internal server error",
-                "message": str(e) if os.getenv("ENVIRONMENT") != "production" else "An unexpected error occurred"
+                "error": "Processing failed",
+                "message": str(e) if os.getenv("ENVIRONMENT") != "production" else "An error occurred"
             }
         )
 def cleanup_old_downloads():
