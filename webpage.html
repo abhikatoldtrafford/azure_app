@@ -2278,12 +2278,6 @@
                 }
             }
             
-            // Add initial prompt as system message if provided
-            const initialPrompt = document.getElementById('docInitialPrompt').value.trim();
-            if (initialPrompt) {
-                formData.append('system_message', initialPrompt);
-            }
-            
             // Add files
             state.docFiles.forEach(file => {
                 formData.append('files', file);
