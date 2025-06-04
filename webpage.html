@@ -1,0 +1,2937 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Assistant Hub - Demo & Testing Platform</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #0a0a0a;
+            --bg-secondary: #1a1a1a;
+            --bg-tertiary: #2a2a2a;
+            --bg-chat: #0f0f0f;
+            --text-primary: #ffffff;
+            --text-secondary: #a0a0a0;
+            --accent: #10a37f;
+            --accent-hover: #0d8d6c;
+            --border: #2a2a2a;
+            --shadow: rgba(0, 0, 0, 0.5);
+            --error: #dc3545;
+            --warning: #ffc107;
+            --info: #17a2b8;
+            --user-msg: #1e3a5f;
+            --assistant-msg: #1a1a1a;
+            --success: #28a745;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* Header */
+        .header {
+            background-color: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+            padding: 12px 20px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+            background-color: rgba(26, 26, 26, 0.9);
+        }
+
+        .header-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .logo {
+            font-size: 22px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: linear-gradient(45deg, var(--accent), #20c997);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .nav-tabs {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .nav-tab {
+            padding: 10px 24px;
+            background-color: transparent;
+            border: none;
+            border-radius: 25px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 14px;
+            font-weight: 500;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .nav-tab::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: var(--accent);
+            opacity: 0;
+            transition: opacity 0.3s;
+            border-radius: 25px;
+        }
+
+        .nav-tab:hover {
+            color: var(--text-primary);
+        }
+
+        .nav-tab:hover::before {
+            opacity: 0.1;
+        }
+
+        .nav-tab.active {
+            background-color: var(--accent);
+            color: white;
+        }
+
+        /* Main Container */
+        .main-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        /* Tab Content */
+        .tab-content {
+            display: none;
+            animation: fadeIn 0.4s ease-out;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { 
+                opacity: 0; 
+                transform: translateY(20px); 
+            }
+            to { 
+                opacity: 1; 
+                transform: translateY(0); 
+            }
+        }
+
+        /* Common Styles */
+        .section {
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 16px var(--shadow);
+        }
+
+        .section-title {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 24px;
+            background: linear-gradient(45deg, var(--text-primary), var(--text-secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .form-group {
+            margin-bottom: 24px;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 10px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 14px 18px;
+            background-color: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            color: var(--text-primary);
+            font-size: 15px;
+            transition: all 0.3s;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(16, 163, 127, 0.1);
+            background-color: rgba(42, 42, 42, 0.8);
+        }
+
+        textarea.form-control {
+            resize: vertical;
+            min-height: 140px;
+            font-family: inherit;
+        }
+
+        .btn {
+            padding: 14px 28px;
+            background-color: var(--accent);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            transition: width 0.3s, height 0.3s;
+        }
+
+        .btn:hover:not(:disabled)::before {
+            width: 300px;
+            height: 300px;
+        }
+
+        .btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(16, 163, 127, 0.4);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background-color: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background-color: #3a3a3a;
+            border-color: var(--accent);
+        }
+
+        .btn-small {
+            padding: 8px 16px;
+            font-size: 13px;
+        }
+
+        /* Enhanced Chatbot Styles */
+        .chat-container {
+            height: 70vh;
+            max-height: 700px;
+            display: flex;
+            flex-direction: column;
+            background-color: var(--bg-chat);
+            border-radius: 16px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+        }
+
+        .chat-header {
+            background-color: var(--bg-secondary);
+            padding: 16px 24px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .chat-status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background-color: var(--accent);
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .chat-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .messages-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .message {
+            display: flex;
+            gap: 12px;
+            max-width: 85%;
+            animation: messageSlide 0.3s ease-out;
+        }
+
+        @keyframes messageSlide {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .message.user {
+            align-self: flex-end;
+            flex-direction: row-reverse;
+        }
+
+        .message.system {
+            align-self: center;
+            max-width: 100%;
+        }
+
+        .message-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            font-weight: 600;
+            flex-shrink: 0;
+        }
+
+        .user-avatar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .assistant-avatar {
+            background: linear-gradient(135deg, var(--accent) 0%, #20c997 100%);
+            color: white;
+        }
+
+        .system-avatar {
+            background: linear-gradient(135deg, var(--info) 0%, #138496 100%);
+            color: white;
+        }
+
+        .message-content {
+            background-color: var(--assistant-msg);
+            padding: 14px 18px;
+            border-radius: 16px;
+            border-top-left-radius: 4px;
+            max-width: 100%;
+            word-wrap: break-word;
+            white-space: pre-wrap;
+            line-height: 1.6;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .message.user .message-content {
+            background-color: var(--user-msg);
+            border-top-left-radius: 16px;
+            border-top-right-radius: 4px;
+        }
+
+        .message.system .message-content {
+            background-color: rgba(23, 162, 184, 0.1);
+            border: 1px solid rgba(23, 162, 184, 0.3);
+            text-align: center;
+            font-size: 14px;
+        }
+
+        .message-content pre {
+            background-color: rgba(0, 0, 0, 0.3);
+            padding: 12px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 8px 0;
+        }
+
+        .message-content code {
+            background-color: rgba(16, 163, 127, 0.1);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 14px;
+        }
+
+        .chat-input-wrapper {
+            padding: 20px;
+            background-color: var(--bg-secondary);
+            border-top: 1px solid var(--border);
+        }
+
+        .uploaded-files-indicator {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+        }
+
+        .uploaded-file-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            background-color: var(--bg-tertiary);
+            border-radius: 20px;
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .chat-input-container {
+            display: flex;
+            gap: 12px;
+            align-items: flex-end;
+            background-color: var(--bg-tertiary);
+            border-radius: 16px;
+            padding: 12px;
+            border: 1px solid var(--border);
+            transition: border-color 0.3s;
+        }
+
+        .chat-input-container:focus-within {
+            border-color: var(--accent);
+        }
+
+        .chat-input {
+            flex: 1;
+            background: none;
+            border: none;
+            color: var(--text-primary);
+            font-size: 15px;
+            resize: none;
+            outline: none;
+            max-height: 150px;
+            padding: 4px 8px;
+        }
+
+        .chat-actions-bottom {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .chat-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            border: none;
+            background-color: transparent;
+            color: var(--text-secondary);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s;
+        }
+
+        .chat-btn:hover {
+            background-color: rgba(16, 163, 127, 0.1);
+            color: var(--accent);
+        }
+
+        .chat-btn.send {
+            background-color: var(--accent);
+            color: white;
+        }
+
+        .chat-btn.send:hover {
+            background-color: var(--accent-hover);
+        }
+
+        .chat-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* File Upload Area */
+        .file-upload-area {
+            border: 2px dashed var(--border);
+            border-radius: 12px;
+            padding: 40px;
+            text-align: center;
+            transition: all 0.3s;
+            cursor: pointer;
+            background-color: rgba(42, 42, 42, 0.3);
+        }
+
+        .file-upload-area:hover {
+            border-color: var(--accent);
+            background-color: rgba(16, 163, 127, 0.05);
+        }
+
+        .file-upload-area.dragging {
+            border-color: var(--accent);
+            background-color: rgba(16, 163, 127, 0.1);
+        }
+
+        /* Extract/Generate Data Styles */
+        .data-mode-selector {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 30px;
+            padding: 20px;
+            background-color: var(--bg-tertiary);
+            border-radius: 12px;
+        }
+
+        .mode-option {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .mode-radio {
+            width: 20px;
+            height: 20px;
+            accent-color: var(--accent);
+        }
+
+        .mode-label {
+            cursor: pointer;
+            font-weight: 500;
+        }
+
+        .columns-input-group {
+            display: flex;
+            gap: 12px;
+            align-items: flex-end;
+        }
+
+        .columns-input-group .form-control {
+            flex: 1;
+        }
+
+        /* Results */
+        .result-container {
+            background-color: var(--bg-tertiary);
+            border-radius: 12px;
+            padding: 24px;
+            margin-top: 24px;
+            border: 1px solid var(--border);
+        }
+
+        .result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .result-title {
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .result-content {
+            font-size: 15px;
+            line-height: 1.8;
+            color: var(--text-secondary);
+        }
+
+        .result-content pre {
+            background-color: var(--bg-primary);
+            padding: 16px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 12px 0;
+            border: 1px solid var(--border);
+        }
+
+        .download-btn {
+            background: linear-gradient(135deg, var(--accent), #20c997);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 10px;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .download-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(16, 163, 127, 0.4);
+        }
+
+        /* Documentation Styles */
+        .doc-section {
+            margin-bottom: 40px;
+        }
+
+        .doc-endpoint {
+            background-color: var(--bg-tertiary);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 20px;
+            border: 1px solid var(--border);
+        }
+
+        .endpoint-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+
+        .method-badge {
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .method-get {
+            background-color: #28a745;
+            color: white;
+        }
+
+        .method-post {
+            background-color: #007bff;
+            color: white;
+        }
+
+        .endpoint-path {
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 16px;
+            color: var(--text-primary);
+        }
+
+        .endpoint-description {
+            color: var(--text-secondary);
+            margin-bottom: 20px;
+            line-height: 1.6;
+        }
+
+        .code-block {
+            background-color: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            margin: 16px 0;
+            overflow-x: auto;
+            position: relative;
+        }
+
+        .code-block pre {
+            margin: 0;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            color: #f8f8f2;
+        }
+
+        .code-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .code-title {
+            font-weight: 600;
+            color: var(--accent);
+            font-size: 14px;
+        }
+
+        .copy-btn {
+            padding: 6px 16px;
+            font-size: 12px;
+            background-color: var(--bg-tertiary);
+            border: 1px solid var(--border);
+        }
+
+        .copy-btn:hover {
+            background-color: var(--accent);
+            border-color: var(--accent);
+        }
+
+        .params-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0;
+        }
+
+        .params-table th,
+        .params-table td {
+            text-align: left;
+            padding: 12px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .params-table th {
+            font-weight: 600;
+            color: var(--accent);
+            background-color: var(--bg-tertiary);
+        }
+
+        .param-required {
+            color: var(--error);
+            font-weight: 600;
+        }
+
+        .param-optional {
+            color: var(--text-secondary);
+        }
+
+        /* API Testing Styles */
+        .api-test-section {
+            background-color: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 16px;
+        }
+
+        .test-form {
+            margin-bottom: 16px;
+        }
+
+        .test-form-row {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 12px;
+            align-items: center;
+        }
+
+        .test-form-row label {
+            min-width: 120px;
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        .test-form-row input,
+        .test-form-row select,
+        .test-form-row textarea {
+            flex: 1;
+            padding: 8px 12px;
+            background-color: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-primary);
+            font-size: 14px;
+        }
+
+        .test-form-row input[type="file"] {
+            padding: 4px 8px;
+        }
+
+        .test-response {
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 16px;
+            margin-top: 16px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 14px;
+            max-height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+
+        .test-actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 12px;
+        }
+
+        /* Status Messages */
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 16px 24px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 14px;
+            font-weight: 500;
+            animation: toastSlide 0.3s ease-out;
+            z-index: 1000;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        @keyframes toastSlide {
+            from {
+                transform: translateX(400px);
+            }
+            to {
+                transform: translateX(0);
+            }
+        }
+
+        .toast-success {
+            background-color: var(--accent);
+            color: white;
+        }
+
+        .toast-error {
+            background-color: var(--error);
+            color: white;
+        }
+
+        .toast-info {
+            background-color: var(--info);
+            color: white;
+        }
+
+        /* Loading Spinner */
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            border-top-color: var(--accent);
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .typing-indicator {
+            display: flex;
+            gap: 4px;
+            padding: 8px 16px;
+        }
+
+        .typing-dot {
+            width: 8px;
+            height: 8px;
+            background-color: var(--text-secondary);
+            border-radius: 50%;
+            animation: typing 1.4s ease-in-out infinite;
+        }
+
+        .typing-dot:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-dot:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes typing {
+            0%, 60%, 100% {
+                opacity: 0.3;
+            }
+            30% {
+                opacity: 1;
+            }
+        }
+
+        /* File Preview */
+        .file-preview {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            background-color: var(--bg-tertiary);
+            border-radius: 8px;
+            margin: 8px 0;
+            font-size: 14px;
+        }
+
+        .file-icon {
+            font-size: 20px;
+        }
+
+        .file-info {
+            flex: 1;
+        }
+
+        .file-name {
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+
+        .file-size {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .remove-file-btn {
+            padding: 6px 12px;
+            background-color: transparent;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.3s;
+        }
+
+        .remove-file-btn:hover {
+            border-color: var(--error);
+            color: var(--error);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .header-content {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 12px;
+            }
+
+            .nav-tabs {
+                order: 2;
+                justify-content: center;
+                width: 100%;
+            }
+
+            .nav-tab {
+                padding: 8px 16px;
+                font-size: 13px;
+            }
+
+            .chat-container {
+                height: 60vh;
+            }
+
+            .message {
+                max-width: 95%;
+            }
+
+            .section {
+                padding: 20px;
+            }
+
+            .data-mode-selector {
+                flex-direction: column;
+                gap: 12px;
+            }
+
+            .columns-input-group {
+                flex-direction: row;
+                gap: 8px;
+            }
+            
+            .columns-input-group .form-group:first-child {
+                flex: 1;
+                min-width: 0;
+            }
+            
+            .columns-input-group .form-group:last-child {
+                width: 120px;
+                flex-shrink: 0;
+            }
+            
+            .columns-input-group .text-small {
+                display: none;
+            }
+
+            .result-header {
+                flex-direction: column;
+                gap: 12px;
+                align-items: flex-start;
+            }
+
+            .params-table {
+                font-size: 13px;
+            }
+
+            .params-table th,
+            .params-table td {
+                padding: 8px;
+            }
+
+            .test-form-row {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .test-form-row label {
+                min-width: auto;
+                margin-bottom: 4px;
+            }
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-secondary);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #444;
+        }
+
+        /* Utility Classes */
+        .mt-3 { margin-top: 20px; }
+        .mb-3 { margin-bottom: 20px; }
+        .text-center { text-align: center; }
+        .text-small { font-size: 12px; }
+        .text-muted { color: var(--text-secondary); }
+        .d-none { display: none; }
+        .flex { display: flex; }
+        .flex-between { justify-content: space-between; }
+        .flex-center { align-items: center; }
+        .gap-2 { gap: 10px; }
+        .gap-3 { gap: 20px; }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-content">
+            <div class="logo">
+                <span>🚀</span>
+                <span>AI Assistant Hub</span>
+            </div>
+            <nav class="nav-tabs">
+                <button class="nav-tab active" onclick="switchTab('chatbot')">
+                    💬 Chat
+                </button>
+                <button class="nav-tab" onclick="switchTab('generate-doc')">
+                    💡 Create Ideas
+                </button>
+                <button class="nav-tab" onclick="switchTab('extract-data')">
+                    ⭐ Create Reviews
+                </button>
+                <button class="nav-tab" onclick="switchTab('docs')">
+                    📚 API Docs & Testing
+                </button>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <div class="main-container">
+        <!-- Chatbot Tab -->
+        <div id="chatbot-tab" class="tab-content active">
+            <div class="section">
+                <div class="chat-container">
+                    <div class="chat-header">
+                        <div>
+                            <h3 style="margin: 0; font-size: 18px;">AI Assistant</h3>
+                            <div class="chat-status">
+                                <div class="status-dot"></div>
+                                <span id="chatStatus">Ready</span>
+                            </div>
+                        </div>
+                        <div class="chat-actions">
+                            <button class="btn btn-secondary btn-small" onclick="downloadChat()" title="Download chat as DOCX">
+                                📥 Download
+                            </button>
+                            <button class="btn btn-secondary btn-small" onclick="clearChat()" title="Clear chat history">
+                                🗑️ Clear
+                            </button>
+                            <button class="btn btn-secondary btn-small" onclick="createNewChat()">
+                                ➕ New Chat
+                            </button>
+                        </div>
+                    </div>
+                    <div class="messages-container" id="messagesContainer">
+                        <div class="message assistant">
+                            <div class="message-avatar assistant-avatar">AI</div>
+                            <div class="message-content">
+                                Hello! I'm your AI assistant. I can help you with various tasks including answering questions, analyzing data, and processing documents. 
+                                
+You can also upload files by clicking the 📎 button below. How can I assist you today?
+                            </div>
+                        </div>
+                    </div>
+                    <div class="chat-input-wrapper">
+                        <div id="chatUploadedFiles" class="uploaded-files-indicator" style="display: none;"></div>
+                        <div id="chatFilePreview" style="display: none;"></div>
+                        <div class="chat-input-container">
+                            <textarea 
+                                class="chat-input" 
+                                id="chatInput" 
+                                placeholder="Type your message..."
+                                rows="1"
+                                onkeydown="handleChatKeyDown(event)"
+                                oninput="autoResizeChatInput(this)"></textarea>
+                            <div class="chat-actions-bottom">
+                                <input type="file" id="chatFileInput" style="display: none;" 
+                                       accept=".txt,.pdf,.docx,.html,.xlsx,.csv,.jpg,.jpeg,.png,.gif,.bmp,.webp" 
+                                       onchange="handleChatFileSelect(event)">
+                                <button class="chat-btn" onclick="document.getElementById('chatFileInput').click()" title="Attach file">
+                                    📎
+                                </button>
+                                <button class="chat-btn send" id="sendBtn" onclick="sendChatMessage()" title="Send message">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M22 2L11 13M22 2L15 22L11 13L2 9L22 2Z"></path>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Create Ideas Tab -->
+        <div id="generate-doc-tab" class="tab-content">
+            <div class="section">
+                <h2 class="section-title">Create Ideas & Content with AI</h2>
+                
+                <div class="form-group">
+                    <label class="form-label">What would you like to create?</label>
+                    <textarea class="form-control" id="docPrompt" 
+                              placeholder="Example: Create a comprehensive marketing strategy for a new mobile app, generate 20 creative social media post ideas for a coffee shop, write a detailed blog post about sustainable living..."></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Output Format</label>
+                    <select class="form-control" id="docFormat" style="max-width: 300px;">
+                        <option value="">Text (Display in browser)</option>
+                        <option value="docx">Word Document (.docx)</option>
+                        <option value="csv">CSV Spreadsheet</option>
+                        <option value="excel">Excel Workbook (.xlsx)</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Ideas & Content Suggestions (Optional)</label>
+                    <textarea class="form-control" id="docInitialPrompt" 
+                              placeholder="Example: Use a conversational tone, include real-world examples, focus on practical tips, make it engaging for young professionals..."
+                              style="min-height: 100px;"></textarea>
+                    <p class="text-small text-muted mt-3">Add any specific guidelines or requirements for your content.</p>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Upload Reference Files (Optional)</label>
+                    <div class="file-upload-area" onclick="document.getElementById('docFiles').click()">
+                        <p style="font-size: 32px; margin-bottom: 8px;">📁</p>
+                        <p style="font-weight: 600;">Click to upload or drag files here</p>
+                        <p class="text-small text-muted">Supports images, PDFs, Word docs, spreadsheets</p>
+                    </div>
+                    <input type="file" id="docFiles" style="display: none;" multiple
+                           accept=".txt,.pdf,.docx,.html,.xlsx,.csv,.jpg,.jpeg,.png,.gif,.bmp,.webp"
+                           onchange="handleDocFiles(event)">
+                    <div id="docFilesList" class="mt-3"></div>
+                </div>
+
+                <button class="btn" onclick="generateDocument()">
+                    Create Content ✨
+                </button>
+
+                <div id="docResult" class="result-container d-none">
+                    <div class="result-header">
+                        <h3 class="result-title">Generated Content</h3>
+                        <div id="docActions"></div>
+                    </div>
+                    <div class="result-content" id="docContent"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Create Reviews Tab -->
+        <div id="extract-data-tab" class="tab-content">
+            <div class="section">
+                <h2 class="section-title">Create Reviews & Extract Data</h2>
+                
+                <div class="data-mode-selector">
+                    <div class="mode-option">
+                        <input type="radio" id="modeExtract" name="dataMode" value="extract" class="mode-radio">
+                        <label for="modeExtract" class="mode-label">
+                            <strong>Extract from File</strong>
+                        </label>
+                    </div>
+                    <div class="mode-option">
+                        <input type="radio" id="modeGenerate" name="dataMode" value="generate" class="mode-radio">
+                        <label for="modeGenerate" class="mode-label">
+                            <strong>Generate Synthetic</strong>
+                        </label>
+                    </div>
+                </div>
+
+                <div id="extractSection" style="display: none;">
+                    <div class="form-group">
+                        <label class="form-label">Upload File to Extract Data</label>
+                        <div class="file-upload-area" onclick="document.getElementById('dataFile').click()">
+                            <p style="font-size: 32px; margin-bottom: 8px;">📤</p>
+                            <p style="font-weight: 600;">Upload file for data extraction</p>
+                            <p class="text-small text-muted">PDF, Word, Excel, CSV, JSON, HTML</p>
+                        </div>
+                        <input type="file" id="dataFile" style="display: none;"
+                               accept=".pdf,.docx,.txt,.json,.html,.csv,.xlsx,.xls"
+                               onchange="handleDataFile(event)">
+                        <div id="dataFileInfo" class="mt-3"></div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">What do you want to do?</label>
+                    <textarea class="form-control" id="dataPrompt" 
+                              placeholder="Example: Extract all customer reviews with ratings from the PDF, or Generate 50 realistic product reviews for headphones with varied ratings"></textarea>
+                </div>
+
+                <div class="columns-input-group">
+                    <div class="form-group" style="flex: 1;">
+                        <label class="form-label">Column Names</label>
+                        <input type="text" class="form-control" id="dataColumns" 
+                               placeholder="customer_name, rating, review_text, date">
+                        <p class="text-small text-muted" style="margin-top: 8px;">
+                            Leave empty to auto-detect, or specify comma-separated names
+                        </p>
+                    </div>
+                    <div class="form-group" style="width: 150px;">
+                        <label class="form-label">Output Format</label>
+                        <select class="form-control" id="dataOutputFormat">
+                            <option value="excel">Excel (.xlsx)</option>
+                            <option value="csv">CSV</option>
+                            <option value="json">JSON</option>
+                        </select>
+                    </div>
+                </div>
+
+                <button class="btn" onclick="extractGenerateData()">
+                    Process Data 🔄
+                </button>
+
+                <div id="dataResult" class="result-container d-none">
+                    <div class="result-header">
+                        <h3 class="result-title">Results</h3>
+                        <div id="dataActions"></div>
+                    </div>
+                    <div class="result-content" id="dataContent"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Documentation & Testing Tab -->
+        <div id="docs-tab" class="tab-content">
+            <div class="section">
+                <h2 class="section-title">API Documentation & Live Testing</h2>
+                <p class="text-muted mb-3">Complete API reference with live testing capability - Test endpoints in real-time</p>
+
+                <!-- Quick Start -->
+                <div class="doc-section">
+                    <h3 style="font-size: 20px; margin-bottom: 20px;">🚀 Quick Start</h3>
+                    <div class="result-container">
+                        <h4 style="margin-bottom: 12px;">Base URL</h4>
+                        <pre style="background-color: var(--bg-primary); padding: 12px; border-radius: 6px;"><span id="baseUrlDisplay">${window.location.origin}</span></pre>
+                        
+                        <h4 style="margin: 20px 0 12px;">Authentication</h4>
+                        <p class="text-muted">This API does not require authentication for testing purposes. In production, secure your endpoints appropriately.</p>
+                        
+                        <h4 style="margin: 20px 0 12px;">Rate Limits</h4>
+                        <p class="text-muted">Default rate limits apply based on Azure OpenAI service quotas.</p>
+                    </div>
+                </div>
+
+                <!-- Chatbot Endpoints -->
+                <div class="doc-section">
+                    <h3 style="font-size: 20px; margin-bottom: 20px;">💬 Chatbot API</h3>
+                    
+                    <div class="doc-endpoint">
+                        <div class="endpoint-header">
+                            <span class="method-badge method-post">POST</span>
+                            <span class="endpoint-path">/initiate-chat</span>
+                        </div>
+                        <p class="endpoint-description">
+                            Initialize a new chat session with an AI assistant. Creates an assistant, thread, and vector store.
+                            Optionally upload a file and set initial context.
+                        </p>
+                        
+                        <h4 class="text-small" style="margin: 20px 0 12px;">Parameters</h4>
+                        <table class="params-table">
+                            <thead>
+                                <tr>
+                                    <th>Parameter</th>
+                                    <th>Type</th>
+                                    <th>Required</th>
+                                    <th>Description</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><code>context</code></td>
+                                    <td>string</td>
+                                    <td class="param-optional">Optional</td>
+                                    <td>Initial context or persona for the assistant</td>
+                                </tr>
+                                <tr>
+                                    <td><code>file</code></td>
+                                    <td>file</td>
+                                    <td class="param-optional">Optional</td>
+                                    <td>File to upload (PDF, DOCX, images, CSV, Excel)</td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <!-- Live Testing Section -->
+                        <div class="api-test-section">
+                            <h4 style="margin-bottom: 16px; color: var(--accent);">🧪 Live Test</h4>
+                            <div class="test-form">
+                                <div class="test-form-row">
+                                    <label>Context:</label>
+                                    <textarea id="test-initiate-context" placeholder="You are a helpful assistant specialized in data analysis" rows="2"></textarea>
+                                </div>
+                                <div class="test-form-row">
+                                    <label>File:</label>
+                                    <input type="file" id="test-initiate-file" accept=".txt,.pdf,.docx,.html,.xlsx,.csv,.jpg,.jpeg,.png,.gif,.bmp,.webp">
+                                </div>
+                                <div class="test-actions">
+                                    <button class="btn btn-small" onclick="testInitiateChat()">Test Endpoint</button>
+                                    <button class="btn btn-secondary btn-small" onclick="copyAsCode('initiate-chat')">Copy as cURL</button>
+                                </div>
+                            </div>
+                            <div id="test-initiate-response" class="test-response" style="display: none;"></div>
+                        </div>
+
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">cURL Example</span>
+                                <button class="btn copy-btn" onclick="copyCode('init-chat-curl')">Copy</button>
+                            </div>
+                            <pre id="init-chat-curl">curl -X POST "<span class="base-url-placeholder">${window.location.origin}</span>/initiate-chat" \
+  -F "context=You are a helpful assistant specialized in data analysis" \
+  -F "file=@document.pdf"</pre>
+                        </div>
+
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">Response Example</span>
+                            </div>
+                            <pre>{
+  "message": "Chat initiated successfully.",
+  "assistant": "asst_abc123...",
+  "session": "thread_xyz789...",
+  "vector_store": "vs_def456..."
+}</pre>
+                        </div>
+                    </div>
+
+                    <div class="doc-endpoint">
+                        <div class="endpoint-header">
+                            <span class="method-badge method-get">GET</span>
+                            <span class="endpoint-path">/conversation</span>
+                        </div>
+                        <p class="endpoint-description">
+                            Send a message to the assistant and receive a streaming response (Server-Sent Events). Perfect for real-time chat interfaces.
+                        </p>
+                        
+                        <h4 class="text-small" style="margin: 20px 0 12px;">Parameters</h4>
+                        <table class="params-table">
+                            <thead>
+                                <tr>
+                                    <th>Parameter</th>
+                                    <th>Type</th>
+                                    <th>Required</th>
+                                    <th>Description</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><code>session</code></td>
+                                    <td>string</td>
+                                    <td class="param-required">Required</td>
+                                    <td>Thread ID from initiate-chat</td>
+                                </tr>
+                                <tr>
+                                    <td><code>assistant</code></td>
+                                    <td>string</td>
+                                    <td class="param-required">Required</td>
+                                    <td>Assistant ID from initiate-chat</td>
+                                </tr>
+                                <tr>
+                                    <td><code>prompt</code></td>
+                                    <td>string</td>
+                                    <td class="param-required">Required</td>
+                                    <td>User message</td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <!-- Live Testing Section -->
+                        <div class="api-test-section">
+                            <h4 style="margin-bottom: 16px; color: var(--accent);">🧪 Live Test</h4>
+                            <div class="test-form">
+                                <div class="test-form-row">
+                                    <label>Session ID:</label>
+                                    <input type="text" id="test-conversation-session" placeholder="thread_xyz789..." value="">
+                                </div>
+                                <div class="test-form-row">
+                                    <label>Assistant ID:</label>
+                                    <input type="text" id="test-conversation-assistant" placeholder="asst_abc123..." value="">
+                                </div>
+                                <div class="test-form-row">
+                                    <label>Message:</label>
+                                    <textarea id="test-conversation-prompt" placeholder="Hello, how are you?" rows="3"></textarea>
+                                </div>
+                                <div class="test-actions">
+                                    <button class="btn btn-small" onclick="testConversation()">Test Streaming</button>
+                                    <button class="btn btn-secondary btn-small" onclick="copyAsCode('conversation')">Copy as cURL</button>
+                                </div>
+                            </div>
+                            <div id="test-conversation-response" class="test-response" style="display: none;"></div>
+                        </div>
+
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">cURL Example (Streaming)</span>
+                                <button class="btn copy-btn" onclick="copyCode('conversation-curl')">Copy</button>
+                            </div>
+                            <pre id="conversation-curl">curl -N "<span class="base-url-placeholder">${window.location.origin}</span>/conversation" \
+  -G --data-urlencode "session=thread_abc123" \
+  --data-urlencode "assistant=asst_xyz789" \
+  --data-urlencode "prompt=Analyze the sales data from the uploaded file"</pre>
+                        </div>
+                    </div>
+
+                    <div class="doc-endpoint">
+                        <div class="endpoint-header">
+                            <span class="method-badge method-post">POST</span>
+                            <span class="endpoint-path">/upload-file</span>
+                        </div>
+                        <p class="endpoint-description">
+                            Upload a file to an existing assistant session. Supports documents, images, and data files.
+                        </p>
+                        
+                        <!-- Live Testing Section -->
+                        <div class="api-test-section">
+                            <h4 style="margin-bottom: 16px; color: var(--accent);">🧪 Live Test</h4>
+                            <div class="test-form">
+                                <div class="test-form-row">
+                                    <label>File:</label>
+                                    <input type="file" id="test-upload-file" accept=".txt,.pdf,.docx,.html,.xlsx,.csv,.jpg,.jpeg,.png,.gif,.bmp,.webp">
+                                </div>
+                                <div class="test-form-row">
+                                    <label>Assistant ID:</label>
+                                    <input type="text" id="test-upload-assistant" placeholder="asst_xyz789..." value="">
+                                </div>
+                                <div class="test-form-row">
+                                    <label>Session ID:</label>
+                                    <input type="text" id="test-upload-session" placeholder="thread_abc123..." value="">
+                                </div>
+                                <div class="test-actions">
+                                    <button class="btn btn-small" onclick="testUploadFile()">Test Upload</button>
+                                    <button class="btn btn-secondary btn-small" onclick="copyAsCode('upload-file')">Copy as cURL</button>
+                                </div>
+                            </div>
+                            <div id="test-upload-response" class="test-response" style="display: none;"></div>
+                        </div>
+
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">cURL Example</span>
+                                <button class="btn copy-btn" onclick="copyCode('upload-curl')">Copy</button>
+                            </div>
+                            <pre id="upload-curl">curl -X POST "<span class="base-url-placeholder">${window.location.origin}</span>/upload-file" \
+  -F "file=@sales_data.csv" \
+  -F "assistant=asst_xyz789" \
+  -F "session=thread_abc123" \
+  -F "prompt=Analyze this sales data"</pre>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Content Creation -->
+                <div class="doc-section">
+                    <h3 style="font-size: 20px; margin-bottom: 20px;">💡 Content & Idea Generation API</h3>
+                    
+                    <div class="doc-endpoint">
+                        <div class="endpoint-header">
+                            <span class="method-badge method-post">POST</span>
+                            <span class="endpoint-path">/completion</span>
+                        </div>
+                        <p class="endpoint-description">
+                            Generate creative content, ideas, documents, or structured data using AI. Supports multiple output formats including Word documents, Excel files, and CSV.
+                        </p>
+                        
+                        <h4 class="text-small" style="margin: 20px 0 12px;">Parameters</h4>
+                        <table class="params-table">
+                            <thead>
+                                <tr>
+                                    <th>Parameter</th>
+                                    <th>Type</th>
+                                    <th>Required</th>
+                                    <th>Description</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><code>prompt</code></td>
+                                    <td>string</td>
+                                    <td class="param-required">Required</td>
+                                    <td>Main generation prompt</td>
+                                </tr>
+                                <tr>
+                                    <td><code>output_format</code></td>
+                                    <td>string</td>
+                                    <td class="param-optional">Optional</td>
+                                    <td>Format: docx, csv, excel, or none (text)</td>
+                                </tr>
+                                <tr>
+                                    <td><code>system_message</code></td>
+                                    <td>string</td>
+                                    <td class="param-optional">Optional</td>
+                                    <td>Additional context or guidelines</td>
+                                </tr>
+                                <tr>
+                                    <td><code>rows_to_generate</code></td>
+                                    <td>integer</td>
+                                    <td class="param-optional">Optional</td>
+                                    <td>For CSV/Excel: number of rows (default: 30)</td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <!-- Live Testing Section -->
+                        <div class="api-test-section">
+                            <h4 style="margin-bottom: 16px; color: var(--accent);">🧪 Live Test</h4>
+                            <div class="test-form">
+                                <div class="test-form-row">
+                                    <label>Prompt:</label>
+                                    <textarea id="test-completion-prompt" placeholder="Create a comprehensive marketing strategy for a new mobile app" rows="3"></textarea>
+                                </div>
+                                <div class="test-form-row">
+                                    <label>Output Format:</label>
+                                    <select id="test-completion-format">
+                                        <option value="">Text (browser display)</option>
+                                        <option value="docx">Word Document (.docx)</option>
+                                        <option value="csv">CSV Spreadsheet</option>
+                                        <option value="excel">Excel Workbook (.xlsx)</option>
+                                    </select>
+                                </div>
+                                <div class="test-form-row">
+                                    <label>System Message:</label>
+                                    <textarea id="test-completion-system" placeholder="Include market analysis and financial projections" rows="2"></textarea>
+                                </div>
+                                <div class="test-form-row">
+                                    <label>Rows (CSV/Excel):</label>
+                                    <input type="number" id="test-completion-rows" placeholder="30" value="30">
+                                </div>
+                                <div class="test-actions">
+                                    <button class="btn btn-small" onclick="testCompletion()">Test Generation</button>
+                                    <button class="btn btn-secondary btn-small" onclick="copyAsCode('completion')">Copy as cURL</button>
+                                </div>
+                            </div>
+                            <div id="test-completion-response" class="test-response" style="display: none;"></div>
+                        </div>
+
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">Generate Business Plan (DOCX)</span>
+                                <button class="btn copy-btn" onclick="copyCode('completion-docx')">Copy</button>
+                            </div>
+                            <pre id="completion-docx">curl -X POST "<span class="base-url-placeholder">${window.location.origin}</span>/completion" \
+  -F "prompt=Create a comprehensive business plan for a SaaS startup in the HR tech space" \
+  -F "output_format=docx" \
+  -F "system_message=Include market analysis, 5-year financial projections, and go-to-market strategy"</pre>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Reviews & Data -->
+                <div class="doc-section">
+                    <h3 style="font-size: 20px; margin-bottom: 20px;">⭐ Reviews & Data Processing API</h3>
+                    
+                    <div class="doc-endpoint">
+                        <div class="endpoint-header">
+                            <span class="method-badge method-post">POST</span>
+                            <span class="endpoint-path">/extract-reviews</span>
+                        </div>
+                        <p class="endpoint-description">
+                            Extract reviews and structured data from documents or generate synthetic review datasets. Perfect for creating test data or analyzing customer feedback.
+                        </p>
+                        
+                        <h4 class="text-small" style="margin: 20px 0 12px;">Parameters</h4>
+                        <table class="params-table">
+                            <thead>
+                                <tr>
+                                    <th>Parameter</th>
+                                    <th>Type</th>
+                                    <th>Required</th>
+                                    <th>Description</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><code>file</code></td>
+                                    <td>file</td>
+                                    <td class="param-optional">Optional</td>
+                                    <td>File to extract data from</td>
+                                </tr>
+                                <tr>
+                                    <td><code>prompt</code></td>
+                                    <td>string</td>
+                                    <td class="param-optional">Optional</td>
+                                    <td>Instructions for extraction/generation</td>
+                                </tr>
+                                <tr>
+                                    <td><code>mode</code></td>
+                                    <td>string</td>
+                                    <td class="param-optional">Optional</td>
+                                    <td>auto (default), extract, or generate</td>
+                                </tr>
+                                <tr>
+                                    <td><code>columns</code></td>
+                                    <td>string</td>
+                                    <td class="param-optional">Optional</td>
+                                    <td>Column names or "auto" (default)</td>
+                                </tr>
+                                <tr>
+                                    <td><code>output_format</code></td>
+                                    <td>string</td>
+                                    <td class="param-optional">Optional</td>
+                                    <td>excel (default), csv, or json</td>
+                                </tr>
+                                <tr>
+                                    <td><code>rows_to_generate</code></td>
+                                    <td>integer</td>
+                                    <td class="param-optional">Optional</td>
+                                    <td>For generation mode (default: 30)</td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <!-- Live Testing Section -->
+                        <div class="api-test-section">
+                            <h4 style="margin-bottom: 16px; color: var(--accent);">🧪 Live Test</h4>
+                            <div class="test-form">
+                                <div class="test-form-row">
+                                    <label>File (optional):</label>
+                                    <input type="file" id="test-extract-file" accept=".pdf,.docx,.txt,.json,.html,.csv,.xlsx,.xls">
+                                </div>
+                                <div class="test-form-row">
+                                    <label>Prompt:</label>
+                                    <textarea id="test-extract-prompt" placeholder="Extract customer reviews with ratings, or Generate 50 realistic product reviews for headphones" rows="3"></textarea>
+                                </div>
+                                <div class="test-form-row">
+                                    <label>Mode:</label>
+                                    <select id="test-extract-mode">
+                                        <option value="auto">Auto-detect</option>
+                                        <option value="extract">Extract from file</option>
+                                        <option value="generate">Generate synthetic</option>
+                                    </select>
+                                </div>
+                                <div class="test-form-row">
+                                    <label>Columns:</label>
+                                    <input type="text" id="test-extract-columns" placeholder="customer_name,rating,review_text,date">
+                                </div>
+                                <div class="test-form-row">
+                                    <label>Output Format:</label>
+                                    <select id="test-extract-format">
+                                        <option value="excel">Excel (.xlsx)</option>
+                                        <option value="csv">CSV</option>
+                                        <option value="json">JSON</option>
+                                    </select>
+                                </div>
+                                <div class="test-form-row">
+                                    <label>Rows to Generate:</label>
+                                    <input type="number" id="test-extract-rows" placeholder="30" value="30">
+                                </div>
+                                <div class="test-actions">
+                                    <button class="btn btn-small" onclick="testExtractReviews()">Test Processing</button>
+                                    <button class="btn btn-secondary btn-small" onclick="copyAsCode('extract-reviews')">Copy as cURL</button>
+                                </div>
+                            </div>
+                            <div id="test-extract-response" class="test-response" style="display: none;"></div>
+                        </div>
+
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">Generate Synthetic Reviews</span>
+                                <button class="btn copy-btn" onclick="copyCode('generate-reviews')">Copy</button>
+                            </div>
+                            <pre id="generate-reviews">curl -X POST "<span class="base-url-placeholder">${window.location.origin}</span>/extract-reviews" \
+  -F "mode=generate" \
+  -F "prompt=Generate realistic product reviews for wireless headphones" \
+  -F "columns=customer_name,rating,review_title,review_text,verified_purchase,helpful_count" \
+  -F "rows_to_generate=50" \
+  -F "output_format=excel"</pre>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Utility Endpoints -->
+                <div class="doc-section">
+                    <h3 style="font-size: 20px; margin-bottom: 20px;">🔧 Utility Endpoints</h3>
+                    
+                    <div class="doc-endpoint">
+                        <div class="endpoint-header">
+                            <span class="method-badge method-get">GET</span>
+                            <span class="endpoint-path">/health-check</span>
+                        </div>
+                        <p class="endpoint-description">
+                            Comprehensive health check for all system components including Azure OpenAI, file system, dependencies, and pandas agent.
+                        </p>
+                        
+                        <!-- Live Testing Section -->
+                        <div class="api-test-section">
+                            <h4 style="margin-bottom: 16px; color: var(--accent);">🧪 Live Test</h4>
+                            <div class="test-form">
+                                <div class="test-actions">
+                                    <button class="btn btn-small" onclick="testHealthCheck()">Test Health Check</button>
+                                    <button class="btn btn-secondary btn-small" onclick="copyAsCode('health-check')">Copy as cURL</button>
+                                </div>
+                            </div>
+                            <div id="test-health-response" class="test-response" style="display: none;"></div>
+                        </div>
+
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">cURL Example</span>
+                                <button class="btn copy-btn" onclick="copyCode('health-check')">Copy</button>
+                            </div>
+                            <pre id="health-check">curl "<span class="base-url-placeholder">${window.location.origin}</span>/health-check"</pre>
+                        </div>
+                    </div>
+
+                    <div class="doc-endpoint">
+                        <div class="endpoint-header">
+                            <span class="method-badge method-get">GET</span>
+                            <span class="endpoint-path">/download-files/{filename}</span>
+                        </div>
+                        <p class="endpoint-description">
+                            Download a generated file. Files are automatically cleaned up after a certain number of downloads.
+                        </p>
+                        
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">cURL Example</span>
+                                <button class="btn copy-btn" onclick="copyCode('download-file')">Copy</button>
+                            </div>
+                            <pre id="download-file">curl "<span class="base-url-placeholder">${window.location.origin}</span>/download-files/generated_data_20240104_123456.xlsx" \
+  -o output.xlsx</pre>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Error Codes -->
+                <div class="doc-section">
+                    <h3 style="font-size: 20px; margin-bottom: 20px;">❗ Error Codes & Troubleshooting</h3>
+                    
+                    <div class="result-container">
+                        <h4 style="margin-bottom: 16px;">Common Error Codes</h4>
+                        <table class="params-table">
+                            <thead>
+                                <tr>
+                                    <th>Code</th>
+                                    <th>Meaning</th>
+                                    <th>Solution</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>400</td>
+                                    <td>Bad Request</td>
+                                    <td>Check your request parameters and format</td>
+                                </tr>
+                                <tr>
+                                    <td>404</td>
+                                    <td>Not Found</td>
+                                    <td>Verify the endpoint URL and resource IDs</td>
+                                </tr>
+                                <tr>
+                                    <td>422</td>
+                                    <td>Unprocessable Entity</td>
+                                    <td>Check data format and content requirements</td>
+                                </tr>
+                                <tr>
+                                    <td>500</td>
+                                    <td>Internal Server Error</td>
+                                    <td>Retry the request; contact support if persists</td>
+                                </tr>
+                                <tr>
+                                    <td>503</td>
+                                    <td>Service Unavailable</td>
+                                    <td>Service temporarily down; retry later</td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <h4 style="margin: 24px 0 16px;">Best Practices</h4>
+                        <ul style="line-height: 1.8; color: var(--text-secondary);">
+                            <li>Always handle errors gracefully in your application</li>
+                            <li>Implement exponential backoff for retries</li>
+                            <li>Store assistant and session IDs for conversation continuity</li>
+                            <li>Validate file formats before uploading</li>
+                            <li>Use appropriate output formats for your use case</li>
+                            <li>Monitor health endpoints for service availability</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // API Configuration
+        const API_BASE_URL = window.location.origin;
+
+        // Application State
+        let state = {
+            // Chatbot state
+            assistantId: null,
+            sessionId: null,
+            vectorStoreId: null,
+            chatHistory: [],
+            uploadedFiles: [],
+            isStreaming: false,
+            pendingFile: null,
+            
+            // Document generation state
+            docFiles: [],
+            
+            // Data extraction state
+            dataFile: null,
+            dataMode: 'auto'
+        };
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            setupEventListeners();
+            initializeDataMode();
+            updateBaseUrlPlaceholders();
+        });
+
+        function updateBaseUrlPlaceholders() {
+            document.getElementById('baseUrlDisplay').textContent = API_BASE_URL;
+            document.querySelectorAll('.base-url-placeholder').forEach(el => {
+                el.textContent = API_BASE_URL;
+            });
+        }
+
+        // Tab Switching
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            document.querySelectorAll('.nav-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            document.getElementById(`${tabName}-tab`).classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        // ==========================
+        // Chatbot Functions
+        // ==========================
+        
+        async function createNewChat() {
+            // Reset state
+            state.assistantId = null;
+            state.sessionId = null;
+            state.vectorStoreId = null;
+            state.chatHistory = [];
+            state.uploadedFiles = [];
+            state.pendingFile = null;
+            
+            // Clear UI
+            const container = document.getElementById('messagesContainer');
+            container.innerHTML = '';
+            
+            // Hide uploaded files indicator
+            updateUploadedFilesUI();
+            
+            // Update status
+            updateChatStatus('Ready');
+            
+            // Add welcome message
+            addMessage('assistant', 'Hello! I\'m your AI assistant. I can help you with various tasks including answering questions, analyzing data, and processing documents. \n\nYou can also upload files by clicking the 📎 button below. How can I assist you today?');
+        }
+
+        async function initializeAssistant() {
+            try {
+                updateChatStatus('Initializing...');
+                
+                const formData = new FormData();
+                
+                // If there's a pending file, include it
+                if (state.pendingFile) {
+                    formData.append('file', state.pendingFile);
+                }
+                
+                const response = await fetch(`${API_BASE_URL}/initiate-chat`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) throw new Error('Failed to initialize assistant');
+
+                const data = await response.json();
+                state.assistantId = data.assistant;
+                state.sessionId = data.session;
+                state.vectorStoreId = data.vector_store;
+
+                // Update test form fields with IDs
+                updateTestFormIds();
+
+                // If we uploaded a file during init, add it to uploaded files
+                if (state.pendingFile) {
+                    state.uploadedFiles.push({
+                        name: state.pendingFile.name,
+                        size: state.pendingFile.size,
+                        type: state.pendingFile.type
+                    });
+                    updateUploadedFilesUI();
+                }
+                
+                // Clear pending file
+                state.pendingFile = null;
+                document.getElementById('chatFilePreview').style.display = 'none';
+                
+                updateChatStatus('Connected');
+                return true;
+            } catch (error) {
+                console.error('Failed to initialize assistant:', error);
+                showToast('Failed to initialize assistant', 'error');
+                updateChatStatus('Error');
+                return false;
+            }
+        }
+
+        function updateTestFormIds() {
+            // Auto-populate test form fields
+            document.getElementById('test-conversation-session').value = state.sessionId || '';
+            document.getElementById('test-conversation-assistant').value = state.assistantId || '';
+            document.getElementById('test-upload-session').value = state.sessionId || '';
+            document.getElementById('test-upload-assistant').value = state.assistantId || '';
+        }
+
+        async function sendChatMessage() {
+            const input = document.getElementById('chatInput');
+            const message = input.value.trim();
+            
+            if (!message || state.isStreaming) return;
+
+            // Initialize assistant if needed
+            if (!state.assistantId) {
+                const initialized = await initializeAssistant();
+                if (!initialized) return;
+            }
+
+            // Clear input and reset height
+            input.value = '';
+            input.style.height = 'auto';
+            
+            // Add user message
+            addMessage('user', message);
+            
+            // Start streaming
+            state.isStreaming = true;
+            updateSendButton();
+            updateChatStatus('Processing...');
+            
+            // Add assistant message placeholder with typing indicator
+            const assistantMessageId = addMessage('assistant', '', true);
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/conversation?` + new URLSearchParams({
+                    session: state.sessionId,
+                    assistant: state.assistantId,
+                    prompt: message
+                }));
+
+                if (!response.ok) throw new Error('Failed to get response');
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let assistantResponse = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n');
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            const data = line.slice(6);
+                            
+                            if (data === '[DONE]') {
+                                break;
+                            }
+
+                            try {
+                                const json = JSON.parse(data);
+                                if (json.choices && json.choices[0].delta && json.choices[0].delta.content) {
+                                    assistantResponse += json.choices[0].delta.content;
+                                    updateMessage(assistantMessageId, assistantResponse);
+                                }
+                            } catch (e) {
+                                // Skip parsing errors
+                            }
+                        }
+                    }
+                }
+
+                // Store in chat history
+                state.chatHistory.push(
+                    { role: 'user', content: message },
+                    { role: 'assistant', content: assistantResponse }
+                );
+                
+                updateChatStatus('Connected');
+                
+            } catch (error) {
+                showToast('Failed to get response', 'error');
+                console.error(error);
+                removeMessage(assistantMessageId);
+                updateChatStatus('Error');
+            } finally {
+                state.isStreaming = false;
+                updateSendButton();
+            }
+        }
+
+        async function downloadChat() {
+            if (!state.sessionId || !state.assistantId) {
+                showToast('No active chat to download', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/download-chat?` + new URLSearchParams({
+                    session: state.sessionId,
+                    assistant: state.assistantId
+                }));
+
+                if (!response.ok) throw new Error('Failed to download chat');
+
+                const data = await response.json();
+                
+                // Open download URL
+                window.open(data.download_url);
+                showToast('Chat download started', 'success');
+            } catch (error) {
+                showToast('Failed to download chat', 'error');
+                console.error(error);
+            }
+        }
+
+        function clearChat() {
+            if (confirm('Are you sure you want to clear the chat history?')) {
+                const container = document.getElementById('messagesContainer');
+                container.innerHTML = '';
+                state.chatHistory = [];
+                addMessage('assistant', 'Chat cleared. How can I help you?');
+                showToast('Chat history cleared', 'info');
+            }
+        }
+
+        function updateChatStatus(status) {
+            document.getElementById('chatStatus').textContent = status;
+        }
+
+        function updateUploadedFilesUI() {
+            const container = document.getElementById('chatUploadedFiles');
+            
+            if (state.uploadedFiles.length > 0) {
+                container.innerHTML = state.uploadedFiles.map(file => `
+                    <div class="uploaded-file-chip">
+                        📄 ${file.name}
+                    </div>
+                `).join('');
+                container.style.display = 'flex';
+            } else {
+                container.style.display = 'none';
+            }
+        }
+
+        function addMessage(role, content, isStreaming = false) {
+            const container = document.getElementById('messagesContainer');
+            const messageId = 'msg_' + Date.now();
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}`;
+            messageDiv.id = messageId;
+            
+            if (role !== 'system') {
+                const avatar = document.createElement('div');
+                avatar.className = `message-avatar ${role}-avatar`;
+                avatar.textContent = role === 'user' ? 'U' : 'AI';
+                messageDiv.appendChild(avatar);
+            }
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+            
+            if (isStreaming && role === 'assistant') {
+                contentDiv.innerHTML = '<div class="typing-indicator"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>';
+            } else {
+                contentDiv.textContent = content;
+            }
+            
+            messageDiv.appendChild(contentDiv);
+            container.appendChild(messageDiv);
+            
+            container.scrollTop = container.scrollHeight;
+            
+            return messageId;
+        }
+
+        function updateMessage(messageId, content) {
+            const message = document.getElementById(messageId);
+            if (message) {
+                const contentDiv = message.querySelector('.message-content');
+                contentDiv.textContent = content;
+                
+                const container = document.getElementById('messagesContainer');
+                container.scrollTop = container.scrollHeight;
+            }
+        }
+
+        function removeMessage(messageId) {
+            const message = document.getElementById(messageId);
+            if (message) message.remove();
+        }
+
+        function updateSendButton() {
+            const btn = document.getElementById('sendBtn');
+            const input = document.getElementById('chatInput');
+            btn.disabled = state.isStreaming;
+            input.disabled = state.isStreaming;
+        }
+
+        function handleChatKeyDown(event) {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendChatMessage();
+            }
+        }
+
+        function autoResizeChatInput(textarea) {
+            textarea.style.height = 'auto';
+            const newHeight = Math.min(textarea.scrollHeight, 150);
+            textarea.style.height = newHeight + 'px';
+        }
+
+        async function handleChatFileSelect(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            // Show file preview
+            showFilePreview(file);
+            
+            // If assistant exists, upload immediately
+            if (state.assistantId) {
+                await uploadChatFile(file);
+            } else {
+                // Store file to upload with initialization
+                state.pendingFile = file;
+                addMessage('system', `📎 File "${file.name}" ready to upload. Send a message to start the conversation.`);
+            }
+            
+            // Clear file input
+            event.target.value = '';
+        }
+
+        async function uploadChatFile(file) {
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('assistant', state.assistantId);
+                if (state.sessionId) {
+                    formData.append('session', state.sessionId);
+                }
+
+                showToast('Uploading file...', 'info');
+
+                const response = await fetch(`${API_BASE_URL}/upload-file`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) throw new Error('Failed to upload file');
+                
+                // Add to uploaded files
+                state.uploadedFiles.push({
+                    name: file.name,
+                    size: file.size,
+                    type: file.type
+                });
+                updateUploadedFilesUI();
+                
+                showToast(`File "${file.name}" uploaded successfully`, 'success');
+                addMessage('system', `📎 Uploaded: ${file.name}`);
+            } catch (error) {
+                showToast('Failed to upload file', 'error');
+                console.error(error);
+            }
+        }
+
+        function showFilePreview(file) {
+            const previewDiv = document.getElementById('chatFilePreview');
+            previewDiv.innerHTML = `
+                <div class="file-preview">
+                    <span class="file-icon">📄</span>
+                    <div class="file-info">
+                        <div class="file-name">${file.name}</div>
+                        <div class="file-size">${formatFileSize(file.size)}</div>
+                    </div>
+                    <button class="remove-file-btn" onclick="removeChatFile()">Remove</button>
+                </div>
+            `;
+            previewDiv.style.display = 'block';
+        }
+
+        function removeChatFile() {
+            state.pendingFile = null;
+            document.getElementById('chatFilePreview').style.display = 'none';
+            document.getElementById('chatFileInput').value = '';
+        }
+
+        // ==========================
+        // Document Generation Functions
+        // ==========================
+        
+        async function generateDocument() {
+            const prompt = document.getElementById('docPrompt').value.trim();
+            if (!prompt) {
+                showToast('Please enter what you want to create', 'error');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('prompt', prompt);
+            formData.append('model', 'gpt-4.1-mini');
+            formData.append('temperature', '0.8');
+            formData.append('max_tokens', '8000');
+            
+            const outputFormat = document.getElementById('docFormat').value;
+            if (outputFormat) {
+                formData.append('output_format', outputFormat);
+                
+                // Add rows parameter for CSV/Excel
+                if (outputFormat === 'csv' || outputFormat === 'excel') {
+                    formData.append('rows_to_generate', '50');
+                }
+            }
+            
+            // Add initial prompt as system message if provided
+            const initialPrompt = document.getElementById('docInitialPrompt').value.trim();
+            if (initialPrompt) {
+                formData.append('system_message', initialPrompt);
+            }
+            
+            // Add files
+            state.docFiles.forEach(file => {
+                formData.append('files', file);
+            });
+            
+            // Show loading
+            const resultDiv = document.getElementById('docResult');
+            const contentDiv = document.getElementById('docContent');
+            const actionsDiv = document.getElementById('docActions');
+            
+            resultDiv.classList.remove('d-none');
+            contentDiv.innerHTML = '<div class="spinner"></div> Generating content...';
+            actionsDiv.innerHTML = '';
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/completion`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) throw new Error('Failed to generate document');
+
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    // Display result based on whether there's a download URL
+                    if (data.download_url) {
+                        // File was generated
+                        let summary = 'Your content has been created successfully!';
+                        
+                        if (outputFormat === 'csv' || outputFormat === 'excel') {
+                            summary = data.message || 'Data file created successfully!';
+                            if (data.summary) {
+                                summary += '\n\n' + `Generated ${data.summary.rows || 'multiple'} rows`;
+                                if (data.summary.columns) {
+                                    summary += ` with columns: ${data.summary.columns.join(', ')}`;
+                                }
+                            }
+                        } else if (outputFormat === 'docx') {
+                            summary = 'Your document has been created and is ready for download!';
+                        }
+                        
+                        contentDiv.textContent = summary;
+                        
+                        // Add download button
+                        actionsDiv.innerHTML = `
+                            <a href="${data.download_url}" class="download-btn" download="${data.filename}">
+                                Download ${outputFormat ? outputFormat.toUpperCase() : 'File'} 📥
+                            </a>
+                        `;
+                    } else {
+                        // Text response
+                        contentDiv.innerHTML = `<pre style="white-space: pre-wrap;">${escapeHtml(data.response)}</pre>`;
+                        
+                        // Add copy button
+                        actionsDiv.innerHTML = `
+                            <button class="btn btn-secondary" onclick="copyDocContent()">
+                                Copy Text 📋
+                            </button>
+                        `;
+                    }
+                    
+                    showToast('Content created successfully!', 'success');
+                } else {
+                    throw new Error(data.message || 'Generation failed');
+                }
+            } catch (error) {
+                contentDiv.textContent = `Error: ${error.message}`;
+                showToast('Failed to generate document', 'error');
+                console.error(error);
+            }
+        }
+
+        function handleDocFiles(event) {
+            state.docFiles = Array.from(event.target.files);
+            updateDocFilesList();
+        }
+
+        function updateDocFilesList() {
+            const listDiv = document.getElementById('docFilesList');
+            
+            if (state.docFiles.length > 0) {
+                listDiv.innerHTML = state.docFiles.map((file, index) => `
+                    <div class="file-preview">
+                        <span class="file-icon">📄</span>
+                        <div class="file-info">
+                            <div class="file-name">${file.name}</div>
+                            <div class="file-size">${formatFileSize(file.size)}</div>
+                        </div>
+                        <button class="remove-file-btn" onclick="removeDocFile(${index})">Remove</button>
+                    </div>
+                `).join('');
+            } else {
+                listDiv.innerHTML = '';
+            }
+        }
+
+        function removeDocFile(index) {
+            state.docFiles.splice(index, 1);
+            updateDocFilesList();
+        }
+
+        function copyDocContent() {
+            const content = document.getElementById('docContent').textContent;
+            navigator.clipboard.writeText(content).then(() => {
+                showToast('Copied to clipboard!', 'success');
+            }).catch(err => {
+                showToast('Failed to copy', 'error');
+            });
+        }
+
+        // ==========================
+        // Data Extraction/Generation Functions
+        // ==========================
+        
+        function initializeDataMode() {
+            // Set up radio button listeners
+            document.querySelectorAll('input[name="dataMode"]').forEach(radio => {
+                radio.addEventListener('change', (e) => {
+                    state.dataMode = e.target.value;
+                    updateDataModeUI();
+                });
+            });
+            
+            // Set default mode
+            document.getElementById('modeExtract').checked = true;
+            state.dataMode = 'extract';
+            updateDataModeUI();
+        }
+
+        function updateDataModeUI() {
+            const extractSection = document.getElementById('extractSection');
+            
+            if (state.dataMode === 'extract') {
+                extractSection.style.display = 'block';
+            } else {
+                extractSection.style.display = 'none';
+            }
+        }
+
+        async function extractGenerateData() {
+            const mode = state.dataMode;
+            const prompt = document.getElementById('dataPrompt').value.trim();
+            
+            if (mode === 'extract' && !state.dataFile) {
+                showToast('Please upload a file to extract data from', 'error');
+                return;
+            }
+            
+            if (!prompt && !state.dataFile) {
+                showToast('Please provide instructions or upload a file', 'error');
+                return;
+            }
+
+            const formData = new FormData();
+            
+            if (state.dataFile) {
+                formData.append('file', state.dataFile);
+            }
+            
+            // Always use auto mode for flexibility
+            formData.append('mode', 'auto');
+            
+            const columns = document.getElementById('dataColumns').value.trim();
+            formData.append('columns', columns || 'auto');
+            
+            formData.append('output_format', document.getElementById('dataOutputFormat').value);
+            
+            if (prompt) {
+                formData.append('prompt', prompt);
+            }
+            
+            if (mode === 'generate') {
+                formData.append('rows_to_generate', '50');
+            }
+            
+            // Hardcoded parameters
+            formData.append('model', 'gpt-4.1-mini');
+            formData.append('temperature', '0.1');
+            
+            // Show loading
+            const resultDiv = document.getElementById('dataResult');
+            const contentDiv = document.getElementById('dataContent');
+            const actionsDiv = document.getElementById('dataActions');
+            
+            resultDiv.classList.remove('d-none');
+            contentDiv.innerHTML = '<div class="spinner"></div> Processing data...';
+            actionsDiv.innerHTML = '';
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/extract-reviews`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) throw new Error('Failed to process data');
+
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    // Build result summary
+                    let resultText = data.message + '\n\n';
+                    
+                    if (data.columns && data.columns.length > 0) {
+                        resultText += `**Columns:** ${data.columns.join(', ')}\n`;
+                    }
+                    
+                    if (data.row_count !== undefined) {
+                        resultText += `**Rows:** ${data.row_count}\n`;
+                    }
+                    
+                    if (data.metadata) {
+                        resultText += '\n**Details:**\n';
+                        Object.entries(data.metadata).forEach(([key, value]) => {
+                            resultText += `• ${key.replace(/_/g, ' ')}: ${value}\n`;
+                        });
+                    }
+                    
+                    contentDiv.innerHTML = `<pre style="white-space: pre-wrap;">${escapeHtml(resultText)}</pre>`;
+                    
+                    // Add download button if URL is available
+                    if (data.download_url) {
+                        actionsDiv.innerHTML = `
+                            <a href="${data.download_url}" class="download-btn" download="${data.filename}">
+                                Download ${data.output_format.toUpperCase()} 📥
+                            </a>
+                        `;
+                    }
+                    
+                    showToast('Reviews processed successfully!', 'success');
+                } else if (data.format === 'json' && data.data) {
+                    // JSON format response
+                    contentDiv.innerHTML = `<pre style="white-space: pre-wrap;">${JSON.stringify(data.data, null, 2)}</pre>`;
+                    showToast('Data processed successfully!', 'success');
+                } else {
+                    throw new Error(data.message || 'Processing failed');
+                }
+            } catch (error) {
+                contentDiv.textContent = `Error: ${error.message}`;
+                showToast('Failed to process data', 'error');
+                console.error(error);
+            }
+        }
+
+        function handleDataFile(event) {
+            const file = event.target.files[0];
+            if (file) {
+                state.dataFile = file;
+                updateDataFileInfo();
+            }
+        }
+
+        function updateDataFileInfo() {
+            const infoDiv = document.getElementById('dataFileInfo');
+            if (state.dataFile) {
+                infoDiv.innerHTML = `
+                    <div class="file-preview">
+                        <span class="file-icon">📄</span>
+                        <div class="file-info">
+                            <div class="file-name">${state.dataFile.name}</div>
+                            <div class="file-size">${formatFileSize(state.dataFile.size)}</div>
+                        </div>
+                        <button class="remove-file-btn" onclick="removeDataFile()">Remove</button>
+                    </div>
+                `;
+            } else {
+                infoDiv.innerHTML = '';
+            }
+        }
+
+        function removeDataFile() {
+            state.dataFile = null;
+            document.getElementById('dataFile').value = '';
+            updateDataFileInfo();
+        }
+
+        // ==========================
+        // API Testing Functions
+        // ==========================
+
+        async function testInitiateChat() {
+            const context = document.getElementById('test-initiate-context').value;
+            const fileInput = document.getElementById('test-initiate-file');
+            const responseDiv = document.getElementById('test-initiate-response');
+            
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = 'Testing...';
+            
+            try {
+                const formData = new FormData();
+                if (context) formData.append('context', context);
+                if (fileInput.files[0]) formData.append('file', fileInput.files[0]);
+                
+                const response = await fetch(`${API_BASE_URL}/initiate-chat`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                responseDiv.textContent = JSON.stringify(data, null, 2);
+                
+                if (response.ok && data.assistant && data.session) {
+                    // Auto-populate other test forms
+                    state.assistantId = data.assistant;
+                    state.sessionId = data.session;
+                    updateTestFormIds();
+                    showToast('Test successful! IDs auto-populated', 'success');
+                } else {
+                    showToast('Test completed with issues', 'error');
+                }
+            } catch (error) {
+                responseDiv.textContent = `Error: ${error.message}`;
+                showToast('Test failed', 'error');
+            }
+        }
+
+        async function testConversation() {
+            const sessionId = document.getElementById('test-conversation-session').value;
+            const assistantId = document.getElementById('test-conversation-assistant').value;
+            const prompt = document.getElementById('test-conversation-prompt').value;
+            const responseDiv = document.getElementById('test-conversation-response');
+            
+            if (!sessionId || !assistantId || !prompt) {
+                showToast('Please fill in all required fields', 'error');
+                return;
+            }
+            
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = 'Starting stream...';
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/conversation?` + new URLSearchParams({
+                    session: sessionId,
+                    assistant: assistantId,
+                    prompt: prompt
+                }));
+                
+                if (!response.ok) throw new Error('Failed to start conversation');
+                
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let fullResponse = '';
+                
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n');
+                    
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            const data = line.slice(6);
+                            if (data === '[DONE]') break;
+                            
+                            try {
+                                const json = JSON.parse(data);
+                                if (json.choices?.[0]?.delta?.content) {
+                                    fullResponse += json.choices[0].delta.content;
+                                    responseDiv.textContent = `Streaming response:\n\n${fullResponse}`;
+                                }
+                            } catch (e) {
+                                // Skip parsing errors
+                            }
+                        }
+                    }
+                }
+                
+                showToast('Streaming test completed', 'success');
+            } catch (error) {
+                responseDiv.textContent = `Error: ${error.message}`;
+                showToast('Streaming test failed', 'error');
+            }
+        }
+
+        async function testUploadFile() {
+            const fileInput = document.getElementById('test-upload-file');
+            const assistantId = document.getElementById('test-upload-assistant').value;
+            const sessionId = document.getElementById('test-upload-session').value;
+            const responseDiv = document.getElementById('test-upload-response');
+            
+            if (!fileInput.files[0] || !assistantId) {
+                showToast('Please select a file and enter assistant ID', 'error');
+                return;
+            }
+            
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = 'Uploading...';
+            
+            try {
+                const formData = new FormData();
+                formData.append('file', fileInput.files[0]);
+                formData.append('assistant', assistantId);
+                if (sessionId) formData.append('session', sessionId);
+                
+                const response = await fetch(`${API_BASE_URL}/upload-file`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                responseDiv.textContent = JSON.stringify(data, null, 2);
+                
+                if (response.ok) {
+                    showToast('File upload test successful', 'success');
+                } else {
+                    showToast('File upload test failed', 'error');
+                }
+            } catch (error) {
+                responseDiv.textContent = `Error: ${error.message}`;
+                showToast('File upload test failed', 'error');
+            }
+        }
+
+        async function testCompletion() {
+            const prompt = document.getElementById('test-completion-prompt').value;
+            const format = document.getElementById('test-completion-format').value;
+            const system = document.getElementById('test-completion-system').value;
+            const rows = document.getElementById('test-completion-rows').value;
+            const responseDiv = document.getElementById('test-completion-response');
+            
+            if (!prompt) {
+                showToast('Please enter a prompt', 'error');
+                return;
+            }
+            
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = 'Generating...';
+            
+            try {
+                const formData = new FormData();
+                formData.append('prompt', prompt);
+                if (format) formData.append('output_format', format);
+                if (system) formData.append('system_message', system);
+                if (rows) formData.append('rows_to_generate', rows);
+                
+                const response = await fetch(`${API_BASE_URL}/completion`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                responseDiv.textContent = JSON.stringify(data, null, 2);
+                
+                if (response.ok) {
+                    showToast('Completion test successful', 'success');
+                    if (data.download_url) {
+                        responseDiv.innerHTML += `\n\n<a href="${data.download_url}" target="_blank" style="color: var(--accent);">Download Generated File</a>`;
+                    }
+                } else {
+                    showToast('Completion test failed', 'error');
+                }
+            } catch (error) {
+                responseDiv.textContent = `Error: ${error.message}`;
+                showToast('Completion test failed', 'error');
+            }
+        }
+
+        async function testExtractReviews() {
+            const fileInput = document.getElementById('test-extract-file');
+            const prompt = document.getElementById('test-extract-prompt').value;
+            const mode = document.getElementById('test-extract-mode').value;
+            const columns = document.getElementById('test-extract-columns').value;
+            const format = document.getElementById('test-extract-format').value;
+            const rows = document.getElementById('test-extract-rows').value;
+            const responseDiv = document.getElementById('test-extract-response');
+            
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = 'Processing...';
+            
+            try {
+                const formData = new FormData();
+                if (fileInput.files[0]) formData.append('file', fileInput.files[0]);
+                if (prompt) formData.append('prompt', prompt);
+                formData.append('mode', mode);
+                if (columns) formData.append('columns', columns);
+                formData.append('output_format', format);
+                if (rows) formData.append('rows_to_generate', rows);
+                
+                const response = await fetch(`${API_BASE_URL}/extract-reviews`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                responseDiv.textContent = JSON.stringify(data, null, 2);
+                
+                if (response.ok) {
+                    showToast('Extract/Generate test successful', 'success');
+                    if (data.download_url) {
+                        responseDiv.innerHTML += `\n\n<a href="${data.download_url}" target="_blank" style="color: var(--accent);">Download Generated File</a>`;
+                    }
+                } else {
+                    showToast('Extract/Generate test failed', 'error');
+                }
+            } catch (error) {
+                responseDiv.textContent = `Error: ${error.message}`;
+                showToast('Extract/Generate test failed', 'error');
+            }
+        }
+
+        async function testHealthCheck() {
+            const responseDiv = document.getElementById('test-health-response');
+            
+            responseDiv.style.display = 'block';
+            responseDiv.textContent = 'Checking system health...';
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/health-check`);
+                const data = await response.json();
+                responseDiv.textContent = JSON.stringify(data, null, 2);
+                
+                if (response.ok) {
+                    showToast('Health check completed', 'success');
+                } else {
+                    showToast('Health check failed', 'error');
+                }
+            } catch (error) {
+                responseDiv.textContent = `Error: ${error.message}`;
+                showToast('Health check failed', 'error');
+            }
+        }
+
+        function copyAsCode(endpoint) {
+            let code = '';
+            
+            switch (endpoint) {
+                case 'initiate-chat':
+                    const context = document.getElementById('test-initiate-context').value;
+                    code = `curl -X POST "${API_BASE_URL}/initiate-chat"`;
+                    if (context) code += ` \\\n  -F "context=${context}"`;
+                    code += ` \\\n  -F "file=@your-file.pdf"`;
+                    break;
+                case 'conversation':
+                    const session = document.getElementById('test-conversation-session').value;
+                    const assistant = document.getElementById('test-conversation-assistant').value;
+                    const prompt = document.getElementById('test-conversation-prompt').value;
+                    code = `curl -N "${API_BASE_URL}/conversation" \\\n  -G --data-urlencode "session=${session}" \\\n  --data-urlencode "assistant=${assistant}" \\\n  --data-urlencode "prompt=${prompt}"`;
+                    break;
+                case 'upload-file':
+                    const uploadAssistant = document.getElementById('test-upload-assistant').value;
+                    const uploadSession = document.getElementById('test-upload-session').value;
+                    code = `curl -X POST "${API_BASE_URL}/upload-file" \\\n  -F "file=@your-file.pdf" \\\n  -F "assistant=${uploadAssistant}"`;
+                    if (uploadSession) code += ` \\\n  -F "session=${uploadSession}"`;
+                    break;
+                case 'completion':
+                    const compPrompt = document.getElementById('test-completion-prompt').value;
+                    const compFormat = document.getElementById('test-completion-format').value;
+                    code = `curl -X POST "${API_BASE_URL}/completion" \\\n  -F "prompt=${compPrompt}"`;
+                    if (compFormat) code += ` \\\n  -F "output_format=${compFormat}"`;
+                    break;
+                case 'extract-reviews':
+                    const extPrompt = document.getElementById('test-extract-prompt').value;
+                    const extMode = document.getElementById('test-extract-mode').value;
+                    code = `curl -X POST "${API_BASE_URL}/extract-reviews" \\\n  -F "mode=${extMode}"`;
+                    if (extPrompt) code += ` \\\n  -F "prompt=${extPrompt}"`;
+                    code += ` \\\n  -F "file=@your-file.pdf"`;
+                    break;
+                case 'health-check':
+                    code = `curl "${API_BASE_URL}/health-check"`;
+                    break;
+            }
+            
+            navigator.clipboard.writeText(code).then(() => {
+                showToast('cURL command copied!', 'success');
+            }).catch(() => {
+                showToast('Failed to copy', 'error');
+            });
+        }
+
+        // ==========================
+        // Utility Functions
+        // ==========================
+        
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            
+            const icon = type === 'success' ? '✓' : type === 'error' ? '✕' : 'ℹ';
+            toast.innerHTML = `<span style="font-size: 20px;">${icon}</span> ${message}`;
+            
+            document.body.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        function copyCode(codeId) {
+            const codeElement = document.getElementById(codeId);
+            const text = codeElement.textContent;
+            
+            // Replace placeholder with actual URL
+            const finalText = text.replace(/\${window\.location\.origin}/g, API_BASE_URL);
+            
+            navigator.clipboard.writeText(finalText).then(() => {
+                event.target.textContent = 'Copied!';
+                setTimeout(() => {
+                    event.target.textContent = 'Copy';
+                }, 2000);
+            }).catch(err => {
+                showToast('Failed to copy', 'error');
+            });
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+        }
+
+        function escapeHtml(text) {
+            const map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            };
+            return text.replace(/[&<>"']/g, m => map[m]);
+        }
+
+        function setupEventListeners() {
+            // File upload drag and drop
+            const uploadAreas = document.querySelectorAll('.file-upload-area');
+            uploadAreas.forEach(area => {
+                area.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    area.classList.add('dragging');
+                });
+                
+                area.addEventListener('dragleave', () => {
+                    area.classList.remove('dragging');
+                });
+                
+                area.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    area.classList.remove('dragging');
+                    
+                    const input = area.onclick.toString().match(/getElementById\('(.+?)'\)/)[1];
+                    const inputElement = document.getElementById(input);
+                    inputElement.files = e.dataTransfer.files;
+                    inputElement.dispatchEvent(new Event('change'));
+                });
+            });
+        }
+    </script>
+</body>
+</html>
