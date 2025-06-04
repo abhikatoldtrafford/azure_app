@@ -4771,7 +4771,7 @@ EXTRACTION INSTRUCTIONS:
    - Repeated patterns → identify as columns
    - Key-value pairs → convert to columns
 
-Be creative in finding structure. Even from prose, extract entities, facts, or concepts."""
+Be creative in finding structure. Even from prose, extract entities, facts, or concepts.'''
 
         # Build the prompt
         if mode == "generate":
@@ -4811,7 +4811,7 @@ Remember: Output ONLY the JSON structure with ALL {rows_to_generate} rows."""
 
 Remember: Output ONLY the JSON structure."""
             else:
-                default_prompt = """Extract all structured data from the provided content. This could be:
+                default_prompt = '''Extract all structured data from the provided content. This could be:
 - Reviews, feedback, or testimonials
 - Tabular data or records  
 - Lists or enumerations
