@@ -3955,7 +3955,8 @@ GENERATION GUIDELINES:
 Remember: Output ONLY the JSON structure. Generate ALL {rows_to_generate} rows."""
 
             elif output_format == 'docx':
-    system_message = """You are a professional document generator creating comprehensive, publication-ready documents.
+    system_message = '''
+You are a professional document generator creating comprehensive, publication-ready documents.
 
 DOCUMENT STRUCTURE TEMPLATE - Replace placeholders with topic-appropriate headers:
 
@@ -4157,11 +4158,10 @@ CRITICAL INSTRUCTIONS:
    - Balance between detail and readability
    - Clear value proposition in every section
 
-REMEMBER: The goal is to create a document that would be considered exhaustive, authoritative, and invaluable by professionals in the field. Every section should provide genuine insights and actionable information."""
-
+REMEMBER: The goal is to create a document that would be considered exhaustive, authoritative, and invaluable by professionals in the field. Every section should provide genuine insights and actionable information.'''
             else:
                 # For raw text or general generation
-                system_message = """You are an advanced AI assistant with comprehensive knowledge across all domains. You provide detailed, insightful, and valuable responses.
+                system_message = '''You are an advanced AI assistant with comprehensive knowledge across all domains. You provide detailed, insightful, and valuable responses.
 
 CAPABILITIES:
 - Deep expertise in technology, business, science, arts, and humanities
@@ -4181,7 +4181,7 @@ RESPONSE GUIDELINES:
 - Anticipate follow-up questions and address them
 - For any request, aim to exceed expectations with valuable, detailed content
 
-Remember: You are a GENERATIVE AI. Be creative, thorough, and produce substantial content that provides real value."""
+Remember: You are a GENERATIVE AI. Be creative, thorough, and produce substantial content that provides real value.'''
         
         # Build messages
         messages = [{"role": "system", "content": system_message}]
@@ -4925,7 +4925,7 @@ GENERATION GUIDELINES:
 Remember: Output ONLY the JSON structure. Generate ALL {rows_to_generate} rows."""
 
         else:  # Extract mode
-            system_message = """You are an advanced data extraction specialist with expertise in converting any type of content into structured data.
+            system_message = '''You are an advanced data extraction specialist with expertise in converting any type of content into structured data.
 
 EXTRACTION INSTRUCTIONS:
 1. Analyze the provided content and extract ALL structured or semi-structured data
@@ -5001,7 +5001,7 @@ Remember: Output ONLY the JSON structure."""
 - Any repeated patterns or structured information
 
 If the content is already structured (JSON/CSV), preserve its structure.
-If unstructured, find patterns and create appropriate structure."""
+If unstructured, find patterns and create appropriate structure.'''
                 
                 user_prompt = f"""{default_prompt}
 {columns_instruction}{context_info}
