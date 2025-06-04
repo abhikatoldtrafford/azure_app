@@ -3955,213 +3955,30 @@ GENERATION GUIDELINES:
 Remember: Output ONLY the JSON structure. Generate ALL {rows_to_generate} rows."""
 
             elif output_format == 'docx':
-    system_message = '''
-You are a professional document generator creating comprehensive, publication-ready documents.
+                system_message = """You are a professional document generator creating comprehensive, publication-ready documents.
 
-DOCUMENT STRUCTURE TEMPLATE - Replace placeholders with topic-appropriate headers:
+IMPORTANT: Create a document with dynamic structure based on the topic. Let the content drive the headers and organization.
 
-# <Document Title - Make it specific to the topic>
+Use rich markdown formatting to create EXTENSIVE documents:
 
-## <Executive Overview Section - e.g., "Executive Summary", "Abstract", "Overview", "Key Highlights">
-(500-1000 words)
-- Comprehensive overview of the entire document
-- Key findings, insights, and conclusions
-- Critical recommendations or implications
-- Impact analysis and significance
-- Brief methodology overview if relevant
+- Analyze the topic and create appropriate headers (don't use generic templates)
+- Include relevant sections based on the subject matter
+- Use **bold**, *italics*, tables, lists, quotes, and all markdown features
+- Create substantial content (10-50+ pages worth) with depth and detail
+- Include data tables, examples, case studies where relevant
+- Add technical specifications, methodologies, or frameworks as appropriate
+- Provide actionable insights, recommendations, or conclusions
 
-## <Contents/Navigation Section - e.g., "Table of Contents", "Document Structure", "Navigation Guide">
-[Auto-generated based on your comprehensive content]
+The document structure should emerge naturally from the content. For example:
+- A technical guide might have: Overview, Architecture, Implementation, Best Practices, Troubleshooting
+- A business plan might have: Executive Summary, Market Analysis, Strategy, Financial Projections, Risk Assessment
+- A research paper might have: Abstract, Introduction, Literature Review, Methodology, Results, Discussion
 
-## 1. <Opening Section - e.g., "Introduction", "Background", "Context", "Preface", "Foundation">
+Be comprehensive, detailed, and professional. The goal is to create a document that provides real value."""
 
-### 1.1 <Context Subsection - e.g., "Historical Context", "Industry Background", "Problem Statement", "Current Landscape">
-- Detailed background information
-- Evolution and development
-- Key stakeholders and their roles
-- Relevant timeline of events
-
-### 1.2 <Purpose Subsection - e.g., "Objectives", "Goals", "Research Questions", "Scope of Analysis">
-- Clear articulation of purpose
-- Specific objectives or hypotheses
-- Success criteria and metrics
-- Boundaries and limitations
-
-### 1.3 <Approach Subsection - e.g., "Methodology", "Framework", "Analytical Approach", "Process Overview">
-- Detailed methodology explanation
-- Data sources and collection methods
-- Analytical frameworks used
-- Quality assurance measures
-
-### 1.4 <Structure Subsection - e.g., "Document Organization", "Report Structure", "Reading Guide">
-- How the document is organized
-- Key sections and their purposes
-- How different audiences should navigate
-
-## 2. <Main Analysis Section - e.g., "Detailed Analysis", "Core Findings", "Investigation Results", "Research Findings">
-
-### 2.1 <Current State Section - e.g., "Current State Assessment", "Baseline Analysis", "Situational Analysis", "Present Conditions">
-- Comprehensive current state analysis
-- Include detailed data tables:
-
-| <Relevant Metric> | <Period 1> | <Period 2> | <Period 3> | <Period 4> | <Trend/Change> |
-|-------------------|------------|------------|------------|------------|----------------|
-| [Specific Data]   | [Value]    | [Value]    | [Value]    | [Value]    | [% or Delta]   |
-
-- Multiple data visualizations (describe what charts/graphs would show)
-- Statistical analysis where relevant
-- Comparative benchmarks
-
-### 2.2 <Deep Dive Section - e.g., "In-Depth Analysis", "Detailed Examination", "Critical Analysis", "Deep Dive Findings">
-- Multiple analytical perspectives
-- Root cause analysis
-- Correlation and causation examination
-- Scenario analysis
-- Sensitivity analysis where applicable
-
-### 2.3 <Patterns Section - e.g., "Trends and Patterns", "Key Insights", "Emerging Themes", "Critical Observations">
-- Pattern identification and analysis
-- Trend extrapolation
-- Anomaly detection and explanation
-- Predictive insights
-
-## 3. <Comparative Section - e.g., "Comparative Analysis", "Benchmarking", "Cross-Analysis", "Competitive Assessment">
-
-### 3.1 <Internal Comparison - e.g., "Internal Benchmarks", "Historical Comparison", "Performance Evolution">
-### 3.2 <External Comparison - e.g., "Industry Benchmarks", "Peer Analysis", "Best Practices">
-### 3.3 <Gap Analysis - e.g., "Performance Gaps", "Opportunity Areas", "Improvement Potential">
-
-## 4. <Strategic Section - e.g., "Strategic Implications", "Strategic Analysis", "Strategic Considerations">
-
-### 4.1 <Opportunities - e.g., "Opportunities", "Growth Potential", "Value Creation">
-### 4.2 <Challenges - e.g., "Challenges", "Risks", "Barriers", "Constraints">
-### 4.3 <Strategic Options - e.g., "Strategic Alternatives", "Solution Pathways", "Decision Options">
-
-## 5. <Recommendations Section - e.g., "Recommendations", "Proposed Actions", "Strategic Initiatives">
-(2000-3000 words)
-
-### 5.1 <Immediate Actions - e.g., "Quick Wins", "Immediate Priorities", "Short-term Actions">
-- Specific, actionable recommendations
-- Priority matrix
-- Resource requirements
-- Expected outcomes
-
-### 5.2 <Medium-term Initiatives - e.g., "Medium-term Strategy", "Core Initiatives", "Primary Programs">
-- Detailed program descriptions
-- Implementation timelines
-- Success metrics
-- Risk mitigation strategies
-
-### 5.3 <Long-term Vision - e.g., "Long-term Strategy", "Future State", "Vision Realization">
-- Transformational initiatives
-- Future state description
-- Roadmap to achievement
-
-## 6. <Implementation Section - e.g., "Implementation Plan", "Execution Strategy", "Action Plan", "Deployment Approach">
-
-### 6.1 <Roadmap - e.g., "Implementation Roadmap", "Phased Approach", "Timeline">
-- Detailed phase descriptions
-- Milestone definitions
-- Critical path analysis
-
-### 6.2 <Resources - e.g., "Resource Requirements", "Budget Estimates", "Team Structure">
-- Human resources needed
-- Financial requirements
-- Technology/infrastructure needs
-- External support required
-
-### 6.3 <Governance - e.g., "Governance Structure", "Management Framework", "Oversight Mechanism">
-- Decision-making structure
-- Reporting mechanisms
-- Review processes
-- Escalation procedures
-
-## 7. <Risk Section - e.g., "Risk Assessment", "Risk Analysis", "Mitigation Strategies">
-
-### 7.1 <Risk Identification - e.g., "Key Risks", "Risk Inventory", "Threat Analysis">
-- Comprehensive risk register
-- Risk categorization
-- Probability and impact assessment
-
-### 7.2 <Mitigation Plans - e.g., "Risk Mitigation", "Contingency Plans", "Risk Response">
-- Specific mitigation strategies
-- Contingency planning
-- Risk monitoring approach
-
-## 8. <Metrics Section - e.g., "Success Metrics", "KPIs", "Performance Measures", "Evaluation Framework">
-
-- Leading and lagging indicators
-- Measurement methodology
-- Reporting frequency
-- Success thresholds
-- Dashboard concepts
-
-## 9. <Additional Sections as Needed>
-Add 2-5 more major sections specific to the topic, such as:
-- <Technical Specifications>
-- <Financial Analysis>
-- <Stakeholder Impact>
-- <Change Management>
-- <Communication Plan>
-- <Compliance Considerations>
-- <Sustainability Assessment>
-- <Innovation Opportunities>
-
-## 10. <Conclusion Section - e.g., "Conclusion", "Final Thoughts", "Closing Remarks", "Summary">
-
-- Synthesis of key findings
-- Reinforcement of critical recommendations
-- Call to action
-- Future considerations
-- Closing thoughts
-
-## <Appendices Section - e.g., "Appendices", "Supporting Information", "Additional Resources">
-
-### Appendix A: <Data Tables - e.g., "Detailed Data Tables", "Statistical Analysis", "Raw Data">
-### Appendix B: <Methodological Details - e.g., "Detailed Methodology", "Technical Approach">
-### Appendix C: <Glossary - e.g., "Glossary of Terms", "Definitions", "Acronyms">
-### Appendix D: <References - e.g., "References", "Bibliography", "Sources">
-### Appendix E: <Additional Materials - specific to topic>
-
-CRITICAL INSTRUCTIONS:
-1. REPLACE ALL <placeholders> with headers appropriate to the specific topic
-2. Maintain the structural hierarchy but adapt terminology to fit the subject matter
-3. Be EXHAUSTIVELY DETAILED in every section - aim for maximum comprehensiveness
-4. Include:
-   - Extensive data tables with real or realistic data
-   - Multiple analytical frameworks and models
-   - Detailed case studies and examples
-   - Comprehensive lists and enumerations
-   - Rich use of **bold**, *italics*, `code blocks`, > blockquotes
-   - Numbered and bulleted lists for clarity
-   - Cross-references between sections
-   - Footnotes or endnotes where appropriate
-   
-5. For EACH section:
-   - Start with a brief section overview
-   - Provide deep, analytical content
-   - Include multiple sub-points and perspectives
-   - End with key takeaways or transitions
-
-6. Analytical Depth Requirements:
-   - Every claim should be supported with data or reasoning
-   - Include multiple viewpoints and scenarios
-   - Provide both quantitative and qualitative analysis
-   - Consider short-term and long-term implications
-   - Address potential counterarguments
-   - Include sensitivity analysis where relevant
-
-7. Document Characteristics:
-   - Professional tone throughout
-   - Logical flow between sections
-   - Progressive depth (each section builds on previous)
-   - Balance between detail and readability
-   - Clear value proposition in every section
-
-REMEMBER: The goal is to create a document that would be considered exhaustive, authoritative, and invaluable by professionals in the field. Every section should provide genuine insights and actionable information.'''
             else:
                 # For raw text or general generation
-                system_message = '''You are an advanced AI assistant with comprehensive knowledge across all domains. You provide detailed, insightful, and valuable responses.
+                system_message = """You are an advanced AI assistant with comprehensive knowledge across all domains. You provide detailed, insightful, and valuable responses.
 
 CAPABILITIES:
 - Deep expertise in technology, business, science, arts, and humanities
@@ -4181,7 +3998,7 @@ RESPONSE GUIDELINES:
 - Anticipate follow-up questions and address them
 - For any request, aim to exceed expectations with valuable, detailed content
 
-Remember: You are a GENERATIVE AI. Be creative, thorough, and produce substantial content that provides real value.'''
+Remember: You are a GENERATIVE AI. Be creative, thorough, and produce substantial content that provides real value."""
         
         # Build messages
         messages = [{"role": "system", "content": system_message}]
@@ -4463,13 +4280,13 @@ Remember: Output ONLY the JSON structure with ALL {rows_to_generate} rows."""
                                 if text:
                                     p = doc.add_paragraph()
                                     # Enhanced inline formatting
-                                    self._process_inline_elements(element, p)
+                                    _process_inline_elements(element, p)
                             elif element.name in ['ul', 'ol']:
                                 # Handle nested lists
-                                self._process_list(doc, element, element.name == 'ol')
+                                _process_list(doc, element, element.name == 'ol')
                             elif element.name == 'table':
                                 # Enhanced table handling
-                                self._process_table(doc, element)
+                                _process_table(doc, element)
                             elif element.name == 'pre':
                                 # Code block
                                 p = doc.add_paragraph()
@@ -4608,7 +4425,7 @@ Remember: Output ONLY the JSON structure with ALL {rows_to_generate} rows."""
         )
 
 # Helper methods for enhanced DOCX processing
-def _process_inline_elements(self, element, paragraph):
+def _process_inline_elements(element, paragraph):
     """Process inline elements like bold, italic, code, links"""
     for child in element.children:
         if hasattr(child, 'name'):
@@ -4638,12 +4455,12 @@ def _process_inline_elements(self, element, paragraph):
                 run.font.highlight_color = WD_COLOR_INDEX.YELLOW
             else:
                 # Recursively process other elements
-                self._process_inline_elements(child, paragraph)
+                _process_inline_elements(child, paragraph)
         else:
             # Plain text
             paragraph.add_run(str(child))
 
-def _process_list(self, doc, list_element, is_ordered, level=0):
+def _process_list(doc, list_element, is_ordered, level=0):
     """Process lists with proper nesting"""
     items = list_element.find_all('li', recursive=False)
     for i, item in enumerate(items):
@@ -4659,15 +4476,15 @@ def _process_list(self, doc, list_element, is_ordered, level=0):
         for child in item.children:
             if hasattr(child, 'name') and child.name in ['ul', 'ol']:
                 # Nested list
-                self._process_list(doc, child, child.name == 'ol', level + 1)
+                _process_list(doc, child, child.name == 'ol', level + 1)
             else:
                 # Process inline content
                 if hasattr(child, 'name'):
-                    self._process_inline_elements(child, p)
+                    _process_inline_elements(child, p)
                 else:
                     p.add_run(str(child))
 
-def _process_table(self, doc, table_element):
+def _process_table(doc, table_element):
     """Enhanced table processing"""
     rows = table_element.find_all('tr')
     if rows:
