@@ -2261,7 +2261,7 @@
                 showToast('Please enter what you want to create', 'error');
                 return;
             }
-
+        
             const formData = new FormData();
             formData.append('prompt', prompt);
             formData.append('model', 'gpt-4.1-mini');
@@ -2297,60 +2297,70 @@
                     method: 'POST',
                     body: formData
                 });
-
-                if (!response.ok) throw new Error('Failed to generate document');
-
+        
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ message: 'Server error' }));
+                    throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+                }
+        
                 const data = await response.json();
                 
-                if (data.status === 'success') {
-                    // Display result based on whether there's a download URL
-                    if (data.download_url) {
-                        // File was generated
-                        let summary = 'Your content has been created successfully!';
-                        
-                        if (outputFormat === 'csv' || outputFormat === 'excel') {
-                            summary = data.message || 'Data file created successfully!';
-                            if (data.summary) {
-                                summary += '\n\n' + `Generated ${data.summary.rows || 'multiple'} rows`;
-                                if (data.summary.columns) {
-                                    summary += ` with columns: ${data.summary.columns.join(', ')}`;
-                                }
+                // Handle successful response
+                if (data.download_url) {
+                    // File was generated
+                    let summary = 'Your content has been created successfully!';
+                    
+                    if (outputFormat === 'csv' || outputFormat === 'excel') {
+                        summary = data.message || 'Data file created successfully!';
+                        if (data.summary) {
+                            summary += '\n\n' + `Generated ${data.summary.rows || 'multiple'} rows`;
+                            if (data.summary.columns) {
+                                summary += ` with columns: ${data.summary.columns.join(', ')}`;
                             }
-                        } else if (outputFormat === 'docx') {
-                            summary = 'Your document has been created and is ready for download!';
                         }
-                        
-                        contentDiv.textContent = summary;
-                        
-                        // Add download button
-                        actionsDiv.innerHTML = `
-                            <a href="${data.download_url}" class="download-btn" download="${data.filename}">
-                                Download ${outputFormat ? outputFormat.toUpperCase() : 'File'} 📥
-                            </a>
-                        `;
-                    } else {
-                        // Text response
-                        contentDiv.innerHTML = `<pre style="white-space: pre-wrap;">${escapeHtml(data.response)}</pre>`;
-                        
-                        // Add copy button
-                        actionsDiv.innerHTML = `
-                            <button class="btn btn-secondary" onclick="copyDocContent()">
-                                Copy Text 📋
-                            </button>
-                        `;
+                    } else if (outputFormat === 'docx') {
+                        summary = 'Your document has been created and is ready for download!';
                     }
                     
+                    contentDiv.textContent = summary;
+                    
+                    // Add download button
+                    actionsDiv.innerHTML = `
+                        <a href="${data.download_url}" class="download-btn" download="${data.filename || 'generated_content'}">
+                            Download ${outputFormat ? outputFormat.toUpperCase() : 'File'} 📥
+                        </a>
+                    `;
+                    
                     showToast('Content created successfully!', 'success');
+                } else if (data.response) {
+                    // Text response
+                    contentDiv.innerHTML = `<pre style="white-space: pre-wrap;">${escapeHtml(data.response)}</pre>`;
+                    
+                    // Add copy button
+                    actionsDiv.innerHTML = `
+                        <button class="btn btn-secondary" onclick="copyDocContent()">
+                            Copy Text 📋
+                        </button>
+                    `;
+                    
+                    showToast('Content created successfully!', 'success');
+                } else if (data.message) {
+                    // Fallback to message
+                    contentDiv.textContent = data.message;
+                    showToast('Content created', 'info');
                 } else {
-                    throw new Error(data.message || 'Generation failed');
+                    // Unknown response format
+                    contentDiv.textContent = 'Content generated but response format is unexpected';
+                    console.log('Unexpected response:', data);
+                    showToast('Generated with unexpected format', 'warning');
                 }
+                
             } catch (error) {
                 contentDiv.textContent = `Error: ${error.message}`;
                 showToast('Failed to generate document', 'error');
-                console.error(error);
+                console.error('Generation error:', error);
             }
         }
-
         function handleDocFiles(event) {
             state.docFiles = Array.from(event.target.files);
             updateDocFilesList();
