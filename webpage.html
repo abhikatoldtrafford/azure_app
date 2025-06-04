@@ -12,10 +12,10 @@
         }
 
         :root {
-            --bg-primary: #0a0a0a;
-            --bg-secondary: #1a1a1a;
-            --bg-tertiary: #2a2a2a;
-            --bg-chat: #0f0f0f;
+            --bg-primary: #0f0f23;
+            --bg-secondary: #16213e;
+            --bg-tertiary: #1a2332;
+            --bg-chat: #0a0a1a;
             --text-primary: #ffffff;
             --text-secondary: #a0a0a0;
             --accent: #10a37f;
@@ -311,7 +311,7 @@
         .messages-container {
             flex: 1;
             overflow-y: auto;
-            padding: 24px;
+            padding: 8px 24px 24px 24px;
             display: flex;
             flex-direction: column;
             gap: 16px;
@@ -1103,7 +1103,7 @@
                     </div>
                     <div class="messages-container" id="messagesContainer">
                         <div class="message assistant">
-                            <div class="message-avatar assistant-avatar">AI</div>
+                            <div class="message-avatar assistant-avatar">🤖</div>
                             <div class="message-content">
                                 Hello! I'm your AI assistant. How can I assist you today?
                             </div>
@@ -1158,14 +1158,6 @@
                         <option value="csv">CSV Spreadsheet</option>
                         <option value="excel">Excel Workbook (.xlsx)</option>
                     </select>
-                </div>
-
-                <div class="form-group">
-                    <label class="form-label">Ideas & Content Suggestions (Optional)</label>
-                    <textarea class="form-control" id="docInitialPrompt" 
-                              placeholder="Example: Use a conversational tone, include real-world examples, focus on practical tips, make it engaging for young professionals..."
-                              style="min-height: 100px;"></textarea>
-                    <p class="text-small text-muted mt-3">Add any specific guidelines or requirements for your content.</p>
                 </div>
 
                 <div class="form-group">
@@ -2116,7 +2108,7 @@
             if (role !== 'system') {
                 const avatar = document.createElement('div');
                 avatar.className = `message-avatar ${role}-avatar`;
-                avatar.textContent = role === 'user' ? 'U' : 'AI';
+                avatar.textContent = role === 'user' ? '👤' : '🤖';
                 messageDiv.appendChild(avatar);
             }
             
