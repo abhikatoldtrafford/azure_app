@@ -12,29 +12,31 @@
         }
 
         :root {
-            --bg-primary: #0f0f23;
-            --bg-secondary: #16213e;
-            --bg-tertiary: #1a2332;
-            --bg-chat: #0a0a1a;
-            --text-primary: #ffffff;
-            --text-secondary: #a0a0a0;
-            --accent: #10a37f;
-            --accent-hover: #0d8d6c;
-            --border: #2a2a2a;
-            --shadow: rgba(0, 0, 0, 0.5);
-            --error: #dc3545;
-            --warning: #ffc107;
-            --info: #17a2b8;
-            --user-msg: #1e3a5f;
-            --assistant-msg: #1a1a1a;
-            --success: #28a745;
+            /* Modern dark theme with better contrast */
+            --bg-primary: #1a1b23;
+            --bg-secondary: #242530;
+            --bg-tertiary: #2d2e3f;
+            --bg-chat: #1e1f28;
+            --text-primary: #e4e4e7;
+            --text-secondary: #a1a1aa;
+            --accent: #3b82f6;
+            --accent-hover: #2563eb;
+            --border: #3f3f46;
+            --shadow: rgba(0, 0, 0, 0.3);
+            --error: #ef4444;
+            --warning: #f59e0b;
+            --info: #06b6d4;
+            --success: #10b981;
+            --user-msg: #1e40af;
+            --assistant-msg: #374151;
         }
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background-color: var(--bg-primary);
-            color: var(--text-primary);
             line-height: 1.6;
+            font-weight: 400;
+            letter-spacing: -0.01em;
+            color: var(--text-primary);
             overflow-x: hidden;
         }
 
@@ -147,12 +149,12 @@
 
         /* Common Styles */
         .section {
-            background-color: var(--bg-secondary);
+            background: linear-gradient(145deg, var(--bg-secondary), #22232e);
             border: 1px solid var(--border);
             border-radius: 16px;
             padding: 30px;
             margin-bottom: 20px;
-            box-shadow: 0 4px 16px var(--shadow);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.08);
         }
 
         .section-title {
@@ -327,11 +329,11 @@
         @keyframes messageSlide {
             from {
                 opacity: 0;
-                transform: translateY(10px);
+                transform: translateY(20px) scale(0.95);
             }
             to {
                 opacity: 1;
-                transform: translateY(0);
+                transform: translateY(0) scale(1);
             }
         }
 
@@ -374,14 +376,15 @@
 
         .message-content {
             background-color: var(--assistant-msg);
-            padding: 14px 18px;
-            border-radius: 16px;
-            border-top-left-radius: 4px;
+            padding: 16px 20px;
+            border-radius: 18px;
+            border-top-left-radius: 6px;
             max-width: 100%;
             word-wrap: break-word;
             white-space: pre-wrap;
-            line-height: 1.6;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            line-height: 1.65;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08), 0 1px 4px rgba(0, 0, 0, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.05);
         }
 
         .message.user .message-content {
@@ -1840,7 +1843,8 @@
             
             // Data extraction state
             dataFile: null,
-            dataMode: 'auto'
+            dataMode: 'auto',
+            lastSendTime: null
         };
 
         // Initialize
@@ -1961,6 +1965,10 @@
             const message = input.value.trim();
             
             if (!message || state.isStreaming) return;
+            
+            // Add debounce protection
+            if (state.lastSendTime && Date.now() - state.lastSendTime < 1000) return;
+            state.lastSendTime = Date.now();
 
             // Initialize assistant if needed
             if (!state.assistantId) {
@@ -2035,7 +2043,9 @@
             } catch (error) {
                 showToast('Failed to get response', 'error');
                 console.error(error);
-                removeMessage(assistantMessageId);
+                // Clear typing indicator before removing message
+                updateMessage(assistantMessageId, 'Failed to get response');
+                setTimeout(() => removeMessage(assistantMessageId), 1000);
                 updateChatStatus('Error');
             } finally {
                 state.isStreaming = false;
@@ -2099,8 +2109,7 @@
 
         function addMessage(role, content, isStreaming = false) {
             const container = document.getElementById('messagesContainer');
-            const messageId = 'msg_' + Date.now();
-            
+            const messageId = 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${role}`;
             messageDiv.id = messageId;
@@ -2133,6 +2142,8 @@
             const message = document.getElementById(messageId);
             if (message) {
                 const contentDiv = message.querySelector('.message-content');
+                // Clear any existing content including typing indicator
+                contentDiv.innerHTML = '';
                 contentDiv.textContent = content;
                 
                 const container = document.getElementById('messagesContainer');
