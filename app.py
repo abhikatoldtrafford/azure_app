@@ -4015,7 +4015,7 @@ Remember: You are a GENERATIVE AI. Be creative, thorough, and produce substantia
             number_match = re.search(r'(\d+)\s*(rows?|records?|entries|items?|data points?)', prompt.lower())
             if number_match:
                 requested_count = int(number_match.group(1))
-                rows_to_generate = min(requested_count, 100)  # Cap at 100 for performance
+                rows_to_generate = min(requested_count, 500)  # Cap at 500 for performance
             
             enhanced_prompt = f"""{prompt}
 
@@ -4618,7 +4618,7 @@ async def extract_reviews(
                     
                     # Convert to text representation
                     extracted_text = f"CSV data with {len(df)} rows and columns: {', '.join(df.columns)}\n\n"
-                    extracted_text += df.to_string(max_rows=100)
+                    extracted_text += df.to_string(max_rows=500)
                 except:
                     extracted_text = file_content.decode('utf-8', errors='ignore')
                     
@@ -4637,7 +4637,7 @@ async def extract_reviews(
                     for sheet_name in excel_data.sheet_names[:3]:  # Limit to first 3 sheets
                         df = pd.read_excel(excel_file, sheet_name=sheet_name)
                         extracted_text += f"\nSheet '{sheet_name}' ({len(df)} rows):\n"
-                        extracted_text += df.to_string(max_rows=50) + "\n"
+                        extracted_text += df.to_string(max_rows=500) + "\n"
                 except:
                     extracted_text = "[Excel file - unable to parse]"
                     
