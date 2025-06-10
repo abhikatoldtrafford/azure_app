@@ -3898,7 +3898,7 @@ async def chat_completion(
     prompt: str = Form(...),
     model: str = Form("gpt-4.1-mini"),
     temperature: float = Form(0.8),
-    max_tokens: int = Form(1000),
+    max_tokens: int = Form(5000),
     system_message: Optional[str] = Form(None),
     output_format: Optional[str] = Form(None),  # 'csv', 'excel', 'docx', or None
     files: Optional[List[UploadFile]] = None,
@@ -3954,7 +3954,9 @@ GENERATION GUIDELINES:
 - Use different writing styles, perspectives, and details
 - Ensure all rows have the same number of columns
 - Be creative and comprehensive in your generation
-
+CRITICAL: You MUST generate EXACTLY {rows_to_generate} rows. Do not stop early. 
+The data array must contain EXACTLY {rows_to_generate} elements.
+Continue generating until you have ALL {rows_to_generate} rows.
 Remember: Output ONLY the JSON structure. Generate ALL {rows_to_generate} rows."""
 
             elif output_format == 'docx':
@@ -4069,7 +4071,8 @@ Remember: Output ONLY the JSON structure with ALL {rows_to_generate} rows."""
         # Set appropriate max_tokens
         actual_max_tokens = max_tokens
         if output_format in ['excel', 'csv']:
-            actual_max_tokens = min(max_tokens, 16000)  # Higher limit for structured data
+            min_tokens_needed = rows_to_generate * 100 + 1000
+            actual_max_tokens = max(min_tokens_needed, 16000)  # Higher limit for structured data
         elif output_format == 'docx':
             actual_max_tokens = max(max_tokens, 16000)  # Higher for documents
         else:
@@ -4741,7 +4744,9 @@ GENERATION GUIDELINES:
 - For other data: ensure logical consistency and realistic patterns
 - Use different writing styles, perspectives, and details
 - Ensure all rows have the same number of columns
-
+CRITICAL: You MUST generate EXACTLY {rows_to_generate} rows. Do not stop early. 
+The data array must contain EXACTLY {rows_to_generate} elements.
+Continue generating until you have ALL {rows_to_generate} rows.
 Remember: Output ONLY the JSON structure. Generate ALL {rows_to_generate} rows."""
 
         else:  # Extract mode
