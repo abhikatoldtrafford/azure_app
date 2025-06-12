@@ -4110,8 +4110,27 @@ async def process_conversation(
                                         args = json.loads(tool_call.function.arguments)
                                         logging.info(f"generate_content tool call with args: {args}")
                                         
-                                        # Call the handler
-                                        result = await handle_generate_content(args, session, client, request)
+                                        # Create a mock request object for the handler
+                                        # Check if we're on Azure
+                                        host = os.environ.get('WEBSITE_HOSTNAME', 'localhost:8080')
+                                        base_url = f"https://{host}" if 'azurewebsites.net' in host else f"http://{host}"
+                                        mock_request = type('Request', (), {
+                                            'base_url': base_url,
+                                            'headers': {'host': host}
+                                        })()
+                                        
+                                        # Call the async handler from sync context
+                                        # Since we're in a sync generator, we need to handle this carefully
+                                        import concurrent.futures
+                                        import asyncio
+                                        
+                                        # Run in a thread pool to avoid event loop issues
+                                        with concurrent.futures.ThreadPoolExecutor() as executor:
+                                            future = executor.submit(
+                                                asyncio.run,
+                                                handle_generate_content(args, session, client, mock_request)
+                                            )
+                                            result = future.result(timeout=300)  # 5 minute timeout
                                         
                                         # Add to tool outputs
                                         tool_outputs.append({
@@ -4124,7 +4143,7 @@ async def process_conversation(
                                         
                                     except Exception as e:
                                         error_msg = f"Error generating content: {str(e)}"
-                                        logging.error(f"Error executing generate_content: {e}")
+                                        logging.error(f"Error executing generate_content: {e}\n{traceback.format_exc()}")
                                         
                                         # Add error to tool outputs
                                         tool_outputs.append({
@@ -4141,8 +4160,27 @@ async def process_conversation(
                                         args = json.loads(tool_call.function.arguments)
                                         logging.info(f"extract_data tool call with args: {args}")
                                         
-                                        # Call the handler
-                                        result = await handle_extract_data(args, session, client, request)
+                                        # Create a mock request object for the handler
+                                        # Check if we're on Azure
+                                        host = os.environ.get('WEBSITE_HOSTNAME', 'localhost:8080')
+                                        base_url = f"https://{host}" if 'azurewebsites.net' in host else f"http://{host}"
+                                        mock_request = type('Request', (), {
+                                            'base_url': base_url,
+                                            'headers': {'host': host}
+                                        })()
+                                        
+                                        # Call the async handler from sync context
+                                        # Since we're in a sync generator, we need to handle this carefully
+                                        import concurrent.futures
+                                        import asyncio
+                                        
+                                        # Run in a thread pool to avoid event loop issues
+                                        with concurrent.futures.ThreadPoolExecutor() as executor:
+                                            future = executor.submit(
+                                                asyncio.run,
+                                                handle_extract_data(args, session, client, mock_request)
+                                            )
+                                            result = future.result(timeout=300)  # 5 minute timeout
                                         
                                         # Add to tool outputs
                                         tool_outputs.append({
@@ -4155,7 +4193,7 @@ async def process_conversation(
                                         
                                     except Exception as e:
                                         error_msg = f"Error extracting data: {str(e)}"
-                                        logging.error(f"Error executing extract_data: {e}")
+                                        logging.error(f"Error executing extract_data: {e}\n{traceback.format_exc()}")
                                         
                                         # Add error to tool outputs
                                         tool_outputs.append({
