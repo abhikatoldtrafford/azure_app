@@ -3836,17 +3836,6 @@ async def process_conversation(
         Either a StreamingResponse or a JSONResponse based on stream_output parameter
     """
     client = create_client()
-    
-    # Store request in a variable accessible to the inner function
-    request_obj = None
-    try:
-        from fastapi import Request
-        import contextvars
-        request_context = contextvars.ContextVar('request')
-        request_obj = request_context.get(None)
-    except:
-        pass
-    
     def stream_response():
         """Modified to be compatible with Bubble's streaming API while maintaining all features"""
         buffer = []
@@ -3856,18 +3845,6 @@ async def process_conversation(
         tool_outputs_submitted = False
         wait_for_final_response = False
         latest_message_id = None
-        
-        # Get the current event loop for running async functions
-        import asyncio
-        import concurrent.futures
-        
-        # Create a new event loop for async operations if needed
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-        
         try:
             # Get the most recent message ID before starting the run
             try:
@@ -3990,7 +3967,7 @@ async def process_conversation(
                         yield f"data: {json.dumps(final_chunk)}\n\n"
                         yield "data: [DONE]\n\n"
                         
-                    # Handle tool calls (including pandas_agent and content generation)
+                    # Handle tool calls (including pandas_agent, generate_content, extract_data)
                     elif event.event == "thread.run.requires_action":
                         if event.data.required_action.type == "submit_tool_outputs":
                             tool_calls = event.data.required_action.submit_tool_outputs.tool_calls
@@ -4014,110 +3991,7 @@ async def process_conversation(
                             yield f"data: {json.dumps(status_chunk)}\n\n"
                             
                             for tool_call in tool_calls:
-                                # Handle generate_content tool
-                                if tool_call.function.name == "generate_content":
-                                    try:
-                                        args = json.loads(tool_call.function.arguments)
-                                        
-                                        # Create a mock request if we don't have one
-                                        if not request_obj:
-                                            class MockRequest:
-                                                def __init__(self):
-                                                    self.base_url = "http://localhost:8080/"
-                                                    self.headers = {"host": "localhost:8080"}
-                                            mock_request = MockRequest()
-                                        else:
-                                            mock_request = request_obj
-                                        
-                                        # Run async function in sync context
-                                        future = asyncio.run_coroutine_threadsafe(
-                                            handle_generate_content(args, session, client, mock_request),
-                                            loop
-                                        )
-                                        result = future.result(timeout=300)  # 5 minute timeout
-                                        
-                                        tool_outputs.append({
-                                            "tool_call_id": tool_call.id,
-                                            "output": result
-                                        })
-                                        
-                                        # Stream the result
-                                        result_chunk = {
-                                            "id": f"chatcmpl-{run_id or 'stream'}",
-                                            "object": "chat.completion.chunk",
-                                            "created": int(time.time()),
-                                            "model": "gpt-4.1-mini",
-                                            "choices": [{
-                                                "index": 0,
-                                                "delta": {
-                                                    "content": f"\n{result}\n"
-                                                },
-                                                "finish_reason": None
-                                            }]
-                                        }
-                                        yield f"data: {json.dumps(result_chunk)}\n\n"
-                                        
-                                    except Exception as e:
-                                        logging.error(f"Error executing generate_content: {e}\n{traceback.format_exc()}")
-                                        error_msg = f"Error generating content: {str(e)}"
-                                        tool_outputs.append({
-                                            "tool_call_id": tool_call.id,
-                                            "output": error_msg
-                                        })
-                                
-                                # Handle extract_data tool
-                                elif tool_call.function.name == "extract_data":
-                                    try:
-                                        args = json.loads(tool_call.function.arguments)
-                                        
-                                        # Create a mock request if we don't have one
-                                        if not request_obj:
-                                            class MockRequest:
-                                                def __init__(self):
-                                                    self.base_url = "http://localhost:8080/"
-                                                    self.headers = {"host": "localhost:8080"}
-                                            mock_request = MockRequest()
-                                        else:
-                                            mock_request = request_obj
-                                        
-                                        # Run async function in sync context
-                                        future = asyncio.run_coroutine_threadsafe(
-                                            handle_extract_data(args, session, client, mock_request),
-                                            loop
-                                        )
-                                        result = future.result(timeout=300)  # 5 minute timeout
-                                        
-                                        tool_outputs.append({
-                                            "tool_call_id": tool_call.id,
-                                            "output": result
-                                        })
-                                        
-                                        # Stream the result
-                                        result_chunk = {
-                                            "id": f"chatcmpl-{run_id or 'stream'}",
-                                            "object": "chat.completion.chunk",
-                                            "created": int(time.time()),
-                                            "model": "gpt-4.1-mini",
-                                            "choices": [{
-                                                "index": 0,
-                                                "delta": {
-                                                    "content": f"\n{result}\n"
-                                                },
-                                                "finish_reason": None
-                                            }]
-                                        }
-                                        yield f"data: {json.dumps(result_chunk)}\n\n"
-                                        
-                                    except Exception as e:
-                                        logging.error(f"Error executing extract_data: {e}\n{traceback.format_exc()}")
-                                        error_msg = f"Error extracting data: {str(e)}"
-                                        tool_outputs.append({
-                                            "tool_call_id": tool_call.id,
-                                            "output": error_msg
-                                        })
-                                
-                                # Handle pandas_agent
-                                elif tool_call.function.name == "pandas_agent":
+                                if tool_call.function.name == "pandas_agent":
                                     try:
                                         # Extract arguments
                                         args = json.loads(tool_call.function.arguments)
@@ -4153,6 +4027,9 @@ async def process_conversation(
                                         # Filter by filename if specified
                                         if filename:
                                             pandas_files = [f for f in pandas_files if f.get("name") == filename]
+                                        
+                                        # Generate operation ID for status tracking
+                                        pandas_agent_operation_id = f"pandas_agent_{int(time.time())}_{os.urandom(2).hex()}"
                                         
                                         # Execute the pandas_agent
                                         manager = PandasAgentManager.get_instance()
@@ -4226,6 +4103,68 @@ async def process_conversation(
                                         
                                         # Save for potential fallback
                                         tool_call_results.append(error_msg)
+                                
+                                elif tool_call.function.name == "generate_content":
+                                    try:
+                                        # Extract arguments
+                                        args = json.loads(tool_call.function.arguments)
+                                        logging.info(f"generate_content tool call with args: {args}")
+                                        
+                                        # Call the handler
+                                        result = await handle_generate_content(args, session, client, request)
+                                        
+                                        # Add to tool outputs
+                                        tool_outputs.append({
+                                            "tool_call_id": tool_call.id,
+                                            "output": result
+                                        })
+                                        
+                                        # Save for potential fallback
+                                        tool_call_results.append(result)
+                                        
+                                    except Exception as e:
+                                        error_msg = f"Error generating content: {str(e)}"
+                                        logging.error(f"Error executing generate_content: {e}")
+                                        
+                                        # Add error to tool outputs
+                                        tool_outputs.append({
+                                            "tool_call_id": tool_call.id,
+                                            "output": error_msg
+                                        })
+                                        
+                                        # Save for potential fallback
+                                        tool_call_results.append(error_msg)
+                                
+                                elif tool_call.function.name == "extract_data":
+                                    try:
+                                        # Extract arguments
+                                        args = json.loads(tool_call.function.arguments)
+                                        logging.info(f"extract_data tool call with args: {args}")
+                                        
+                                        # Call the handler
+                                        result = await handle_extract_data(args, session, client, request)
+                                        
+                                        # Add to tool outputs
+                                        tool_outputs.append({
+                                            "tool_call_id": tool_call.id,
+                                            "output": result
+                                        })
+                                        
+                                        # Save for potential fallback
+                                        tool_call_results.append(result)
+                                        
+                                    except Exception as e:
+                                        error_msg = f"Error extracting data: {str(e)}"
+                                        logging.error(f"Error executing extract_data: {e}")
+                                        
+                                        # Add error to tool outputs
+                                        tool_outputs.append({
+                                            "tool_call_id": tool_call.id,
+                                            "output": error_msg
+                                        })
+                                        
+                                        # Save for potential fallback
+                                        tool_call_results.append(error_msg)
                             
                             # Submit tool outputs
                             if tool_outputs:
@@ -4234,7 +4173,7 @@ async def process_conversation(
                                 submit_success = False
                                 
                                 # Stream status indicating generation of response
-                                gen_text = "\n[Generating response...]\n"
+                                gen_text = "\n[Generating response based on analysis...]\n"
                                 gen_chunk = {
                                     "id": f"chatcmpl-{run_id or 'stream'}",
                                     "object": "chat.completion.chunk",
@@ -4439,12 +4378,7 @@ async def process_conversation(
             }
             yield f"data: {json.dumps(error_chunk)}\n\n"
             yield "data: [DONE]\n\n"
-    
     try:
-        # Store the request for use in stream_response
-        if 'request' in locals():
-            request_obj = request
-        
         # Validate resources if provided 
         if session or assistant:
             validation = await validate_resources(client, session, assistant)
@@ -4501,6 +4435,7 @@ async def process_conversation(
         # Check if there's an active run before adding a message
         active_run = False
         run_id = None
+        requires_action_tools = []
         try:
             # List runs to check for active ones
             runs = client.beta.threads.runs.list(thread_id=session, limit=1)
@@ -4510,6 +4445,11 @@ async def process_conversation(
                     active_run = True
                     run_id = latest_run.id
                     logging.warning(f"Active run {run_id} detected with status {latest_run.status}")
+                    
+                    # If requires_action, get the tool calls
+                    if latest_run.status == "requires_action" and hasattr(latest_run, 'required_action'):
+                        if hasattr(latest_run.required_action, 'submit_tool_outputs'):
+                            requires_action_tools = latest_run.required_action.submit_tool_outputs.tool_calls
         except Exception as e:
             logging.warning(f"Error checking for active runs: {e}")
             # Continue anyway - we'll handle failure when adding messages
@@ -4527,41 +4467,33 @@ async def process_conversation(
                         try:
                             run_status = client.beta.threads.runs.retrieve(thread_id=session, run_id=run_id)
                             if run_status.status in ["in_progress", "queued"]:
-                                # Option 1: Cancel the run
+                                # Cancel the run
                                 client.beta.threads.runs.cancel(thread_id=session, run_id=run_id)
                                 logging.info(f"Cancelled active run {run_id} to allow new message")
                                 time.sleep(1)  # Brief delay after cancellation
-                            elif run_status.status == "requires_action":
-                                # For requires_action, we need to handle it properly
-                                if run_status.required_action and run_status.required_action.type == "submit_tool_outputs":
-                                    tool_calls = run_status.required_action.submit_tool_outputs.tool_calls
-                                    
-                                    # Cancel by submitting empty outputs for each actual tool call
-                                    tool_outputs = []
-                                    for tool_call in tool_calls:
-                                        tool_outputs.append({
-                                            "tool_call_id": tool_call.id,  # Use actual tool call ID
-                                            "output": "Cancelled by user"
-                                        })
-                                    
+                            elif run_status.status == "requires_action" and requires_action_tools:
+                                # Submit empty outputs for each actual tool call
+                                tool_outputs = []
+                                for tool_call in requires_action_tools:
+                                    tool_outputs.append({
+                                        "tool_call_id": tool_call.id,  # Use the actual tool call ID
+                                        "output": "Cancelled due to new user request"
+                                    })
+                                try:
+                                    client.beta.threads.runs.submit_tool_outputs(
+                                        thread_id=session,
+                                        run_id=run_id,
+                                        tool_outputs=tool_outputs
+                                    )
+                                    logging.info(f"Submitted cancellation outputs for run {run_id}")
+                                    time.sleep(1)
+                                except Exception as e:
+                                    # If submission fails, try to cancel instead
                                     try:
-                                        client.beta.threads.runs.submit_tool_outputs(
-                                            thread_id=session,
-                                            run_id=run_id,
-                                            tool_outputs=tool_outputs
-                                        )
-                                        logging.info(f"Submitted cancellation outputs to finish run {run_id}")
-                                        time.sleep(2)  # Wait for run to complete
-                                    except Exception as submit_e:
-                                        logging.warning(f"Error submitting tool outputs: {submit_e}")
-                                        # Try to cancel instead
-                                        try:
-                                            client.beta.threads.runs.cancel(thread_id=session, run_id=run_id)
-                                            logging.info(f"Cancelled run {run_id} after failed tool output submission")
-                                            time.sleep(1)
-                                        except Exception as cancel_e:
-                                            logging.error(f"Failed to cancel run: {cancel_e}")
-                            # If run is already completed or failed, we can proceed
+                                        client.beta.threads.runs.cancel(thread_id=session, run_id=run_id)
+                                        logging.info(f"Cancelled run {run_id} after failed tool output submission")
+                                    except:
+                                        pass
                         except Exception as run_e:
                             logging.warning(f"Error handling active run: {run_e}")
                             # Continue anyway - we'll try to add message
@@ -4602,7 +4534,7 @@ async def process_conversation(
                 logging.info(f"Created run {run_id} for thread {session} (non-streaming mode)")
                 
                 # Poll for run completion
-                max_poll_attempts = 30  # 5 minute timeout with 5 second intervals
+                max_poll_attempts = 30  # 5 minute timeout with 10 second intervals
                 poll_interval = 10  # seconds
                 tool_outputs_submitted = False
                 tool_call_results = []
@@ -4659,58 +4591,7 @@ async def process_conversation(
                                 tool_outputs = []
                                 
                                 for tool_call in tool_calls:
-                                    # Handle generate_content
-                                    if tool_call.function.name == "generate_content":
-                                        try:
-                                            args = json.loads(tool_call.function.arguments)
-                                            # Create a mock request for non-streaming
-                                            class MockRequest:
-                                                def __init__(self):
-                                                    self.base_url = "http://localhost:8080/"
-                                                    self.headers = {"host": "localhost:8080"}
-                                            
-                                            result = await handle_generate_content(args, session, client, MockRequest())
-                                            tool_outputs.append({
-                                                "tool_call_id": tool_call.id,
-                                                "output": result
-                                            })
-                                            tool_call_results.append(result)
-                                        except Exception as e:
-                                            logging.error(f"Error executing generate_content: {e}")
-                                            error_msg = f"Error generating content: {str(e)}"
-                                            tool_outputs.append({
-                                                "tool_call_id": tool_call.id,
-                                                "output": error_msg
-                                            })
-                                            tool_call_results.append(error_msg)
-                                    
-                                    # Handle extract_data
-                                    elif tool_call.function.name == "extract_data":
-                                        try:
-                                            args = json.loads(tool_call.function.arguments)
-                                            # Create a mock request for non-streaming
-                                            class MockRequest:
-                                                def __init__(self):
-                                                    self.base_url = "http://localhost:8080/"
-                                                    self.headers = {"host": "localhost:8080"}
-                                            
-                                            result = await handle_extract_data(args, session, client, MockRequest())
-                                            tool_outputs.append({
-                                                "tool_call_id": tool_call.id,
-                                                "output": result
-                                            })
-                                            tool_call_results.append(result)
-                                        except Exception as e:
-                                            logging.error(f"Error executing extract_data: {e}")
-                                            error_msg = f"Error extracting data: {str(e)}"
-                                            tool_outputs.append({
-                                                "tool_call_id": tool_call.id,
-                                                "output": error_msg
-                                            })
-                                            tool_call_results.append(error_msg)
-                                    
-                                    # Handle pandas_agent
-                                    elif tool_call.function.name == "pandas_agent":
+                                    if tool_call.function.name == "pandas_agent":
                                         try:
                                             # Extract arguments
                                             args = json.loads(tool_call.function.arguments)
@@ -4771,6 +4652,66 @@ async def process_conversation(
                                             error_details = traceback.format_exc()
                                             logging.error(f"Error executing pandas_agent: {e}\n{error_details}")
                                             error_msg = f"Error analyzing data: {str(e)}"
+                                            
+                                            # Add error to tool outputs
+                                            tool_outputs.append({
+                                                "tool_call_id": tool_call.id,
+                                                "output": error_msg
+                                            })
+                                            
+                                            # Save for potential fallback
+                                            tool_call_results.append(error_msg)
+                                    
+                                    elif tool_call.function.name == "generate_content":
+                                        try:
+                                            # Extract arguments
+                                            args = json.loads(tool_call.function.arguments)
+                                            
+                                            # Call the handler
+                                            result = await handle_generate_content(args, session, client, request)
+                                            
+                                            # Add to tool outputs
+                                            tool_outputs.append({
+                                                "tool_call_id": tool_call.id,
+                                                "output": result
+                                            })
+                                            
+                                            # Save for potential fallback
+                                            tool_call_results.append(result)
+                                            
+                                        except Exception as e:
+                                            error_msg = f"Error generating content: {str(e)}"
+                                            logging.error(f"Error executing generate_content: {e}")
+                                            
+                                            # Add error to tool outputs
+                                            tool_outputs.append({
+                                                "tool_call_id": tool_call.id,
+                                                "output": error_msg
+                                            })
+                                            
+                                            # Save for potential fallback
+                                            tool_call_results.append(error_msg)
+                                    
+                                    elif tool_call.function.name == "extract_data":
+                                        try:
+                                            # Extract arguments
+                                            args = json.loads(tool_call.function.arguments)
+                                            
+                                            # Call the handler
+                                            result = await handle_extract_data(args, session, client, request)
+                                            
+                                            # Add to tool outputs
+                                            tool_outputs.append({
+                                                "tool_call_id": tool_call.id,
+                                                "output": result
+                                            })
+                                            
+                                            # Save for potential fallback
+                                            tool_call_results.append(result)
+                                            
+                                        except Exception as e:
+                                            error_msg = f"Error extracting data: {str(e)}"
+                                            logging.error(f"Error executing extract_data: {e}")
                                             
                                             # Add error to tool outputs
                                             tool_outputs.append({
