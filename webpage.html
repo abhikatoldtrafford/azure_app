@@ -974,6 +974,63 @@
                 opacity: 1;
             }
         }
+        /* Status Messages and Processing */
+        .status-message {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .processing-indicator {
+            display: inline-flex;
+            gap: 3px;
+            margin-left: 8px;
+        }
+
+        .processing-dot {
+            width: 6px;
+            height: 6px;
+            background-color: var(--accent);
+            border-radius: 50%;
+            animation: processingPulse 1.4s ease-in-out infinite;
+        }
+
+        .processing-dot:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .processing-dot:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes processingPulse {
+            0%, 60%, 100% {
+                opacity: 0.3;
+                transform: scale(0.8);
+            }
+            30% {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        /* Chat Download Links */
+        .chat-download-link {
+            color: var(--accent);
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.2s;
+            border-bottom: 1px solid transparent;
+        }
+
+        .chat-download-link:hover {
+            color: var(--accent-hover);
+            border-bottom-color: var(--accent-hover);
+        }
+
+        .message-content a {
+            word-break: break-word;
+        }
 
         /* File Preview */
         .file-preview {
@@ -2257,15 +2314,53 @@
             const message = document.getElementById(messageId);
             if (message) {
                 const contentDiv = message.querySelector('.message-content');
-                // Clear any existing content including typing indicator
-                contentDiv.innerHTML = '';
-                contentDiv.textContent = content;
+                
+                // Check if this is a status message (contains [Processing...] or similar)
+                const isStatusMessage = /\[.*(?:Processing|Generating|analyzing|complete).*\]/.test(content);
+                
+                // Parse content for download links
+                const downloadLinkPattern = /📄\s*(?:\*\*)?Download:?\*?\*?\s*\[([^\]]+)\]\(([^)]+)\)/g;
+                let processedContent = content;
+                
+                // Convert download links to actual HTML links
+                processedContent = processedContent.replace(downloadLinkPattern, (match, filename, url) => {
+                    // Ensure URL is properly formatted
+                    const cleanUrl = url.trim();
+                    const fullUrl = cleanUrl.startsWith('http') ? cleanUrl : `${window.location.origin}${cleanUrl.startsWith('/') ? '' : '/'}${cleanUrl}`;
+                    return `📄 <strong>Download:</strong> <a href="${fullUrl}" class="chat-download-link" download="${filename}">${filename}</a>`;
+                });
+                
+                // If it's a status message, show it with a processing indicator
+                if (isStatusMessage && !content.includes('[complete]')) {
+                    contentDiv.innerHTML = `
+                        <div class="status-message">
+                            <span>${processedContent}</span>
+                            <div class="processing-indicator">
+                                <div class="processing-dot"></div>
+                                <div class="processing-dot"></div>
+                                <div class="processing-dot"></div>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    // For regular content, use innerHTML to support links but escape other HTML
+                    contentDiv.innerHTML = processedContent
+                        .split('\n')
+                        .map(line => {
+                            // Skip lines that already contain HTML (our download links)
+                            if (line.includes('<a href=') || line.includes('<strong>')) {
+                                return line;
+                            }
+                            // Escape HTML in other lines
+                            return escapeHtml(line);
+                        })
+                        .join('\n');
+                }
                 
                 const container = document.getElementById('messagesContainer');
                 container.scrollTop = container.scrollHeight;
             }
         }
-
         function removeMessage(messageId) {
             const message = document.getElementById(messageId);
             if (message) message.remove();
@@ -3036,6 +3131,10 @@
                 '"': '&quot;',
                 "'": '&#039;'
             };
+            // Don't escape if it looks like it contains our processed HTML
+            if (text.includes('<a href=') || text.includes('<strong>')) {
+                return text;
+            }
             return text.replace(/[&<>"']/g, m => map[m]);
         }
 
