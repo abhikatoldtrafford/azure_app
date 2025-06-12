@@ -5612,6 +5612,12 @@ Remember: Output ONLY the JSON structure with ALL {rows_to_generate} rows."""
 # Helper methods for enhanced DOCX processing
 def _process_inline_elements(element, paragraph):
     """Process inline elements like bold, italic, code, links"""
+    # Check if element has children attribute (Tag objects have it, NavigableString objects don't)
+    if not hasattr(element, 'children'):
+        # This is a NavigableString, just add it as text
+        paragraph.add_run(str(element))
+        return
+        
     for child in element.children:
         if hasattr(child, 'name'):
             if child.name in ['strong', 'b']:
@@ -5639,12 +5645,15 @@ def _process_inline_elements(element, paragraph):
                 from docx.enum.text import WD_COLOR_INDEX
                 run.font.highlight_color = WD_COLOR_INDEX.YELLOW
             else:
-                # Recursively process other elements
-                _process_inline_elements(child, paragraph)
+                # Recursively process other elements ONLY if they're Tag objects
+                if hasattr(child, 'children'):
+                    _process_inline_elements(child, paragraph)
+                else:
+                    # If it's not a tag with children, just add its text
+                    paragraph.add_run(child.get_text())
         else:
             # Plain text
             paragraph.add_run(str(child))
-
 def _process_list(doc, list_element, is_ordered, level=0):
     """Process lists with proper nesting"""
     items = list_element.find_all('li', recursive=False)
