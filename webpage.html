@@ -227,8 +227,8 @@
 
         /* Enhanced Chatbot Styles - Claude-like design */
         .chat-container {
-            height: 75vh;
-            max-height: 800px;
+            height: calc(100vh - 140px);
+            min-height: 500px;
             display: flex;
             flex-direction: column;
             background: var(--bg-chat);
@@ -1115,7 +1115,8 @@
             }
 
             .chat-container {
-                height: 70vh;
+                height: calc(100vh - 180px);
+                min-height: 400px;
             }
 
             .message {
@@ -2319,16 +2320,32 @@
                 const isStatusMessage = /\[.*(?:Processing|Generating|analyzing|complete).*\]/.test(content);
                 
                 // Parse content for download links
-                const downloadLinkPattern = /📄\s*(?:\*\*)?Download:?\*?\*?\s*\[([^\]]+)\]\(([^)]+)\)/g;
+                const downloadLinkPattern = /\[([^\]]+)\]\(((?:https?:\/\/[^)]+|\/download-files\/[^)]+))\)/g;
                 let processedContent = content;
                 
                 // Convert download links to actual HTML links
-                processedContent = processedContent.replace(downloadLinkPattern, (match, filename, url) => {
+                processedContent = processedContent.replace(downloadLinkPattern, (match, linkText, url) => {
+                // Check if this is a download link by looking for download-related keywords or /download-files/ path
+                const isDownloadLink = url.includes('/download-files/') || 
+                                      linkText.toLowerCase().includes('.xlsx') || 
+                                      linkText.toLowerCase().includes('.csv') || 
+                                      linkText.toLowerCase().includes('.docx') ||
+                                      linkText.match(/\.(xlsx|csv|docx|pdf|txt)$/i);
+                
+                if (isDownloadLink) {
                     // Ensure URL is properly formatted
                     const cleanUrl = url.trim();
                     const fullUrl = cleanUrl.startsWith('http') ? cleanUrl : `${window.location.origin}${cleanUrl.startsWith('/') ? '' : '/'}${cleanUrl}`;
-                    return `📄 <strong>Download:</strong> <a href="${fullUrl}" class="chat-download-link" download="${filename}">${filename}</a>`;
-                });
+                    
+                    // Extract just the filename if the link text is a full filename
+                    const displayName = linkText.split('/').pop();
+                    
+                    return `<a href="${fullUrl}" class="chat-download-link" download="${displayName}">${displayName}</a>`;
+                }
+                
+                // Return original if not a download link
+                return match;
+            });
                 
                 // If it's a status message, show it with a processing indicator
                 if (isStatusMessage && !content.includes('[complete]')) {
