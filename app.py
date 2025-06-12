@@ -3816,8 +3816,6 @@ async def upload_file(
             except OSError as e:
                 logging.error(f"Error removing temporary file {file_path}: {e}")
 
-
-# No changes needed for the process_conversation function
 async def process_conversation(
     session: Optional[str] = None,
     prompt: Optional[str] = None,
@@ -3969,14 +3967,14 @@ async def process_conversation(
                         yield f"data: {json.dumps(final_chunk)}\n\n"
                         yield "data: [DONE]\n\n"
                         
-                    # Handle tool calls (including pandas_agent)
+                    # Handle tool calls (including pandas_agent and content generation)
                     elif event.event == "thread.run.requires_action":
                         if event.data.required_action.type == "submit_tool_outputs":
                             tool_calls = event.data.required_action.submit_tool_outputs.tool_calls
                             tool_outputs = []
                             
                             # Stream status message
-                            status_text = "\n[Processing data analysis request...]\n"
+                            status_text = "\n[Processing request...]\n"
                             status_chunk = {
                                 "id": f"chatcmpl-{run_id or 'stream'}",
                                 "object": "chat.completion.chunk",
@@ -3993,7 +3991,78 @@ async def process_conversation(
                             yield f"data: {json.dumps(status_chunk)}\n\n"
                             
                             for tool_call in tool_calls:
-                                if tool_call.function.name == "pandas_agent":
+                                # Handle generate_content tool
+                                if tool_call.function.name == "generate_content":
+                                    try:
+                                        args = json.loads(tool_call.function.arguments)
+                                        result = await handle_generate_content(args, session, client, request)
+                                        
+                                        tool_outputs.append({
+                                            "tool_call_id": tool_call.id,
+                                            "output": result
+                                        })
+                                        
+                                        # Stream the result
+                                        result_chunk = {
+                                            "id": f"chatcmpl-{run_id or 'stream'}",
+                                            "object": "chat.completion.chunk",
+                                            "created": int(time.time()),
+                                            "model": "gpt-4.1-mini",
+                                            "choices": [{
+                                                "index": 0,
+                                                "delta": {
+                                                    "content": f"\n{result}\n"
+                                                },
+                                                "finish_reason": None
+                                            }]
+                                        }
+                                        yield f"data: {json.dumps(result_chunk)}\n\n"
+                                        
+                                    except Exception as e:
+                                        logging.error(f"Error executing generate_content: {e}")
+                                        error_msg = f"Error generating content: {str(e)}"
+                                        tool_outputs.append({
+                                            "tool_call_id": tool_call.id,
+                                            "output": error_msg
+                                        })
+                                
+                                # Handle extract_data tool
+                                elif tool_call.function.name == "extract_data":
+                                    try:
+                                        args = json.loads(tool_call.function.arguments)
+                                        result = await handle_extract_data(args, session, client, request)
+                                        
+                                        tool_outputs.append({
+                                            "tool_call_id": tool_call.id,
+                                            "output": result
+                                        })
+                                        
+                                        # Stream the result
+                                        result_chunk = {
+                                            "id": f"chatcmpl-{run_id or 'stream'}",
+                                            "object": "chat.completion.chunk",
+                                            "created": int(time.time()),
+                                            "model": "gpt-4.1-mini",
+                                            "choices": [{
+                                                "index": 0,
+                                                "delta": {
+                                                    "content": f"\n{result}\n"
+                                                },
+                                                "finish_reason": None
+                                            }]
+                                        }
+                                        yield f"data: {json.dumps(result_chunk)}\n\n"
+                                        
+                                    except Exception as e:
+                                        logging.error(f"Error executing extract_data: {e}")
+                                        error_msg = f"Error extracting data: {str(e)}"
+                                        tool_outputs.append({
+                                            "tool_call_id": tool_call.id,
+                                            "output": error_msg
+                                        })
+                                
+                                # Handle pandas_agent
+                                elif tool_call.function.name == "pandas_agent":
                                     try:
                                         # Extract arguments
                                         args = json.loads(tool_call.function.arguments)
@@ -4029,9 +4098,6 @@ async def process_conversation(
                                         # Filter by filename if specified
                                         if filename:
                                             pandas_files = [f for f in pandas_files if f.get("name") == filename]
-                                        
-                                        # Generate operation ID for status tracking
-                                        pandas_agent_operation_id = f"pandas_agent_{int(time.time())}_{os.urandom(2).hex()}"
                                         
                                         # Execute the pandas_agent
                                         manager = PandasAgentManager.get_instance()
@@ -4113,7 +4179,7 @@ async def process_conversation(
                                 submit_success = False
                                 
                                 # Stream status indicating generation of response
-                                gen_text = "\n[Generating response based on analysis...]\n"
+                                gen_text = "\n[Generating response...]\n"
                                 gen_chunk = {
                                     "id": f"chatcmpl-{run_id or 'stream'}",
                                     "object": "chat.completion.chunk",
@@ -4406,14 +4472,35 @@ async def process_conversation(
                                 logging.info(f"Cancelled active run {run_id} to allow new message")
                                 time.sleep(1)  # Brief delay after cancellation
                             elif run_status.status == "requires_action":
-                                # For requires_action, we can submit empty tool outputs to move forward
-                                client.beta.threads.runs.submit_tool_outputs(
-                                    thread_id=session,
-                                    run_id=run_id,
-                                    tool_outputs=[{"tool_call_id": "dummy", "output": "Cancelled by new request"}]
-                                )
-                                logging.info(f"Submitted empty tool outputs to finish run {run_id}")
-                                time.sleep(1)  # Brief delay after submission
+                                # For requires_action, we need to handle it properly
+                                if run_status.required_action and run_status.required_action.type == "submit_tool_outputs":
+                                    tool_calls = run_status.required_action.submit_tool_outputs.tool_calls
+                                    
+                                    # Cancel by submitting empty outputs for each actual tool call
+                                    tool_outputs = []
+                                    for tool_call in tool_calls:
+                                        tool_outputs.append({
+                                            "tool_call_id": tool_call.id,  # Use actual tool call ID
+                                            "output": "Cancelled by user"
+                                        })
+                                    
+                                    try:
+                                        client.beta.threads.runs.submit_tool_outputs(
+                                            thread_id=session,
+                                            run_id=run_id,
+                                            tool_outputs=tool_outputs
+                                        )
+                                        logging.info(f"Submitted cancellation outputs to finish run {run_id}")
+                                        time.sleep(2)  # Wait for run to complete
+                                    except Exception as submit_e:
+                                        logging.warning(f"Error submitting tool outputs: {submit_e}")
+                                        # Try to cancel instead
+                                        try:
+                                            client.beta.threads.runs.cancel(thread_id=session, run_id=run_id)
+                                            logging.info(f"Cancelled run {run_id} after failed tool output submission")
+                                            time.sleep(1)
+                                        except Exception as cancel_e:
+                                            logging.error(f"Failed to cancel run: {cancel_e}")
                             # If run is already completed or failed, we can proceed
                         except Exception as run_e:
                             logging.warning(f"Error handling active run: {run_e}")
@@ -4512,7 +4599,46 @@ async def process_conversation(
                                 tool_outputs = []
                                 
                                 for tool_call in tool_calls:
-                                    if tool_call.function.name == "pandas_agent":
+                                    # Handle generate_content
+                                    if tool_call.function.name == "generate_content":
+                                        try:
+                                            args = json.loads(tool_call.function.arguments)
+                                            result = await handle_generate_content(args, session, client, request)
+                                            tool_outputs.append({
+                                                "tool_call_id": tool_call.id,
+                                                "output": result
+                                            })
+                                            tool_call_results.append(result)
+                                        except Exception as e:
+                                            logging.error(f"Error executing generate_content: {e}")
+                                            error_msg = f"Error generating content: {str(e)}"
+                                            tool_outputs.append({
+                                                "tool_call_id": tool_call.id,
+                                                "output": error_msg
+                                            })
+                                            tool_call_results.append(error_msg)
+                                    
+                                    # Handle extract_data
+                                    elif tool_call.function.name == "extract_data":
+                                        try:
+                                            args = json.loads(tool_call.function.arguments)
+                                            result = await handle_extract_data(args, session, client, request)
+                                            tool_outputs.append({
+                                                "tool_call_id": tool_call.id,
+                                                "output": result
+                                            })
+                                            tool_call_results.append(result)
+                                        except Exception as e:
+                                            logging.error(f"Error executing extract_data: {e}")
+                                            error_msg = f"Error extracting data: {str(e)}"
+                                            tool_outputs.append({
+                                                "tool_call_id": tool_call.id,
+                                                "output": error_msg
+                                            })
+                                            tool_call_results.append(error_msg)
+                                    
+                                    # Handle pandas_agent
+                                    elif tool_call.function.name == "pandas_agent":
                                         try:
                                             # Extract arguments
                                             args = json.loads(tool_call.function.arguments)
