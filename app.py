@@ -3836,6 +3836,17 @@ async def process_conversation(
         Either a StreamingResponse or a JSONResponse based on stream_output parameter
     """
     client = create_client()
+    
+    # Store request in a variable accessible to the inner function
+    request_obj = None
+    try:
+        from fastapi import Request
+        import contextvars
+        request_context = contextvars.ContextVar('request')
+        request_obj = request_context.get(None)
+    except:
+        pass
+    
     def stream_response():
         """Modified to be compatible with Bubble's streaming API while maintaining all features"""
         buffer = []
@@ -3845,6 +3856,18 @@ async def process_conversation(
         tool_outputs_submitted = False
         wait_for_final_response = False
         latest_message_id = None
+        
+        # Get the current event loop for running async functions
+        import asyncio
+        import concurrent.futures
+        
+        # Create a new event loop for async operations if needed
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        
         try:
             # Get the most recent message ID before starting the run
             try:
@@ -3995,7 +4018,23 @@ async def process_conversation(
                                 if tool_call.function.name == "generate_content":
                                     try:
                                         args = json.loads(tool_call.function.arguments)
-                                        result = await handle_generate_content(args, session, client, request)
+                                        
+                                        # Create a mock request if we don't have one
+                                        if not request_obj:
+                                            class MockRequest:
+                                                def __init__(self):
+                                                    self.base_url = "http://localhost:8080/"
+                                                    self.headers = {"host": "localhost:8080"}
+                                            mock_request = MockRequest()
+                                        else:
+                                            mock_request = request_obj
+                                        
+                                        # Run async function in sync context
+                                        future = asyncio.run_coroutine_threadsafe(
+                                            handle_generate_content(args, session, client, mock_request),
+                                            loop
+                                        )
+                                        result = future.result(timeout=300)  # 5 minute timeout
                                         
                                         tool_outputs.append({
                                             "tool_call_id": tool_call.id,
@@ -4019,7 +4058,7 @@ async def process_conversation(
                                         yield f"data: {json.dumps(result_chunk)}\n\n"
                                         
                                     except Exception as e:
-                                        logging.error(f"Error executing generate_content: {e}")
+                                        logging.error(f"Error executing generate_content: {e}\n{traceback.format_exc()}")
                                         error_msg = f"Error generating content: {str(e)}"
                                         tool_outputs.append({
                                             "tool_call_id": tool_call.id,
@@ -4030,7 +4069,23 @@ async def process_conversation(
                                 elif tool_call.function.name == "extract_data":
                                     try:
                                         args = json.loads(tool_call.function.arguments)
-                                        result = await handle_extract_data(args, session, client, request)
+                                        
+                                        # Create a mock request if we don't have one
+                                        if not request_obj:
+                                            class MockRequest:
+                                                def __init__(self):
+                                                    self.base_url = "http://localhost:8080/"
+                                                    self.headers = {"host": "localhost:8080"}
+                                            mock_request = MockRequest()
+                                        else:
+                                            mock_request = request_obj
+                                        
+                                        # Run async function in sync context
+                                        future = asyncio.run_coroutine_threadsafe(
+                                            handle_extract_data(args, session, client, mock_request),
+                                            loop
+                                        )
+                                        result = future.result(timeout=300)  # 5 minute timeout
                                         
                                         tool_outputs.append({
                                             "tool_call_id": tool_call.id,
@@ -4054,7 +4109,7 @@ async def process_conversation(
                                         yield f"data: {json.dumps(result_chunk)}\n\n"
                                         
                                     except Exception as e:
-                                        logging.error(f"Error executing extract_data: {e}")
+                                        logging.error(f"Error executing extract_data: {e}\n{traceback.format_exc()}")
                                         error_msg = f"Error extracting data: {str(e)}"
                                         tool_outputs.append({
                                             "tool_call_id": tool_call.id,
@@ -4384,7 +4439,12 @@ async def process_conversation(
             }
             yield f"data: {json.dumps(error_chunk)}\n\n"
             yield "data: [DONE]\n\n"
+    
     try:
+        # Store the request for use in stream_response
+        if 'request' in locals():
+            request_obj = request
+        
         # Validate resources if provided 
         if session or assistant:
             validation = await validate_resources(client, session, assistant)
@@ -4603,7 +4663,13 @@ async def process_conversation(
                                     if tool_call.function.name == "generate_content":
                                         try:
                                             args = json.loads(tool_call.function.arguments)
-                                            result = await handle_generate_content(args, session, client, request)
+                                            # Create a mock request for non-streaming
+                                            class MockRequest:
+                                                def __init__(self):
+                                                    self.base_url = "http://localhost:8080/"
+                                                    self.headers = {"host": "localhost:8080"}
+                                            
+                                            result = await handle_generate_content(args, session, client, MockRequest())
                                             tool_outputs.append({
                                                 "tool_call_id": tool_call.id,
                                                 "output": result
@@ -4622,7 +4688,13 @@ async def process_conversation(
                                     elif tool_call.function.name == "extract_data":
                                         try:
                                             args = json.loads(tool_call.function.arguments)
-                                            result = await handle_extract_data(args, session, client, request)
+                                            # Create a mock request for non-streaming
+                                            class MockRequest:
+                                                def __init__(self):
+                                                    self.base_url = "http://localhost:8080/"
+                                                    self.headers = {"host": "localhost:8080"}
+                                            
+                                            result = await handle_extract_data(args, session, client, MockRequest())
                                             tool_outputs.append({
                                                 "tool_call_id": tool_call.id,
                                                 "output": result
@@ -4782,7 +4854,6 @@ async def process_conversation(
         endpoint_type = "conversation" if stream_output else "chat"
         logging.error(f"Error in /{endpoint_type} endpoint setup: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to process {endpoint_type} request: {str(e)}")
-
 @app.get("/conversation")
 async def conversation(
     session: Optional[str] = None,
