@@ -2348,7 +2348,17 @@
             });
                 
                 // If it's a status message, show it with a processing indicator
-                if (isStatusMessage && !content.includes('[complete]')) {
+                // Check if processing is complete (has download link or completion phrases)
+                const isComplete = processedContent.includes('<a href=') || 
+                                   content.toLowerCase().includes('generated') ||
+                                   content.toLowerCase().includes('created') ||
+                                   content.toLowerCase().includes('successfully') ||
+                                   content.toLowerCase().includes('complete') ||
+                                   content.toLowerCase().includes('let me know') ||
+                                   content.toLowerCase().includes('download');
+                
+                // If it's a status message and NOT complete, show processing indicator
+                if (isStatusMessage && !isComplete) {
                     contentDiv.innerHTML = `
                         <div class="status-message">
                             <span>${processedContent}</span>
