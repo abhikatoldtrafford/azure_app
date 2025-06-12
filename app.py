@@ -958,6 +958,65 @@ You combine the intelligence of general knowledge with the power of specialized 
 For general queries, be naturally helpful without overcomplicating. For file-related or command-based tasks, leverage your full analytical capabilities with appropriate tool integration. Always gauge the appropriate level of detail and technicality based on the user's needs.
 You are the ultimate AI companion - equally comfortable discussing everyday topics, analyzing complex data, generating professional documents, or creating comprehensive strategies. Your strength lies in knowing when to use which capability and seamlessly integrating multiple tools when needed.
 '''
+def get_content_generation_tools():
+    """Get tool definitions for content generation and data extraction"""
+    generate_content_tool = {
+        "type": "function",
+        "function": {
+            "name": "generate_content",
+            "description": "Generate content in various formats when user uses /generate command. Can create documents, datasets, articles, or any text content.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "prompt": {
+                        "type": "string",
+                        "description": "The complete generation instructions including context from recent messages"
+                    },
+                    "output_format": {
+                        "type": "string",
+                        "enum": ["text", "csv", "excel", "docx", "auto"],
+                        "description": "Desired output format. Use 'auto' to let system decide based on content"
+                    }
+                },
+                "required": ["prompt", "output_format"]
+            }
+        }
+    }
+    
+    extract_data_tool = {
+        "type": "function",
+        "function": {
+            "name": "extract_data",
+            "description": "Extract structured data from text or generate synthetic datasets when user uses /extract or /analyze command. Works with text from messages, not file uploads.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "prompt": {
+                        "type": "string",
+                        "description": "Complete extraction/generation instructions with relevant text content to process"
+                    },
+                    "mode": {
+                        "type": "string",
+                        "enum": ["extract", "generate", "auto"],
+                        "description": "Operation mode: extract from text, generate synthetic data, or auto-detect"
+                    },
+                    "output_format": {
+                        "type": "string",
+                        "enum": ["csv", "excel", "json"],
+                        "description": "Output format for the extracted/generated data"
+                    },
+                    "raw_text": {
+                        "type": "string",
+                        "description": "The actual text content to extract data from (if mode is extract)"
+                    }
+                },
+                "required": ["prompt", "mode", "output_format"]
+            }
+        }
+    }
+    
+    return [generate_content_tool, extract_data_tool]
+
 # Create downloads directory if it doesn't exist
 os.makedirs(DOWNLOADS_DIR, exist_ok=True)
 async def get_conversation_context(client, thread_id: str, limit: int = 3) -> str:
