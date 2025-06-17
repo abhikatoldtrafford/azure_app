@@ -4356,6 +4356,29 @@ async def process_conversation(
                             break  # Exit the polling loop
                             
                         elif run_status.status in ["failed", "cancelled", "expired"]:
+                            error_code = None
+                            if run_status.status == "failed" and hasattr(run_status, 'last_error') and run_status.last_error:
+                                error_code = run_status.last_error.code if hasattr(run_status.last_error, 'code') else 'unknown'
+                                error_details = run_status.last_error.message if hasattr(run_status.last_error, 'message') else str(run_status.last_error)
+                                logging.error(f"Run failed with error code '{error_code}': {error_details}")
+                                
+                                # Retry on server errors
+                                if error_code == 'server_error' and attempt < 5:  # Retry up to 5 times
+                                    logging.info(f"Retrying due to server error (attempt {attempt + 1}/5)")
+                                    time.sleep(5)
+                                    
+                                    try:
+                                        # Create a new run
+                                        run = client.beta.threads.runs.create(
+                                            thread_id=session,
+                                            assistant_id=assistant
+                                        )
+                                        run_id = run.id
+                                        logging.info(f"Created new run {run_id} after server error")
+                                        continue  # Continue polling with new run
+                                    except Exception as retry_e:
+                                        logging.error(f"Failed to create retry run: {retry_e}")
+                            
                             logging.error(f"Run ended with status: {run_status.status}")
                             error_chunk = {
                                 "id": f"chatcmpl-{run_id}",
@@ -4607,10 +4630,29 @@ async def process_conversation(
                         # Handle failed/cancelled/expired run
                         elif run_status.status in ["failed", "cancelled", "expired"]:
                             error_details = ""
+                            error_code = None
                             if run_status.status == "failed" and hasattr(run_status, 'last_error') and run_status.last_error:
                                 error_details = f" Error: {run_status.last_error.message if hasattr(run_status.last_error, 'message') else str(run_status.last_error)}"
                                 error_code = run_status.last_error.code if hasattr(run_status.last_error, 'code') else 'unknown'
                                 logging.error(f"Run failed with error code '{error_code}': {error_details}")
+                                
+                                # Retry on server errors
+                                if error_code == 'server_error' and attempt < 5:  # Retry up to 5 times for server errors
+                                    logging.info(f"Retrying due to server error (attempt {attempt + 1}/5)")
+                                    time.sleep(5)  # Wait 5 seconds before retry
+                                    
+                                    # Create a new run
+                                    try:
+                                        run = client.beta.threads.runs.create(
+                                            thread_id=session,
+                                            assistant_id=assistant
+                                        )
+                                        run_id = run.id
+                                        logging.info(f"Created new run {run_id} after server error")
+                                        continue  # Continue polling with new run
+                                    except Exception as retry_e:
+                                        logging.error(f"Failed to create retry run: {retry_e}")
+                                        # Fall through to error response
                             else:
                                 logging.error(f"Run ended with status: {run_status.status}")
                             
