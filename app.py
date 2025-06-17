@@ -1408,11 +1408,13 @@ def get_downloads_directory():
 DOWNLOADS_DIR = get_downloads_directory()
 
 def create_client():
-    """Creates an AzureOpenAI client instance."""
+    """Creates an AzureOpenAI client instance with extended timeout."""
     return AzureOpenAI(
         azure_endpoint=AZURE_ENDPOINT,
         api_key=AZURE_API_KEY,
         api_version=AZURE_API_VERSION,
+        timeout=120.0,  # 2 minute timeout (Azure maximum)
+        max_retries=3
     )
 
 def construct_download_url(request: Request, filename: str) -> str:
@@ -4286,8 +4288,8 @@ async def process_conversation(
                 logging.info(f"Tool outputs submitted but run not completed. Polling for final response...")
                 
                 # Poll for run completion
-                max_poll_attempts = 15
-                poll_interval = 5  # seconds
+                max_poll_attempts = 30
+                poll_interval = 10    # seconds
                 
                 for attempt in range(max_poll_attempts):
                     try:
@@ -4397,8 +4399,24 @@ async def process_conversation(
                             yield "data: [DONE]\n\n"
                             break
                             
-                        # Continue polling if still in progress
                         if attempt < max_poll_attempts - 1:
+                            # Send keep-alive message to prevent client timeout
+                            keep_alive_chunk = {
+                                "id": f"chatcmpl-{run_id}",
+                                "object": "chat.completion.chunk",
+                                "created": int(time.time()),
+                                "model": "gpt-4.1-mini",
+                                "choices": [{
+                                    "index": 0,
+                                    "delta": {
+                                        "content": ""  # Empty content as keep-alive
+                                    },
+                                    "finish_reason": None
+                                }]
+                            }
+                            yield f"data: {json.dumps(keep_alive_chunk)}\n\n"
+                            yield f": keep-alive {datetime.now().isoformat()}\n\n"  # SSE comment for keep-alive
+                            
                             time.sleep(poll_interval)
                             
                     except Exception as poll_e:
@@ -4869,7 +4887,11 @@ async def process_conversation(
                     status_code=500
                 )
         # Return the streaming response for streaming mode
-        return StreamingResponse(stream_response(), media_type="text/event-stream")
+        response = StreamingResponse(stream_response(), media_type="text/event-stream")
+        response.headers["X-Accel-Buffering"] = "no"  # Disable nginx buffering
+        response.headers["Cache-Control"] = "no-cache"
+        response.headers["Connection"] = "keep-alive"
+        return response
 
     except Exception as e:
         endpoint_type = "conversation" if stream_output else "chat"
