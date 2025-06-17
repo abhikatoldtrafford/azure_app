@@ -1098,7 +1098,123 @@ async def enhance_prompt_with_context(prompt: str, thread_id: str, client, outpu
         enhanced_prompt += "\n\nAnalyze this request and choose the most appropriate format for the response."
     
     return enhanced_prompt
+async def summarize_and_trim_thread(client: AzureOpenAI, thread_id: str, keep_messages: int = 20):
+    """
+    Summarize old messages before trimming the thread.
+    """
+    try:
+        # Get messages to summarize
+        messages = client.beta.threads.messages.list(
+            thread_id=thread_id,
+            order="asc",
+            limit=100
+        )
+        
+        if len(messages.data) <= keep_messages:
+            return  # No need to trim
+        
+        # Extract content from messages to summarize
+        messages_to_summarize = messages.data[:-keep_messages]
+        summary_content = []
+        
+        for msg in messages_to_summarize:
+            if msg.role == "user":
+                for content in msg.content:
+                    if content.type == 'text':
+                        summary_content.append(f"User: {content.text.value}")
+            elif msg.role == "assistant":
+                for content in msg.content:
+                    if content.type == 'text':
+                        summary_content.append(f"Assistant: {content.text.value}")
+        
+        if summary_content:
+            # Create summary using AI
+            summary_prompt = f"""Summarize this conversation history concisely, keeping key topics and context:
 
+{chr(10).join(summary_content[:20])}  # Limit to prevent token overflow
+
+Provide a brief summary of key topics discussed and important context."""
+            
+            completion = client.chat.completions.create(
+                model="gpt-4.1-mini",
+                messages=[
+                    {"role": "system", "content": "You are a conversation summarizer. Create concise summaries."},
+                    {"role": "user", "content": summary_prompt}
+                ],
+                max_tokens=500,
+                temperature=0.3
+            )
+            
+            summary = completion.choices[0].message.content
+            
+            # Add summary as a system message
+            client.beta.threads.messages.create(
+                thread_id=thread_id,
+                role="assistant",
+                content=f"[Previous Conversation Summary]:\n{summary}",
+                metadata={"type": "conversation_summary"}
+            )
+            
+            logging.info(f"Added conversation summary to thread {thread_id}")
+        
+        # Now trim the thread
+        await trim_thread(client, thread_id, keep_messages)
+        
+    except Exception as e:
+        logging.error(f"Error summarizing thread {thread_id}: {e}")
+
+async def trim_thread(client: AzureOpenAI, thread_id: str, keep_messages: int = 20):
+    """
+    Trim thread to keep only the most recent messages.
+    
+    Args:
+        client: Azure OpenAI client
+        thread_id: Thread ID to trim
+        keep_messages: Number of recent messages to keep
+    """
+    try:
+        # Get all messages
+        all_messages = []
+        has_more = True
+        after = None
+        
+        while has_more:
+            messages = client.beta.threads.messages.list(
+                thread_id=thread_id,
+                order="desc",
+                limit=100,
+                after=after
+            )
+            all_messages.extend(messages.data)
+            has_more = messages.has_more
+            if has_more and messages.data:
+                after = messages.data[-1].id
+        
+        # Skip if thread is small
+        if len(all_messages) <= keep_messages:
+            return
+        
+        # Delete old messages (keep the most recent ones)
+        messages_to_delete = all_messages[keep_messages:]
+        
+        for msg in messages_to_delete:
+            try:
+                # Skip system messages
+                if hasattr(msg, 'metadata') and msg.metadata:
+                    msg_type = msg.metadata.get('type', '')
+                    if msg_type in ['user_persona_context', 'file_awareness', 'pandas_agent_files']:
+                        continue
+                        
+                client.beta.threads.messages.delete(
+                    thread_id=thread_id,
+                    message_id=msg.id
+                )
+                logging.info(f"Deleted old message {msg.id} from thread {thread_id}")
+            except Exception as e:
+                logging.warning(f"Could not delete message {msg.id}: {e}")
+                
+    except Exception as e:
+        logging.error(f"Error trimming thread {thread_id}: {e}")
 
 async def handle_generate_content(tool_args: dict, thread_id: str, client, request) -> str:
     """
@@ -3817,7 +3933,45 @@ async def upload_file(
                 os.remove(file_path)
             except OSError as e:
                 logging.error(f"Error removing temporary file {file_path}: {e}")
-
+def sync_trim_thread(client: AzureOpenAI, thread_id: str, keep_messages: int = 30):
+    """
+    Synchronous version of trim_thread for use in sync contexts.
+    """
+    try:
+        # Get all messages
+        all_messages = []
+        messages = client.beta.threads.messages.list(
+            thread_id=thread_id,
+            order="desc",
+            limit=100
+        )
+        all_messages.extend(messages.data)
+        
+        # Skip if thread is small
+        if len(all_messages) <= keep_messages:
+            return
+        
+        # Delete old messages (keep the most recent ones)
+        messages_to_delete = all_messages[keep_messages:]
+        
+        for msg in messages_to_delete:
+            try:
+                # Skip system messages
+                if hasattr(msg, 'metadata') and msg.metadata:
+                    msg_type = msg.metadata.get('type', '')
+                    if msg_type in ['user_persona_context', 'file_awareness', 'pandas_agent_files']:
+                        continue
+                        
+                client.beta.threads.messages.delete(
+                    thread_id=thread_id,
+                    message_id=msg.id
+                )
+                logging.info(f"Deleted old message {msg.id} from thread {thread_id}")
+            except Exception as e:
+                logging.warning(f"Could not delete message {msg.id}: {e}")
+                
+    except Exception as e:
+        logging.error(f"Error trimming thread {thread_id}: {e}")
 async def process_conversation(
     session: Optional[str] = None,
     prompt: Optional[str] = None,
@@ -3861,6 +4015,16 @@ async def process_conversation(
                     logging.info(f"Latest message before run: {latest_message_id}")
             except Exception as e:
                 logging.warning(f"Could not get latest message before run: {e}")
+            
+            # Check message count and trim if needed (sync version for streaming)
+            try:
+                messages_response = client.beta.threads.messages.list(thread_id=session, limit=100)
+                message_count = len(messages_response.data)
+                if message_count > 50:  # Trim when thread gets long
+                    sync_trim_thread(client, session, keep_messages=30)
+                    logging.info(f"Trimmed thread {session} from {message_count} messages")
+            except Exception as e:
+                logging.warning(f"Could not check/trim thread: {e}")
             
             # Create run and stream the response
             with client.beta.threads.runs.stream(
@@ -4665,6 +4829,16 @@ async def process_conversation(
             # For non-streaming mode, we'll use a completely different approach
             full_response = ""
             try:
+                # Check message count and trim if needed
+                try:
+                    messages_response = client.beta.threads.messages.list(thread_id=session, limit=100)
+                    message_count = len(messages_response.data)
+                    if message_count > 50:  # Trim when thread gets long
+                        await summarize_and_trim_thread(client, session, keep_messages=30)
+                        logging.info(f"Trimmed thread {session} from {message_count} messages")
+                except Exception as e:
+                    logging.warning(f"Could not check/trim thread: {e}")
+                
                 # Create a run without streaming
                 run = client.beta.threads.runs.create(
                     thread_id=session,
