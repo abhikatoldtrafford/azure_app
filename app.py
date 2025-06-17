@@ -4930,74 +4930,115 @@ async def process_conversation(
                     if active_run and run_id:
                         try:
                             run_status = client.beta.threads.runs.retrieve(thread_id=session, run_id=run_id)
+                            
+                            # Check how long the run has been active
+                            run_created_at = run_status.created_at
+                            current_time = int(time.time())
+                            run_age_seconds = current_time - run_created_at
+                            
+                            logging.info(f"Active run {run_id} found with status {run_status.status}, age: {run_age_seconds}s")
+                            
+                            # Smart decision: wait for young runs, cancel old stuck runs
                             if run_status.status in ["in_progress", "queued"]:
-                                # Cancel the run
-                                try:
-                                    client.beta.threads.runs.cancel(thread_id=session, run_id=run_id)
-                                    logging.info(f"Cancelled active run {run_id} to allow new message")
+                                max_wait_time = 30  # Maximum 30 seconds total wait
+                                check_interval = 2  # Check every 2 seconds
+                                waited_time = 0
+                                
+                                # If run is young (< 30s), wait for it to complete
+                                if run_age_seconds < max_wait_time:
+                                    logging.info(f"Run {run_id} is only {run_age_seconds}s old, waiting for completion...")
                                     
-                                    # Wait for cancellation to complete
-                                    cancel_wait_time = 0
-                                    max_cancel_wait = 10  # Maximum 10 seconds
-                                    while cancel_wait_time < max_cancel_wait:
-                                        time.sleep(1)
-                                        cancel_wait_time += 1
+                                    while waited_time < (max_wait_time - run_age_seconds):
+                                        time.sleep(check_interval)
+                                        waited_time += check_interval
+                                        
+                                        # Check run status
                                         try:
                                             check_status = client.beta.threads.runs.retrieve(thread_id=session, run_id=run_id)
-                                            if check_status.status in ["cancelled", "failed", "completed", "expired"]:
-                                                logging.info(f"Run {run_id} is now {check_status.status}")
+                                            
+                                            if check_status.status in ["completed", "failed", "cancelled", "expired"]:
+                                                logging.info(f"Run {run_id} completed with status: {check_status.status}")
+                                                active_run = False
                                                 break
-                                        except:
+                                            elif check_status.status == "requires_action":
+                                                # Handle requires_action separately below
+                                                run_status = check_status
+                                                if hasattr(check_status, 'required_action'):
+                                                    requires_action_tools = check_status.required_action.submit_tool_outputs.tool_calls
+                                                break
+                                            else:
+                                                # Still in progress/queued
+                                                current_run_age = int(time.time()) - check_status.created_at
+                                                logging.info(f"Run {run_id} still {check_status.status} after {current_run_age}s total")
+                                                
+                                        except Exception as check_e:
+                                            logging.warning(f"Error checking run status: {check_e}")
                                             break
-                                except Exception as cancel_e:
-                                    logging.warning(f"Failed to cancel run {run_id}: {cancel_e}")
                                     
-                            elif run_status.status == "requires_action" and requires_action_tools:
-                                # Submit empty outputs for each actual tool call
-                                tool_outputs = []
-                                for tool_call in requires_action_tools:
-                                    tool_outputs.append({
-                                        "tool_call_id": tool_call.id,  # Use the actual tool call ID
-                                        "output": "Cancelled due to new user request"
-                                    })
-                                try:
-                                    client.beta.threads.runs.submit_tool_outputs(
-                                        thread_id=session,
-                                        run_id=run_id,
-                                        tool_outputs=tool_outputs
-                                    )
-                                    logging.info(f"Submitted cancellation outputs for run {run_id}")
-                                    
-                                    # Wait for submission to process
-                                    time.sleep(3)
-                                except Exception as e:
-                                    # If submission fails, try to cancel instead
+                                    # After waiting, check if we need to cancel
+                                    if active_run and run_status.status in ["in_progress", "queued"]:
+                                        total_age = int(time.time()) - run_created_at
+                                        if total_age >= max_wait_time:
+                                            logging.warning(f"Run {run_id} exceeded max wait time ({total_age}s), cancelling...")
+                                            try:
+                                                client.beta.threads.runs.cancel(thread_id=session, run_id=run_id)
+                                                logging.info(f"Cancelled stuck run {run_id}")
+                                                
+                                                # Wait for cancellation
+                                                cancel_wait = 0
+                                                while cancel_wait < 5:
+                                                    time.sleep(1)
+                                                    cancel_wait += 1
+                                                    try:
+                                                        cancel_check = client.beta.threads.runs.retrieve(thread_id=session, run_id=run_id)
+                                                        if cancel_check.status in ["cancelled", "failed", "completed", "expired"]:
+                                                            break
+                                                    except:
+                                                        break
+                                            except Exception as cancel_e:
+                                                logging.error(f"Failed to cancel run {run_id}: {cancel_e}")
+                                else:
+                                    # Run is already old (> 30s), cancel immediately
+                                    logging.warning(f"Run {run_id} is {run_age_seconds}s old (stuck), cancelling immediately...")
                                     try:
                                         client.beta.threads.runs.cancel(thread_id=session, run_id=run_id)
-                                        logging.info(f"Cancelled run {run_id} after failed tool output submission")
-                                        time.sleep(3)
-                                    except:
-                                        pass
+                                        logging.info(f"Cancelled old stuck run {run_id}")
+                                        time.sleep(2)  # Brief wait for cancellation
+                                    except Exception as cancel_e:
+                                        logging.error(f"Failed to cancel old run {run_id}: {cancel_e}")
                                         
-                            # If run is still active after attempts, wait for it to complete
-                            elif run_status.status == "in_progress":
-                                logging.warning(f"Run {run_id} is still in progress, waiting for completion...")
-                                wait_time = 0
-                                max_wait = 30  # Maximum 30 seconds
-                                while wait_time < max_wait:
-                                    time.sleep(2)
-                                    wait_time += 2
+                            elif run_status.status == "requires_action" and requires_action_tools:
+                                # For requires_action, check age and handle accordingly
+                                if run_age_seconds > 60:  # If stuck in requires_action for > 1 minute
+                                    logging.warning(f"Run {run_id} stuck in requires_action for {run_age_seconds}s, submitting cancel outputs")
+                                    # Submit empty outputs for each tool call
+                                    tool_outputs = []
+                                    for tool_call in requires_action_tools:
+                                        tool_outputs.append({
+                                            "tool_call_id": tool_call.id,
+                                            "output": "Cancelled due to timeout and new user request"
+                                        })
                                     try:
-                                        check_status = client.beta.threads.runs.retrieve(thread_id=session, run_id=run_id)
-                                        if check_status.status not in ["in_progress", "queued"]:
-                                            logging.info(f"Run {run_id} completed with status: {check_status.status}")
-                                            break
-                                    except:
-                                        break
-                                        
+                                        client.beta.threads.runs.submit_tool_outputs(
+                                            thread_id=session,
+                                            run_id=run_id,
+                                            tool_outputs=tool_outputs
+                                        )
+                                        logging.info(f"Submitted cancellation outputs for stuck run {run_id}")
+                                        time.sleep(3)
+                                    except Exception as e:
+                                        # If submission fails, try to cancel
+                                        try:
+                                            client.beta.threads.runs.cancel(thread_id=session, run_id=run_id)
+                                            logging.info(f"Cancelled run {run_id} after failed tool output submission")
+                                            time.sleep(2)
+                                        except:
+                                            pass
+                                else:
+                                    logging.info(f"Run {run_id} is in requires_action state ({run_age_seconds}s old), will proceed with new message")
+                                    
                         except Exception as run_e:
                             logging.warning(f"Error handling active run: {run_e}")
-                            # Continue anyway - we'll try to add message
 
                     # Try to add the message
                     client.beta.threads.messages.create(
