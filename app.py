@@ -88,7 +88,7 @@ class ThreadLockManager:
                 logging.info(f"Cleaned up lock for thread {thread_id}")
 
 # Create global instance
-thread_lock_manager = ThreadLockManager(
+thread_lock_manager = ThreadLockManager()
 # Simple status updates for long-running operations
 operation_statuses = {}
 
