@@ -4716,9 +4716,9 @@ async def process_conversation(
                                 logging.error(f"Run failed with error code '{error_code}': {error_details}")
                                 
                                 # Retry on server errors
-                                if error_code == 'server_error' and attempt < 5:  # Retry up to 5 times for server errors
-                                    logging.info(f"Retrying due to server error (attempt {attempt + 1}/5)")
-                                    time.sleep(5)  # Wait 5 seconds before retry
+                                if error_code == 'server_error' and attempt < 10:  # More retries for chat endpoint
+                                    logging.info(f"Retrying due to server error (attempt {attempt + 1}/10)")
+                                    time.sleep(3)  # Wait 3 seconds before retry
                                     
                                     # Create a new run
                                     try:
@@ -4731,9 +4731,25 @@ async def process_conversation(
                                         continue  # Continue polling with new run
                                     except Exception as retry_e:
                                         logging.error(f"Failed to create retry run: {retry_e}")
-                                        # Fall through to error response
+                                        # Try one more time after a longer wait
+                                        time.sleep(5)
+                                        try:
+                                            run = client.beta.threads.runs.create(
+                                                thread_id=session,
+                                                assistant_id=assistant
+                                            )
+                                            run_id = run.id
+                                            logging.info(f"Created new run {run_id} on second retry attempt")
+                                            continue
+                                        except:
+                                            pass
                             else:
                                 logging.error(f"Run ended with status: {run_status.status}")
+                            
+                            # If we have tool results from before the failure, return those
+                            if tool_call_results:
+                                combined_results = "\n\n".join(tool_call_results)
+                                return JSONResponse(content={"response": combined_results})
                             
                             # Try to provide a more helpful error message
                             if "rate_limit" in error_details.lower():
@@ -4742,7 +4758,6 @@ async def process_conversation(
                                 return JSONResponse(content={"response": "The conversation has become too long. Please start a new conversation."})
                             else:
                                 return JSONResponse(content={"response": f"Sorry, I encountered an error. {error_details if error_details else 'Please try again.'}"})
-                        
                         # Handle tool calls
                         elif run_status.status == "requires_action":
                             if run_status.required_action.type == "submit_tool_outputs":
@@ -4906,8 +4921,15 @@ async def process_conversation(
                                         return JSONResponse(content={"response": f"Sorry, I encountered an error processing your data analysis request. Please try again."})
                         
                         # Continue polling if still in progress
+                        # Continue polling if still in progress
                         if attempt < max_poll_attempts - 1:
-                            time.sleep(poll_interval)
+                            # Progressive backoff: start fast, slow down over time
+                            if attempt < 10:
+                                time.sleep(3)  # First 10 attempts: 3 seconds
+                            elif attempt < 20:
+                                time.sleep(5)  # Next 10 attempts: 5 seconds
+                            else:
+                                time.sleep(10)  # Remaining attempts: 10 seconds
                             
                     except Exception as poll_e:
                         logging.error(f"Error polling run status (attempt {attempt+1}): {poll_e}")
