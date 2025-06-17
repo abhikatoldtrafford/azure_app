@@ -4538,7 +4538,11 @@ async def process_conversation(
                                         # Create a new run
                                         run = client.beta.threads.runs.create(
                                             thread_id=session,
-                                            assistant_id=assistant
+                                            assistant_id=assistant,
+                                            truncation_strategy={
+                                                "type": "last_messages",
+                                                "last_messages": 10
+                                            }
                                         )
                                         run_id = run.id
                                         logging.info(f"Created new run {run_id} after server error")
@@ -4842,7 +4846,11 @@ async def process_conversation(
                 # Create a run without streaming
                 run = client.beta.threads.runs.create(
                     thread_id=session,
-                    assistant_id=assistant
+                    assistant_id=assistant,
+                    truncation_strategy={
+                        "type": "last_messages",
+                        "last_messages": 10
+                    }
                 )
                 run_id = run.id
                 logging.info(f"Created run {run_id} for thread {session} (non-streaming mode)")
@@ -4898,7 +4906,11 @@ async def process_conversation(
                                     try:
                                         run = client.beta.threads.runs.create(
                                             thread_id=session,
-                                            assistant_id=assistant
+                                            assistant_id=assistant,
+                                            truncation_strategy={
+                                                "type": "last_messages",
+                                                "last_messages": 10
+                                            }
                                         )
                                         run_id = run.id
                                         logging.info(f"Created new run {run_id} after server error")
@@ -4910,7 +4922,11 @@ async def process_conversation(
                                         try:
                                             run = client.beta.threads.runs.create(
                                                 thread_id=session,
-                                                assistant_id=assistant
+                                                assistant_id=assistant,
+                                                truncation_strategy={
+                                                    "type": "last_messages",
+                                                    "last_messages": 10
+                                                }
                                             )
                                             run_id = run.id
                                             logging.info(f"Created new run {run_id} on second retry attempt")
