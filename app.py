@@ -3840,6 +3840,7 @@ async def process_conversation(
     client = create_client()
     def stream_response():
         """Modified to be compatible with Bubble's streaming API while maintaining all features"""
+        
         buffer = []
         completed = False
         tool_call_results = []
@@ -4542,14 +4543,30 @@ async def process_conversation(
             for attempt in range(max_retries):
                 try:
                     if active_run and run_id:
-                        # If there's an active run, check if it's still active or can be cancelled
                         try:
                             run_status = client.beta.threads.runs.retrieve(thread_id=session, run_id=run_id)
                             if run_status.status in ["in_progress", "queued"]:
                                 # Cancel the run
-                                client.beta.threads.runs.cancel(thread_id=session, run_id=run_id)
-                                logging.info(f"Cancelled active run {run_id} to allow new message")
-                                time.sleep(1)  # Brief delay after cancellation
+                                try:
+                                    client.beta.threads.runs.cancel(thread_id=session, run_id=run_id)
+                                    logging.info(f"Cancelled active run {run_id} to allow new message")
+                                    
+                                    # Wait for cancellation to complete
+                                    cancel_wait_time = 0
+                                    max_cancel_wait = 10  # Maximum 10 seconds
+                                    while cancel_wait_time < max_cancel_wait:
+                                        time.sleep(1)
+                                        cancel_wait_time += 1
+                                        try:
+                                            check_status = client.beta.threads.runs.retrieve(thread_id=session, run_id=run_id)
+                                            if check_status.status in ["cancelled", "failed", "completed", "expired"]:
+                                                logging.info(f"Run {run_id} is now {check_status.status}")
+                                                break
+                                        except:
+                                            break
+                                except Exception as cancel_e:
+                                    logging.warning(f"Failed to cancel run {run_id}: {cancel_e}")
+                                    
                             elif run_status.status == "requires_action" and requires_action_tools:
                                 # Submit empty outputs for each actual tool call
                                 tool_outputs = []
@@ -4565,16 +4582,37 @@ async def process_conversation(
                                         tool_outputs=tool_outputs
                                     )
                                     logging.info(f"Submitted cancellation outputs for run {run_id}")
-                                    time.sleep(1)
+                                    
+                                    # Wait for submission to process
+                                    time.sleep(3)
                                 except Exception as e:
                                     # If submission fails, try to cancel instead
                                     try:
                                         client.beta.threads.runs.cancel(thread_id=session, run_id=run_id)
                                         logging.info(f"Cancelled run {run_id} after failed tool output submission")
+                                        time.sleep(3)
                                     except:
                                         pass
+                                        
+                            # If run is still active after attempts, wait for it to complete
+                            elif run_status.status == "in_progress":
+                                logging.warning(f"Run {run_id} is still in progress, waiting for completion...")
+                                wait_time = 0
+                                max_wait = 30  # Maximum 30 seconds
+                                while wait_time < max_wait:
+                                    time.sleep(2)
+                                    wait_time += 2
+                                    try:
+                                        check_status = client.beta.threads.runs.retrieve(thread_id=session, run_id=run_id)
+                                        if check_status.status not in ["in_progress", "queued"]:
+                                            logging.info(f"Run {run_id} completed with status: {check_status.status}")
+                                            break
+                                    except:
+                                        break
+                                        
                         except Exception as run_e:
                             logging.warning(f"Error handling active run: {run_e}")
+                            # Continue anyway - we'll try to add message
                             # Continue anyway - we'll try to add message
 
                     # Try to add the message
@@ -4597,7 +4635,30 @@ async def process_conversation(
                             raise HTTPException(status_code=500, detail="Failed to add message to conversation thread")
             
             if not success:
-                raise HTTPException(status_code=500, detail="Failed to add message to conversation thread after retries")
+                # Final fallback - try to create a new thread and continue
+                logging.warning(f"Failed to add message to thread {session} after all retries. Creating new thread.")
+                try:
+                    # Create a new thread
+                    new_thread = client.beta.threads.create()
+                    new_session = new_thread.id
+                    logging.info(f"Created fallback thread: {new_session}")
+                    
+                    # Add the message to the new thread
+                    try:
+                        client.beta.threads.messages.create(
+                            thread_id=new_session,
+                            role="user",
+                            content=prompt
+                        )
+                        session = new_session  # Use the new thread
+                        logging.info(f"Successfully added message to new thread {new_session}")
+                    except Exception as new_msg_e:
+                        logging.error(f"Failed to add message to new thread: {new_msg_e}")
+                        # Even if this fails, continue with a helpful response
+                        prompt = "I'm having trouble processing your request. Please try again."
+                except Exception as new_thread_e:
+                    logging.error(f"Failed to create new thread: {new_thread_e}")
+                    # Continue anyway with error handling
         
         # Handle non-streaming mode (/chat endpoint)
         if not stream_output:
