@@ -53,7 +53,42 @@ try:
 except ImportError:
     CHARTS_AVAILABLE = False
     logging.warning("Chart libraries not available. Chart generation disabled.")
+import asyncio
+from datetime import timedelta
 
+# Thread lock manager to prevent concurrent access to the same thread
+class ThreadLockManager:
+    def __init__(self):
+        self.locks: Dict[str, asyncio.Lock] = {}
+        self.lock_access_times: Dict[str, datetime] = {}
+        self.manager_lock = asyncio.Lock()
+    
+    async def get_lock(self, thread_id: str) -> asyncio.Lock:
+        async with self.manager_lock:
+            if thread_id not in self.locks:
+                self.locks[thread_id] = asyncio.Lock()
+            self.lock_access_times[thread_id] = datetime.now()
+            return self.locks[thread_id]
+    
+    async def cleanup_old_locks(self, max_age_minutes: int = 30):
+        """Remove locks that haven't been accessed in a while to prevent memory leaks"""
+        async with self.manager_lock:
+            current_time = datetime.now()
+            threads_to_remove = []
+            
+            for thread_id, last_access in self.lock_access_times.items():
+                if current_time - last_access > timedelta(minutes=max_age_minutes):
+                    # Only remove if lock is not currently held
+                    if thread_id in self.locks and not self.locks[thread_id].locked():
+                        threads_to_remove.append(thread_id)
+            
+            for thread_id in threads_to_remove:
+                del self.locks[thread_id]
+                del self.lock_access_times[thread_id]
+                logging.info(f"Cleaned up lock for thread {thread_id}")
+
+# Create global instance
+thread_lock_manager = ThreadLockManager(
 # Simple status updates for long-running operations
 operation_statuses = {}
 
@@ -62,6 +97,19 @@ operation_statuses = {}
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 app = FastAPI()
+@app.on_event("startup")
+async def startup_event():
+    """Start background tasks"""
+    async def periodic_cleanup():
+        while True:
+            try:
+                await asyncio.sleep(300)  # Run every 5 minutes
+                await thread_lock_manager.cleanup_old_locks()
+            except Exception as e:
+                logging.error(f"Error in periodic cleanup: {e}")
+    
+    # Start the cleanup task
+    asyncio.create_task(periodic_cleanup())
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Configure based on your needs
@@ -3981,17 +4029,164 @@ async def process_conversation(
     """
     Core function to process conversation with the assistant.
     This function handles both streaming and non-streaming modes.
-    
-    Args:
-        session: Thread ID
-        prompt: User message
-        assistant: Assistant ID
-        stream_output: If True, returns a streaming response, otherwise collects and returns full response
-        
-    Returns:
-        Either a StreamingResponse or a JSONResponse based on stream_output parameter
+    Bulletproof version with comprehensive error handling and fallbacks.
     """
     client = create_client()
+    thread_lock = None
+    response_started = False
+    
+    # Helper function for completions API fallback
+    async def fallback_to_completions(error_context: str = ""):
+        """Fallback to completions API with context preservation"""
+        try:
+            logging.info(f"Falling back to completions API. Context: {error_context}")
+            
+            # Build messages for completions API
+            messages = [{"role": "system", "content": system_prompt}]
+            
+            # Try to get previous messages for context
+            if session:
+                try:
+                    thread_messages = client.beta.threads.messages.list(
+                        thread_id=session,
+                        order="desc",
+                        limit=5  # Get more messages for better context
+                    )
+                    
+                    context_messages = []
+                    for msg in reversed(thread_messages.data):
+                        # Skip system messages
+                        if hasattr(msg, 'metadata') and msg.metadata:
+                            msg_type = msg.metadata.get('type', '')
+                            if msg_type in ['user_persona_context', 'file_awareness', 'pandas_agent_files', 'pandas_agent_instruction']:
+                                continue
+                        
+                        # Extract text content
+                        content = ""
+                        for part in msg.content:
+                            if part.type == 'text':
+                                content += part.text.value
+                        
+                        if content and msg.role in ['user', 'assistant']:
+                            # Clean up special prefixes
+                            content = content.replace("[PANDAS AGENT RESPONSE]:", "").strip()
+                            context_messages.append({
+                                "role": msg.role,
+                                "content": content[:2000]  # Limit length
+                            })
+                    
+                    # Add last 2-3 messages for context
+                    messages.extend(context_messages[-3:])
+                except Exception as context_e:
+                    logging.warning(f"Could not retrieve context messages: {context_e}")
+            
+            # Add current prompt
+            if prompt:
+                messages.append({"role": "user", "content": prompt})
+            elif not messages[1:]:  # No context and no prompt
+                messages.append({"role": "user", "content": "Hello"})
+            
+            # Make completions API call
+            completion = client.chat.completions.create(
+                model="gpt-4.1-mini",
+                messages=messages,
+                temperature=0.8,
+                max_tokens=4000,
+                stream=stream_output
+            )
+            
+            if stream_output:
+                def fallback_stream():
+                    try:
+                        for chunk in completion:
+                            if chunk.choices[0].delta.content:
+                                chunk_data = {
+                                    "id": f"chatcmpl-{chunk.id}",
+                                    "object": "chat.completion.chunk",
+                                    "created": chunk.created,
+                                    "model": chunk.model,
+                                    "choices": [{
+                                        "index": 0,
+                                        "delta": {
+                                            "content": chunk.choices[0].delta.content
+                                        },
+                                        "finish_reason": chunk.choices[0].finish_reason
+                                    }]
+                                }
+                                yield f"data: {json.dumps(chunk_data)}\n\n"
+                        
+                        final_chunk = {
+                            "id": f"chatcmpl-final",
+                            "object": "chat.completion.chunk",
+                            "created": int(time.time()),
+                            "model": "gpt-4.1-mini",
+                            "choices": [{
+                                "index": 0,
+                                "delta": {},
+                                "finish_reason": "stop"
+                            }]
+                        }
+                        yield f"data: {json.dumps(final_chunk)}\n\n"
+                        yield "data: [DONE]\n\n"
+                    except Exception as stream_e:
+                        logging.error(f"Error in fallback stream: {stream_e}")
+                        error_chunk = {
+                            "id": "chatcmpl-error",
+                            "object": "chat.completion.chunk",
+                            "created": int(time.time()),
+                            "model": "gpt-4.1-mini",
+                            "choices": [{
+                                "index": 0,
+                                "delta": {
+                                    "content": "\n[Temporary issue with response. Please try again.]"
+                                },
+                                "finish_reason": "stop"
+                            }]
+                        }
+                        yield f"data: {json.dumps(error_chunk)}\n\n"
+                        yield "data: [DONE]\n\n"
+                
+                response = StreamingResponse(fallback_stream(), media_type="text/event-stream")
+                response.headers["X-Accel-Buffering"] = "no"
+                response.headers["Cache-Control"] = "no-cache"
+                response.headers["Connection"] = "keep-alive"
+                return response
+            else:
+                # Non-streaming response
+                response_content = completion.choices[0].message.content
+                return JSONResponse(content={"response": response_content})
+                
+        except Exception as fallback_e:
+            logging.error(f"Fallback to completions API failed: {fallback_e}")
+            # Last resort response
+            if stream_output:
+                def error_stream():
+                    error_chunk = {
+                        "id": "chatcmpl-error",
+                        "object": "chat.completion.chunk",
+                        "created": int(time.time()),
+                        "model": "gpt-4.1-mini",
+                        "choices": [{
+                            "index": 0,
+                            "delta": {
+                                "content": "I apologize, but I'm experiencing technical difficulties. Please try again in a moment."
+                            },
+                            "finish_reason": "stop"
+                        }]
+                    }
+                    yield f"data: {json.dumps(error_chunk)}\n\n"
+                    yield "data: [DONE]\n\n"
+                
+                response = StreamingResponse(error_stream(), media_type="text/event-stream")
+                response.headers["X-Accel-Buffering"] = "no"
+                response.headers["Cache-Control"] = "no-cache"
+                return response
+            else:
+                return JSONResponse(
+                    content={"response": "I apologize, but I'm experiencing technical difficulties. Please try again in a moment."},
+                    status_code=503
+                )
+    
     def stream_response():
         """Modified to be compatible with Bubble's streaming API while maintaining all features"""
         
@@ -4030,6 +4225,10 @@ async def process_conversation(
             with client.beta.threads.runs.stream(
                 thread_id=session,
                 assistant_id=assistant,
+                truncation_strategy={
+                    "type": "last_messages",
+                    "last_messages": 10
+                }
             ) as stream:
                 for event in stream:
                     # Store run ID for potential use
@@ -4626,7 +4825,21 @@ async def process_conversation(
             }
             yield f"data: {json.dumps(error_chunk)}\n\n"
             yield "data: [DONE]\n\n"
+    
     try:
+        # Acquire thread lock if session exists
+        if session:
+            try:
+                thread_lock = await thread_lock_manager.get_lock(session)
+                await asyncio.wait_for(thread_lock.acquire(), timeout=30.0)  # 30 second timeout
+                logging.info(f"Acquired thread lock for session {session}")
+            except asyncio.TimeoutError:
+                logging.warning(f"Timeout acquiring thread lock for session {session}")
+                return await fallback_to_completions("Thread lock timeout")
+            except Exception as lock_e:
+                logging.error(f"Error acquiring thread lock: {lock_e}")
+                return await fallback_to_completions(f"Thread lock error: {str(lock_e)}")
+        
         # Validate resources if provided 
         if session or assistant:
             validation = await validate_resources(client, session, assistant)
@@ -4640,36 +4853,40 @@ async def process_conversation(
                     logging.info(f"Created recovery thread: {session}")
                 except Exception as e:
                     logging.error(f"Failed to create recovery thread: {e}")
-                    raise HTTPException(status_code=500, detail="Failed to create a valid conversation thread")
+                    return await fallback_to_completions(f"Thread creation error: {str(e)}")
             
             # Create new assistant if invalid
             if assistant and not validation["assistant_valid"]:
                 logging.warning(f"Invalid assistant ID: {assistant}, creating a new one")
                 try:
+                    assistant_tools = [{"type": "file_search"}] + get_content_generation_tools()
                     assistant_obj = client.beta.assistants.create(
                         name=f"recovery_assistant_{int(time.time())}",
                         model="gpt-4.1-mini",
-                        instructions="You are a helpful assistant recovering from a system error.",
+                        instructions=system_prompt,
+                        tools=assistant_tools
                     )
                     assistant = assistant_obj.id
                     logging.info(f"Created recovery assistant: {assistant}")
                 except Exception as e:
                     logging.error(f"Failed to create recovery assistant: {e}")
-                    raise HTTPException(status_code=500, detail="Failed to create a valid assistant")
+                    return await fallback_to_completions(f"Assistant creation error: {str(e)}")
         
         # Create defaults if not provided
         if not assistant:
             logging.warning(f"No assistant ID provided for /{('conversation' if stream_output else 'chat')}, creating a default one.")
             try:
+                assistant_tools = [{"type": "file_search"}] + get_content_generation_tools()
                 assistant_obj = client.beta.assistants.create(
                     name="default_conversation_assistant",
                     model="gpt-4.1-mini",
-                    instructions="You are a helpful conversation assistant.",
+                    instructions=system_prompt,
+                    tools=assistant_tools
                 )
                 assistant = assistant_obj.id
             except Exception as e:
                 logging.error(f"Failed to create default assistant: {e}")
-                raise HTTPException(status_code=500, detail="Failed to create default assistant")
+                return await fallback_to_completions(f"Default assistant creation error: {str(e)}")
 
         if not session:
             logging.warning(f"No session (thread) ID provided for /{('conversation' if stream_output else 'chat')}, creating a new one.")
@@ -4678,7 +4895,7 @@ async def process_conversation(
                 session = thread.id
             except Exception as e:
                 logging.error(f"Failed to create default thread: {e}")
-                raise HTTPException(status_code=500, detail="Failed to create default thread")
+                return await fallback_to_completions(f"Default thread creation error: {str(e)}")
 
         # Check if there's an active run before adding a message
         active_run = False
@@ -4781,7 +4998,6 @@ async def process_conversation(
                         except Exception as run_e:
                             logging.warning(f"Error handling active run: {run_e}")
                             # Continue anyway - we'll try to add message
-                            # Continue anyway - we'll try to add message
 
                     # Try to add the message
                     client.beta.threads.messages.create(
@@ -4800,7 +5016,8 @@ async def process_conversation(
                     else:
                         logging.error(f"Failed to add message to thread {session}: {e}")
                         if attempt == max_retries - 1:
-                            raise HTTPException(status_code=500, detail="Failed to add message to conversation thread")
+                            # Use fallback instead of raising exception
+                            return await fallback_to_completions(f"Failed to add message: {str(e)}")
             
             if not success:
                 # Final fallback - try to create a new thread and continue
@@ -4822,27 +5039,31 @@ async def process_conversation(
                         logging.info(f"Successfully added message to new thread {new_session}")
                     except Exception as new_msg_e:
                         logging.error(f"Failed to add message to new thread: {new_msg_e}")
-                        # Even if this fails, continue with a helpful response
-                        prompt = "I'm having trouble processing your request. Please try again."
+                        # Use fallback even if this fails
+                        return await fallback_to_completions(f"Failed to add message to new thread: {str(new_msg_e)}")
                 except Exception as new_thread_e:
                     logging.error(f"Failed to create new thread: {new_thread_e}")
-                    # Continue anyway with error handling
+                    # Use fallback
+                    return await fallback_to_completions(f"Failed to create new thread: {str(new_thread_e)}")
+        
+        # Check message count and trim if needed
+        try:
+            messages_response = client.beta.threads.messages.list(thread_id=session, limit=100)
+            message_count = len(messages_response.data)
+            if message_count > 50:  # Trim when thread gets long
+                if stream_output:
+                    sync_trim_thread(client, session, keep_messages=30)
+                else:
+                    await trim_thread(client, session, keep_messages=30)
+                logging.info(f"Trimmed thread {session} from {message_count} messages")
+        except Exception as e:
+            logging.warning(f"Could not check/trim thread: {e}")
         
         # Handle non-streaming mode (/chat endpoint)
         if not stream_output:
             # For non-streaming mode, we'll use a completely different approach
             full_response = ""
             try:
-                # Check message count and trim if needed
-                try:
-                    messages_response = client.beta.threads.messages.list(thread_id=session, limit=100)
-                    message_count = len(messages_response.data)
-                    if message_count > 50:  # Trim when thread gets long
-                        await summarize_and_trim_thread(client, session, keep_messages=30)
-                        logging.info(f"Trimmed thread {session} from {message_count} messages")
-                except Exception as e:
-                    logging.warning(f"Could not check/trim thread: {e}")
-                
                 # Create a run without streaming
                 run = client.beta.threads.runs.create(
                     thread_id=session,
@@ -4947,7 +5168,9 @@ async def process_conversation(
                             elif "context_length" in error_details.lower():
                                 return JSONResponse(content={"response": "The conversation has become too long. Please start a new conversation."})
                             else:
-                                return JSONResponse(content={"response": f"Sorry, I encountered an error. {error_details if error_details else 'Please try again.'}"})
+                                # Use fallback
+                                return await fallback_to_completions(f"Run {run_status.status}: {error_details}")
+                        
                         # Handle tool calls
                         elif run_status.status == "requires_action":
                             if run_status.required_action.type == "submit_tool_outputs":
@@ -5108,9 +5331,9 @@ async def process_conversation(
                                             time.sleep(1)
                                     
                                     if not submit_success:
-                                        return JSONResponse(content={"response": f"Sorry, I encountered an error processing your data analysis request. Please try again."})
+                                        # Use fallback
+                                        return await fallback_to_completions(f"Failed to submit tool outputs: {submit_e}")
                         
-                        # Continue polling if still in progress
                         # Continue polling if still in progress
                         if attempt < max_poll_attempts - 1:
                             # Progressive backoff: start fast, slow down over time
@@ -5149,27 +5372,47 @@ async def process_conversation(
                 
                 # Final fallback if we still don't have a response
                 if not full_response:
-                    full_response = "I processed your request, but couldn't generate a proper response. Please try again or rephrase your question."
+                    # Use completions API fallback
+                    return await fallback_to_completions("No response received from assistant")
 
                 return JSONResponse(content={"response": full_response})
                 
             except Exception as e:
                 logging.error(f"Error in non-streaming response generation: {e}")
-                return JSONResponse(
-                    content={"response": "An error occurred while processing your request. Please try again."},
-                    status_code=500
-                )
+                # Use fallback
+                return await fallback_to_completions(f"Non-streaming error: {str(e)}")
+        
         # Return the streaming response for streaming mode
-        response = StreamingResponse(stream_response(), media_type="text/event-stream")
-        response.headers["X-Accel-Buffering"] = "no"  # Disable nginx buffering
-        response.headers["Cache-Control"] = "no-cache"
-        response.headers["Connection"] = "keep-alive"
-        return response
+        try:
+            response = StreamingResponse(stream_response(), media_type="text/event-stream")
+            response.headers["X-Accel-Buffering"] = "no"  # Disable nginx buffering
+            response.headers["Cache-Control"] = "no-cache"
+            response.headers["Connection"] = "keep-alive"
+            response_started = True
+            return response
+        except Exception as stream_setup_e:
+            logging.error(f"Error setting up streaming response: {stream_setup_e}")
+            return await fallback_to_completions(f"Stream setup error: {str(stream_setup_e)}")
 
     except Exception as e:
         endpoint_type = "conversation" if stream_output else "chat"
-        logging.error(f"Error in /{endpoint_type} endpoint setup: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to process {endpoint_type} request: {str(e)}")
+        logging.error(f"Unexpected error in /{endpoint_type}: {str(e)}\n{traceback.format_exc()}")
+        
+        # Use fallback if response hasn't started
+        if not response_started:
+            return await fallback_to_completions(f"Unexpected error: {str(e)}")
+        else:
+            # If streaming already started, we can't change response type
+            raise HTTPException(status_code=500, detail="An error occurred during response streaming")
+    
+    finally:
+        # Release the thread lock
+        if thread_lock and thread_lock.locked():
+            try:
+                thread_lock.release()
+                logging.info(f"Released thread lock for session {session}")
+            except Exception as release_e:
+                logging.error(f"Error releasing thread lock: {release_e}")
 @app.get("/conversation")
 async def conversation(
     session: Optional[str] = None,
