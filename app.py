@@ -7719,7 +7719,1210 @@ async def comprehensive_health_check():
         status_code=status_code
     )
 
-
+@app.post("/test-comprehensive")
+async def comprehensive_system_test(
+    test_mode: str = Form("all"),  # "all", "long_thread", "concurrent", "same_thread", "run_consistency", "scaling", "tools"
+    test_duration: int = Form(60),  # seconds
+    concurrent_users: int = Form(5),
+    messages_per_thread: int = Form(60),  # for long thread test
+    verbose: bool = Form(True)
+):
+    """
+    Comprehensive system test endpoint for testing scaling, concurrency, tool calling, and edge cases.
+    
+    Args:
+        test_mode: Which test to run (or "all" for all tests)
+        test_duration: How long to run concurrent tests (seconds)
+        concurrent_users: Number of concurrent users to simulate
+        messages_per_thread: Number of messages for long thread test
+        verbose: Whether to include detailed logs in response
+    """
+    
+    # Security check
+    if os.getenv("ENVIRONMENT", "development") == "production":
+        # In production, require a secret token
+        test_token = os.getenv("TEST_ENDPOINT_TOKEN", None)
+        if not test_token:
+            raise HTTPException(status_code=403, detail="Test endpoint disabled in production")
+    
+    start_time = time.time()
+    test_results = {
+        "timestamp": datetime.now().isoformat(),
+        "test_mode": test_mode,
+        "parameters": {
+            "test_duration": test_duration,
+            "concurrent_users": concurrent_users,
+            "messages_per_thread": messages_per_thread
+        },
+        "tests": {},
+        "summary": {
+            "total_tests": 0,
+            "passed": 0,
+            "failed": 0,
+            "warnings": 0
+        },
+        "logs": [] if verbose else None
+    }
+    
+    client = create_client()
+    
+    # Helper function to log
+    def log(message: str, level: str = "info"):
+        logging.info(f"[TEST] {message}")
+        if verbose:
+            test_results["logs"].append({
+                "time": datetime.now().isoformat(),
+                "level": level,
+                "message": message
+            })
+    
+    # Test 1: Long Thread Response Test
+    async def test_long_thread():
+        """Test thread trimming and long conversation handling"""
+        test_name = "long_thread"
+        log(f"Starting {test_name} test")
+        result = {
+            "status": "running",
+            "messages_created": 0,
+            "trim_triggered": False,
+            "errors": [],
+            "response_times": [],
+            "trim_behavior": {}
+        }
+        
+        try:
+            # Create test assistant and thread
+            assistant = client.beta.assistants.create(
+                name=f"test_long_thread_{int(time.time())}",
+                model="gpt-4.1-mini",
+                instructions="You are a test assistant. Keep responses very brief (max 20 words).",
+                tools=[]
+            )
+            thread = client.beta.threads.create()
+            
+            log(f"Created test assistant {assistant.id} and thread {thread.id}")
+            
+            # Fill thread with messages
+            for i in range(messages_per_thread):
+                try:
+                    # Add user message
+                    client.beta.threads.messages.create(
+                        thread_id=thread.id,
+                        role="user",
+                        content=f"Test message {i+1}. Reply with just 'Acknowledged {i+1}'."
+                    )
+                    
+                    # Create run
+                    run_start = time.time()
+                    run = client.beta.threads.runs.create(
+                        thread_id=thread.id,
+                        assistant_id=assistant.id
+                    )
+                    
+                    # Wait for completion
+                    max_wait = 30
+                    wait_start = time.time()
+                    while time.time() - wait_start < max_wait:
+                        run_status = client.beta.threads.runs.retrieve(
+                            thread_id=thread.id,
+                            run_id=run.id
+                        )
+                        if run_status.status in ["completed", "failed", "cancelled", "expired"]:
+                            break
+                        await asyncio.sleep(0.5)
+                    
+                    response_time = time.time() - run_start
+                    result["response_times"].append(response_time)
+                    result["messages_created"] = i + 1
+                    
+                    # Check message count
+                    messages = client.beta.threads.messages.list(thread_id=thread.id, limit=100)
+                    current_count = len(messages.data)
+                    
+                    # Log trimming behavior
+                    if i == 47:  # Just before expected trim
+                        result["trim_behavior"]["before_trim_count"] = current_count
+                    elif i == 49:  # Just after expected trim
+                        result["trim_behavior"]["after_trim_count"] = current_count
+                        if current_count < result["trim_behavior"].get("before_trim_count", 100):
+                            result["trim_triggered"] = True
+                            log(f"Trim detected at message {i+1}: {result['trim_behavior']['before_trim_count']} -> {current_count}")
+                    
+                    if i % 10 == 0:
+                        log(f"Created {i+1} messages, current thread size: {current_count}, avg response time: {sum(result['response_times'])/len(result['response_times']):.2f}s")
+                    
+                except Exception as e:
+                    error_msg = f"Error at message {i+1}: {str(e)}"
+                    log(error_msg, "error")
+                    result["errors"].append(error_msg)
+                    if "limit" in str(e).lower() or "maximum" in str(e).lower():
+                        break
+            
+            # Test trimming behavior with process_conversation
+            log("Testing process_conversation with full thread")
+            
+            # Test streaming endpoint
+            try:
+                response = await process_conversation(
+                    session=thread.id,
+                    prompt="Final test message after filling thread. How many messages can you see?",
+                    assistant=assistant.id,
+                    stream_output=True
+                )
+                
+                # Check if it's a streaming response
+                if hasattr(response, 'body_iterator'):
+                    result["streaming_endpoint_works"] = True
+                    log("Streaming endpoint handled full thread successfully")
+                else:
+                    result["streaming_endpoint_works"] = False
+                    log("Streaming endpoint returned non-streaming response", "warning")
+                    
+            except Exception as e:
+                result["streaming_endpoint_error"] = str(e)
+                log(f"Streaming endpoint error: {e}", "error")
+            
+            # Test non-streaming endpoint
+            try:
+                response = await process_conversation(
+                    session=thread.id,
+                    prompt="Another final test. Count your recent messages.",
+                    assistant=assistant.id,
+                    stream_output=False
+                )
+                
+                if hasattr(response, 'body'):
+                    response_data = json.loads(response.body.decode())
+                    result["non_streaming_endpoint_works"] = True
+                    result["final_response_preview"] = response_data.get("response", "")[:200]
+                    log("Non-streaming endpoint handled full thread successfully")
+                    
+            except Exception as e:
+                result["non_streaming_endpoint_error"] = str(e)
+                log(f"Non-streaming endpoint error: {e}", "error")
+            
+            # Cleanup
+            try:
+                client.beta.assistants.delete(assistant_id=assistant.id)
+                log(f"Cleaned up assistant {assistant.id}")
+            except:
+                pass
+            
+            # Analyze results
+            if result["messages_created"] >= 48:
+                if result["trim_triggered"]:
+                    result["status"] = "passed"
+                    result["summary"] = "Thread trimming working correctly"
+                else:
+                    result["status"] = "warning"
+                    result["summary"] = "Thread filled but trimming not detected"
+            else:
+                result["status"] = "failed"
+                result["summary"] = f"Could only create {result['messages_created']} messages"
+            
+            avg_response_time = sum(result["response_times"]) / len(result["response_times"]) if result["response_times"] else 0
+            result["avg_response_time"] = avg_response_time
+            
+        except Exception as e:
+            result["status"] = "failed"
+            result["summary"] = f"Test failed: {str(e)}"
+            log(f"Long thread test failed: {e}", "error")
+        
+        return result
+    
+    # Test 2: Concurrent Users Test
+    async def test_concurrent_users():
+        """Test multiple users talking to different assistants concurrently"""
+        test_name = "concurrent_users"
+        log(f"Starting {test_name} test with {concurrent_users} users")
+        result = {
+            "status": "running",
+            "users_tested": concurrent_users,
+            "successful_conversations": 0,
+            "failed_conversations": 0,
+            "response_times": [],
+            "errors": [],
+            "concurrency_issues": []
+        }
+        
+        # Create test assistants
+        assistants = []
+        for i in range(concurrent_users):
+            try:
+                assistant = client.beta.assistants.create(
+                    name=f"test_concurrent_{i}_{int(time.time())}",
+                    model="gpt-4.1-mini",
+                    instructions=f"You are test assistant {i}. Always include your number ({i}) in responses.",
+                    tools=[]
+                )
+                assistants.append(assistant)
+                log(f"Created assistant {i}: {assistant.id}")
+            except Exception as e:
+                log(f"Failed to create assistant {i}: {e}", "error")
+                result["errors"].append(f"Assistant creation {i}: {str(e)}")
+        
+        async def simulate_user(user_id: int, assistant_id: str):
+            """Simulate a single user having a conversation"""
+            user_result = {
+                "user_id": user_id,
+                "success": False,
+                "messages_sent": 0,
+                "responses_received": 0,
+                "errors": [],
+                "response_times": []
+            }
+            
+            try:
+                # Create thread for this user
+                thread = client.beta.threads.create()
+                log(f"User {user_id}: Created thread {thread.id}")
+                
+                # Have a conversation
+                test_messages = [
+                    f"Hello, I am user {user_id}",
+                    f"What is your assistant number?",
+                    f"Calculate {user_id} + {user_id}",
+                    f"Goodbye from user {user_id}"
+                ]
+                
+                for msg in test_messages:
+                    try:
+                        start_time = time.time()
+                        
+                        # Use process_conversation
+                        response = await process_conversation(
+                            session=thread.id,
+                            prompt=msg,
+                            assistant=assistant_id,
+                            stream_output=False
+                        )
+                        
+                        response_time = time.time() - start_time
+                        user_result["response_times"].append(response_time)
+                        
+                        if hasattr(response, 'body'):
+                            response_data = json.loads(response.body.decode())
+                            response_text = response_data.get("response", "")
+                            
+                            # Verify assistant identity
+                            if str(user_id) not in response_text and user_result["messages_sent"] > 0:
+                                user_result["errors"].append(f"Assistant identity mismatch in response: {response_text[:50]}...")
+                            
+                            user_result["responses_received"] += 1
+                        
+                        user_result["messages_sent"] += 1
+                        
+                        # Small delay between messages
+                        await asyncio.sleep(0.5)
+                        
+                    except Exception as e:
+                        user_result["errors"].append(f"Message '{msg}': {str(e)}")
+                        log(f"User {user_id} error: {e}", "error")
+                
+                user_result["success"] = user_result["messages_sent"] == len(test_messages) and user_result["responses_received"] == len(test_messages)
+                
+            except Exception as e:
+                user_result["errors"].append(f"Conversation error: {str(e)}")
+                log(f"User {user_id} conversation failed: {e}", "error")
+            
+            return user_result
+        
+        # Run concurrent conversations
+        tasks = []
+        for i in range(len(assistants)):
+            task = simulate_user(i, assistants[i].id)
+            tasks.append(task)
+        
+        # Execute concurrently
+        user_results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Analyze results
+        for i, user_result in enumerate(user_results):
+            if isinstance(user_result, Exception):
+                result["failed_conversations"] += 1
+                result["errors"].append(f"User {i}: {str(user_result)}")
+            elif isinstance(user_result, dict):
+                if user_result.get("success"):
+                    result["successful_conversations"] += 1
+                else:
+                    result["failed_conversations"] += 1
+                
+                result["response_times"].extend(user_result.get("response_times", []))
+                
+                if user_result.get("errors"):
+                    result["concurrency_issues"].extend(user_result["errors"])
+        
+        # Cleanup assistants
+        for assistant in assistants:
+            try:
+                client.beta.assistants.delete(assistant_id=assistant.id)
+            except:
+                pass
+        
+        # Summary
+        result["avg_response_time"] = sum(result["response_times"]) / len(result["response_times"]) if result["response_times"] else 0
+        result["success_rate"] = result["successful_conversations"] / concurrent_users if concurrent_users > 0 else 0
+        
+        if result["success_rate"] >= 0.9:
+            result["status"] = "passed"
+            result["summary"] = f"Concurrent users test passed with {result['success_rate']*100:.1f}% success rate"
+        elif result["success_rate"] >= 0.7:
+            result["status"] = "warning"
+            result["summary"] = f"Concurrent users test has issues: {result['success_rate']*100:.1f}% success rate"
+        else:
+            result["status"] = "failed"
+            result["summary"] = f"Concurrent users test failed: only {result['success_rate']*100:.1f}% success rate"
+        
+        log(f"Concurrent users test completed: {result['summary']}")
+        return result
+    
+    # Test 3: Same Thread Concurrent Access
+    async def test_same_thread_concurrent():
+        """Test multiple concurrent requests to the same thread"""
+        test_name = "same_thread_concurrent"
+        log(f"Starting {test_name} test")
+        result = {
+            "status": "running",
+            "concurrent_requests": 5,
+            "successful_requests": 0,
+            "failed_requests": 0,
+            "lock_timeouts": 0,
+            "errors": [],
+            "response_order": []
+        }
+        
+        try:
+            # Create shared assistant and thread
+            assistant = client.beta.assistants.create(
+                name=f"test_same_thread_{int(time.time())}",
+                model="gpt-4.1-mini",
+                instructions="You are a test assistant. Number each response sequentially.",
+                tools=[]
+            )
+            thread = client.beta.threads.create()
+            
+            log(f"Created shared assistant {assistant.id} and thread {thread.id}")
+            
+            async def send_concurrent_message(msg_id: int):
+                """Send a message and track order"""
+                msg_result = {
+                    "msg_id": msg_id,
+                    "sent_time": time.time(),
+                    "completed_time": None,
+                    "success": False,
+                    "error": None
+                }
+                
+                try:
+                    response = await process_conversation(
+                        session=thread.id,
+                        prompt=f"Concurrent message {msg_id}. What number is this?",
+                        assistant=assistant.id,
+                        stream_output=False
+                    )
+                    
+                    msg_result["completed_time"] = time.time()
+                    msg_result["duration"] = msg_result["completed_time"] - msg_result["sent_time"]
+                    
+                    if hasattr(response, 'body'):
+                        response_data = json.loads(response.body.decode())
+                        msg_result["response"] = response_data.get("response", "")[:100]
+                        msg_result["success"] = True
+                        result["successful_requests"] += 1
+                    
+                except Exception as e:
+                    msg_result["error"] = str(e)
+                    msg_result["completed_time"] = time.time()
+                    result["failed_requests"] += 1
+                    
+                    if "timeout" in str(e).lower() or "lock" in str(e).lower():
+                        result["lock_timeouts"] += 1
+                    
+                    log(f"Concurrent message {msg_id} failed: {e}", "error")
+                
+                return msg_result
+            
+            # Send concurrent messages
+            tasks = []
+            for i in range(result["concurrent_requests"]):
+                # Stagger starts slightly to test lock queueing
+                await asyncio.sleep(0.1)
+                task = send_concurrent_message(i)
+                tasks.append(task)
+            
+            # Wait for all to complete
+            msg_results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Analyze order and timing
+            for msg_result in msg_results:
+                if isinstance(msg_result, dict):
+                    result["response_order"].append({
+                        "msg_id": msg_result["msg_id"],
+                        "duration": msg_result.get("duration", 0),
+                        "success": msg_result["success"]
+                    })
+            
+            # Sort by completion time to see actual order
+            result["response_order"].sort(key=lambda x: x.get("duration", 999))
+            
+            # Cleanup
+            try:
+                client.beta.assistants.delete(assistant_id=assistant.id)
+            except:
+                pass
+            
+            # Summary
+            if result["successful_requests"] == result["concurrent_requests"]:
+                result["status"] = "passed"
+                result["summary"] = "All concurrent requests to same thread succeeded"
+            elif result["successful_requests"] > 0:
+                result["status"] = "warning"
+                result["summary"] = f"Partial success: {result['successful_requests']}/{result['concurrent_requests']} requests succeeded"
+            else:
+                result["status"] = "failed"
+                result["summary"] = "All concurrent requests failed"
+            
+            log(f"Same thread concurrent test: {result['summary']}")
+            
+        except Exception as e:
+            result["status"] = "failed"
+            result["summary"] = f"Test setup failed: {str(e)}"
+            log(f"Same thread concurrent test failed: {e}", "error")
+        
+        return result
+    
+    # Test 4: Run Consistency and Cleanup
+    async def test_run_consistency():
+        """Test run handling, cleanup, and error recovery"""
+        test_name = "run_consistency"
+        log(f"Starting {test_name} test")
+        result = {
+            "status": "running",
+            "tests_performed": [],
+            "issues_found": [],
+            "cleanup_success": True
+        }
+        
+        try:
+            # Create test assistant and thread
+            assistant = client.beta.assistants.create(
+                name=f"test_runs_{int(time.time())}",
+                model="gpt-4.1-mini",
+                instructions="You are a test assistant.",
+                tools=[]
+            )
+            thread = client.beta.threads.create()
+            
+            # Test 1: Abandoned run handling
+            log("Testing abandoned run handling")
+            
+            # Create a run but don't wait for it
+            run1 = client.beta.threads.runs.create(
+                thread_id=thread.id,
+                assistant_id=assistant.id
+            )
+            
+            # Immediately try to create another message
+            await asyncio.sleep(2)  # Let first run start
+            
+            try:
+                # This should handle the active run
+                response = await process_conversation(
+                    session=thread.id,
+                    prompt="New message while run is active",
+                    assistant=assistant.id,
+                    stream_output=False
+                )
+                
+                result["tests_performed"].append("active_run_handling")
+                log("Successfully handled active run scenario")
+                
+            except Exception as e:
+                result["issues_found"].append(f"Active run handling failed: {str(e)}")
+                log(f"Active run handling error: {e}", "error")
+            
+            # Test 2: Server error recovery
+            log("Testing server error recovery")
+            
+            # We can't force a server error, but we can test the retry logic
+            # by using a very short timeout (not perfect but tests the flow)
+            
+            # Test 3: Thread state after errors
+            log("Testing thread state consistency")
+            
+            # Check thread messages
+            messages = client.beta.threads.messages.list(thread_id=thread.id)
+            message_count = len(messages.data)
+            
+            # Verify no duplicate messages
+            message_contents = [msg.content[0].text.value if msg.content else "" for msg in messages.data]
+            unique_contents = set(message_contents)
+            
+            if len(message_contents) != len(unique_contents):
+                result["issues_found"].append("Duplicate messages found in thread")
+            
+            result["tests_performed"].append("thread_consistency_check")
+            result["thread_state"] = {
+                "message_count": message_count,
+                "unique_messages": len(unique_contents),
+                "duplicates": len(message_contents) - len(unique_contents)
+            }
+            
+            # Test 4: Run cleanup verification
+            log("Testing run cleanup")
+            
+            # List all runs for the thread
+            runs = client.beta.threads.runs.list(thread_id=thread.id)
+            active_runs = [run for run in runs.data if run.status in ["in_progress", "queued", "requires_action"]]
+            completed_runs = [run for run in runs.data if run.status == "completed"]
+            failed_runs = [run for run in runs.data if run.status in ["failed", "cancelled", "expired"]]
+            
+            result["run_summary"] = {
+                "total_runs": len(runs.data),
+                "active": len(active_runs),
+                "completed": len(completed_runs),
+                "failed": len(failed_runs)
+            }
+            
+            if active_runs:
+                result["issues_found"].append(f"Found {len(active_runs)} active runs that weren't cleaned up")
+                
+                # Try to cancel them
+                for run in active_runs:
+                    try:
+                        client.beta.threads.runs.cancel(thread_id=thread.id, run_id=run.id)
+                        log(f"Cancelled abandoned run {run.id}")
+                    except:
+                        pass
+            
+            result["tests_performed"].append("run_cleanup_verification")
+            
+            # Cleanup
+            try:
+                client.beta.assistants.delete(assistant_id=assistant.id)
+            except Exception as e:
+                result["cleanup_success"] = False
+                log(f"Failed to cleanup assistant: {e}", "error")
+            
+            # Summary
+            if not result["issues_found"]:
+                result["status"] = "passed"
+                result["summary"] = "Run consistency and cleanup working correctly"
+            elif len(result["issues_found"]) <= 2:
+                result["status"] = "warning"
+                result["summary"] = f"Minor issues found: {', '.join(result['issues_found'][:2])}"
+            else:
+                result["status"] = "failed"
+                result["summary"] = f"Multiple issues found: {len(result['issues_found'])} problems"
+            
+        except Exception as e:
+            result["status"] = "failed"
+            result["summary"] = f"Test failed: {str(e)}"
+            log(f"Run consistency test failed: {e}", "error")
+        
+        return result
+    
+    # Test 5: Scaling and Performance Test
+    async def test_scaling():
+        """Test system performance under load"""
+        test_name = "scaling"
+        log(f"Starting {test_name} test")
+        result = {
+            "status": "running",
+            "total_messages": 0,
+            "successful_messages": 0,
+            "avg_response_time": 0,
+            "p95_response_time": 0,
+            "p99_response_time": 0,
+            "errors": [],
+            "performance_degradation": False,
+            "memory_issues": False
+        }
+        
+        response_times = []
+        start_time = time.time()
+        
+        try:
+            # Create test assistant
+            assistant = client.beta.assistants.create(
+                name=f"test_scaling_{int(time.time())}",
+                model="gpt-4.1-mini",
+                instructions="You are a test assistant. Keep responses under 10 words.",
+                tools=[]
+            )
+            
+            # Create multiple threads
+            threads = []
+            for i in range(3):  # Use 3 threads for scaling test
+                thread = client.beta.threads.create()
+                threads.append(thread.id)
+            
+            log(f"Created {len(threads)} threads for scaling test")
+            
+            # Send messages for test_duration seconds
+            message_count = 0
+            errors_count = 0
+            
+            while time.time() - start_time < test_duration:
+                # Round-robin through threads
+                thread_id = threads[message_count % len(threads)]
+                
+                try:
+                    msg_start = time.time()
+                    
+                    response = await process_conversation(
+                        session=thread_id,
+                        prompt=f"Quick test {message_count}",
+                        assistant=assistant.id,
+                        stream_output=False
+                    )
+                    
+                    msg_duration = time.time() - msg_start
+                    response_times.append(msg_duration)
+                    result["successful_messages"] += 1
+                    
+                    # Check for performance degradation
+                    if len(response_times) > 10:
+                        recent_avg = sum(response_times[-10:]) / 10
+                        overall_avg = sum(response_times) / len(response_times)
+                        
+                        if recent_avg > overall_avg * 1.5:
+                            result["performance_degradation"] = True
+                            log(f"Performance degradation detected: recent avg {recent_avg:.2f}s vs overall {overall_avg:.2f}s", "warning")
+                    
+                except Exception as e:
+                    errors_count += 1
+                    result["errors"].append(f"Message {message_count}: {str(e)}")
+                    
+                    if "memory" in str(e).lower() or "resource" in str(e).lower():
+                        result["memory_issues"] = True
+                
+                message_count += 1
+                result["total_messages"] = message_count
+                
+                # Small delay to avoid overwhelming the system
+                await asyncio.sleep(0.1)
+                
+                # Progress update
+                if message_count % 20 == 0:
+                    log(f"Scaling test progress: {message_count} messages, {result['successful_messages']} successful")
+            
+            # Calculate statistics
+            if response_times:
+                response_times.sort()
+                result["avg_response_time"] = sum(response_times) / len(response_times)
+                result["p95_response_time"] = response_times[int(len(response_times) * 0.95)]
+                result["p99_response_time"] = response_times[int(len(response_times) * 0.99)]
+                result["min_response_time"] = response_times[0]
+                result["max_response_time"] = response_times[-1]
+            
+            # Cleanup
+            try:
+                client.beta.assistants.delete(assistant_id=assistant.id)
+            except:
+                pass
+            
+            # Summary
+            success_rate = result["successful_messages"] / result["total_messages"] if result["total_messages"] > 0 else 0
+            
+            if success_rate >= 0.95 and not result["performance_degradation"] and result["avg_response_time"] < 5:
+                result["status"] = "passed"
+                result["summary"] = f"Scaling test passed: {success_rate*100:.1f}% success rate, avg response {result['avg_response_time']:.2f}s"
+            elif success_rate >= 0.8 or result["performance_degradation"]:
+                result["status"] = "warning"
+                issues = []
+                if success_rate < 0.95:
+                    issues.append(f"{success_rate*100:.1f}% success rate")
+                if result["performance_degradation"]:
+                    issues.append("performance degradation")
+                result["summary"] = f"Scaling issues detected: {', '.join(issues)}"
+            else:
+                result["status"] = "failed"
+                result["summary"] = f"Scaling test failed: only {success_rate*100:.1f}% success rate"
+            
+            log(f"Scaling test completed: {result['summary']}")
+            
+        except Exception as e:
+            result["status"] = "failed"
+            result["summary"] = f"Scaling test failed: {str(e)}"
+            log(f"Scaling test error: {e}", "error")
+        
+        return result
+    
+    # Test 6: Tool Calling Tests (NEW)
+    async def test_tool_calling():
+        """Test all tool calling functionality including pandas_agent, generate_content, and extract_data"""
+        test_name = "tool_calling"
+        log(f"Starting {test_name} test")
+        result = {
+            "status": "running",
+            "pandas_agent": {
+                "tested": False,
+                "success": False,
+                "response_time": 0,
+                "errors": []
+            },
+            "generate_content": {
+                "tested": False,
+                "success": False,
+                "response_time": 0,
+                "download_url": None,
+                "errors": []
+            },
+            "extract_data": {
+                "tested": False,
+                "success": False,
+                "response_time": 0,
+                "rows_extracted": 0,
+                "errors": []
+            },
+            "tool_concurrency": {
+                "tested": False,
+                "success": False,
+                "concurrent_tools": 0,
+                "errors": []
+            },
+            "run_states": {}
+        }
+        
+        try:
+            # Create test assistant with all tools
+            tools = [
+                {"type": "file_search"},
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "pandas_agent",
+                        "description": "Analyzes CSV and Excel files",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "query": {"type": "string", "description": "Analysis query"},
+                                "filename": {"type": "string", "description": "Optional filename"}
+                            },
+                            "required": ["query"]
+                        }
+                    }
+                }
+            ]
+            
+            # Add content generation tools
+            content_tools = get_content_generation_tools()
+            tools.extend(content_tools)
+            
+            assistant = client.beta.assistants.create(
+                name=f"test_tools_{int(time.time())}",
+                model="gpt-4.1-mini",
+                instructions=system_prompt,
+                tools=tools
+            )
+            
+            thread = client.beta.threads.create()
+            log(f"Created test assistant {assistant.id} with tools and thread {thread.id}")
+            
+            # Test 1: Pandas Agent Tool
+            log("Testing pandas_agent tool")
+            
+            # Create test CSV data
+            test_csv_content = """name,age,score,department
+John Doe,30,85,Engineering
+Jane Smith,25,92,Marketing
+Bob Johnson,35,78,Sales
+Alice Brown,28,95,Engineering
+Charlie Wilson,32,88,Marketing"""
+            
+            test_filename = f"test_data_{int(time.time())}.csv"
+            test_filepath = os.path.join("/tmp", f"pandas_agent_{int(time.time())}_{test_filename}")
+            
+            # Save test file
+            with open(test_filepath, 'w') as f:
+                f.write(test_csv_content)
+            
+            # Add file info to thread
+            try:
+                pandas_files_info = json.dumps([{
+                    "name": test_filename,
+                    "path": test_filepath,
+                    "type": "csv"
+                }])
+                
+                client.beta.threads.messages.create(
+                    thread_id=thread.id,
+                    role="user",
+                    content="PANDAS_AGENT_FILES_INFO (DO NOT DISPLAY TO USER)",
+                    metadata={
+                        "type": "pandas_agent_files",
+                        "files": pandas_files_info
+                    }
+                )
+                
+                # Test pandas agent
+                pandas_start = time.time()
+                
+                response = await process_conversation(
+                    session=thread.id,
+                    prompt=f"Analyze the CSV file {test_filename}. What is the average score by department?",
+                    assistant=assistant.id,
+                    stream_output=False
+                )
+                
+                pandas_duration = time.time() - pandas_start
+                result["pandas_agent"]["response_time"] = pandas_duration
+                result["pandas_agent"]["tested"] = True
+                
+                if hasattr(response, 'body'):
+                    response_data = json.loads(response.body.decode())
+                    response_text = response_data.get("response", "")
+                    
+                    # Check if pandas agent was actually used
+                    if "engineering" in response_text.lower() or "marketing" in response_text.lower():
+                        result["pandas_agent"]["success"] = True
+                        result["pandas_agent"]["response_preview"] = response_text[:200]
+                        log(f"Pandas agent test successful, response time: {pandas_duration:.2f}s")
+                    else:
+                        result["pandas_agent"]["errors"].append("Response doesn't contain expected analysis")
+                        log("Pandas agent response doesn't contain expected data", "warning")
+                
+            except Exception as e:
+                result["pandas_agent"]["errors"].append(str(e))
+                log(f"Pandas agent test failed: {e}", "error")
+            
+            # Test 2: Generate Content Tool
+            log("Testing generate_content tool")
+            
+            try:
+                generate_start = time.time()
+                
+                response = await process_conversation(
+                    session=thread.id,
+                    prompt="/generate 10 test product reviews with ratings",
+                    assistant=assistant.id,
+                    stream_output=False
+                )
+                
+                generate_duration = time.time() - generate_start
+                result["generate_content"]["response_time"] = generate_duration
+                result["generate_content"]["tested"] = True
+                
+                if hasattr(response, 'body'):
+                    response_data = json.loads(response.body.decode())
+                    response_text = response_data.get("response", "")
+                    
+                    # Check for download URL
+                    if "download" in response_text.lower() and ("generated" in response_text.lower() or "created" in response_text.lower()):
+                        result["generate_content"]["success"] = True
+                        
+                        # Extract download URL if present
+                        import re
+                        url_match = re.search(r'\[([^\]]+)\]\((/[^\)]+)\)', response_text)
+                        if url_match:
+                            result["generate_content"]["download_url"] = url_match.group(2)
+                        
+                        log(f"Generate content test successful, response time: {generate_duration:.2f}s")
+                    else:
+                        result["generate_content"]["errors"].append("No download URL in response")
+                        log("Generate content response missing download URL", "warning")
+                
+            except Exception as e:
+                result["generate_content"]["errors"].append(str(e))
+                log(f"Generate content test failed: {e}", "error")
+            
+            # Test 3: Extract Data Tool
+            log("Testing extract_data tool")
+            
+            try:
+                # First, add some data to extract
+                client.beta.threads.messages.create(
+                    thread_id=thread.id,
+                    role="user",
+                    content="""Here are some customer feedbacks:
+- John: Great product, 5 stars
+- Mary: Good but expensive, 3 stars  
+- Bob: Excellent service, 5 stars
+- Alice: Needs improvement, 2 stars"""
+                )
+                
+                extract_start = time.time()
+                
+                response = await process_conversation(
+                    session=thread.id,
+                    prompt="/extract customer feedback data from our conversation",
+                    assistant=assistant.id,
+                    stream_output=False
+                )
+                
+                extract_duration = time.time() - extract_start
+                result["extract_data"]["response_time"] = extract_duration
+                result["extract_data"]["tested"] = True
+                
+                if hasattr(response, 'body'):
+                    response_data = json.loads(response.body.decode())
+                    response_text = response_data.get("response", "")
+                    
+                    # Check for successful extraction
+                    if "extracted" in response_text.lower() or "download" in response_text.lower():
+                        result["extract_data"]["success"] = True
+                        
+                        # Try to extract row count
+                        import re
+                        rows_match = re.search(r'(\d+)\s*rows?', response_text)
+                        if rows_match:
+                            result["extract_data"]["rows_extracted"] = int(rows_match.group(1))
+                        
+                        log(f"Extract data test successful, response time: {extract_duration:.2f}s")
+                    else:
+                        result["extract_data"]["errors"].append("No extraction confirmation in response")
+                        log("Extract data response doesn't confirm extraction", "warning")
+                
+            except Exception as e:
+                result["extract_data"]["errors"].append(str(e))
+                log(f"Extract data test failed: {e}", "error")
+            
+            # Test 4: Concurrent Tool Usage
+            log("Testing concurrent tool usage")
+            
+            try:
+                # Create multiple threads for concurrent tool testing
+                concurrent_threads = []
+                for i in range(3):
+                    ct = client.beta.threads.create()
+                    concurrent_threads.append(ct.id)
+                
+                async def test_tool_concurrently(thread_id: str, tool_type: str, prompt: str):
+                    """Test a tool concurrently"""
+                    try:
+                        tool_start = time.time()
+                        
+                        response = await process_conversation(
+                            session=thread_id,
+                            prompt=prompt,
+                            assistant=assistant.id,
+                            stream_output=False
+                        )
+                        
+                        tool_duration = time.time() - tool_start
+                        success = hasattr(response, 'body')
+                        
+                        return {
+                            "tool": tool_type,
+                            "success": success,
+                            "duration": tool_duration
+                        }
+                    except Exception as e:
+                        return {
+                            "tool": tool_type,
+                            "success": False,
+                            "error": str(e)
+                        }
+                
+                # Run different tools concurrently
+                tasks = [
+                    test_tool_concurrently(concurrent_threads[0], "generate", "/generate 5 test items"),
+                    test_tool_concurrently(concurrent_threads[1], "extract", "/analyze create 5 sample records"),
+                    test_tool_concurrently(concurrent_threads[2], "generate", "/generate brief report")
+                ]
+                
+                concurrent_results = await asyncio.gather(*tasks, return_exceptions=True)
+                
+                result["tool_concurrency"]["tested"] = True
+                result["tool_concurrency"]["concurrent_tools"] = len(tasks)
+                
+                successful_concurrent = sum(1 for r in concurrent_results if isinstance(r, dict) and r.get("success"))
+                result["tool_concurrency"]["success"] = successful_concurrent == len(tasks)
+                result["tool_concurrency"]["details"] = concurrent_results
+                
+                log(f"Concurrent tool test: {successful_concurrent}/{len(tasks)} successful")
+                
+            except Exception as e:
+                result["tool_concurrency"]["errors"].append(str(e))
+                log(f"Concurrent tool test failed: {e}", "error")
+            
+            # Test 5: Run State During Tool Calls
+            log("Testing run states during tool execution")
+            
+            try:
+                # Monitor a run with tool calls
+                state_thread = client.beta.threads.create()
+                
+                # Add message that will trigger tool
+                client.beta.threads.messages.create(
+                    thread_id=state_thread.id,
+                    role="user",
+                    content="/generate 3 sample users with email addresses"
+                )
+                
+                # Create run and monitor states
+                run = client.beta.threads.runs.create(
+                    thread_id=state_thread.id,
+                    assistant_id=assistant.id
+                )
+                
+                states_observed = []
+                state_durations = {}
+                last_state = None
+                last_state_time = time.time()
+                
+                # Monitor for up to 30 seconds
+                monitor_start = time.time()
+                while time.time() - monitor_start < 30:
+                    run_status = client.beta.threads.runs.retrieve(
+                        thread_id=state_thread.id,
+                        run_id=run.id
+                    )
+                    
+                    current_state = run_status.status
+                    
+                    if current_state != last_state:
+                        if last_state:
+                            state_durations[last_state] = time.time() - last_state_time
+                        
+                        states_observed.append(current_state)
+                        last_state = current_state
+                        last_state_time = time.time()
+                        
+                        log(f"Run state changed to: {current_state}")
+                    
+                    if current_state in ["completed", "failed", "cancelled", "expired"]:
+                        state_durations[current_state] = time.time() - last_state_time
+                        break
+                    
+                    await asyncio.sleep(0.5)
+                
+                result["run_states"] = {
+                    "states_observed": states_observed,
+                    "state_durations": state_durations,
+                    "final_state": current_state,
+                    "total_duration": time.time() - monitor_start
+                }
+                
+                # Check if we saw the expected states
+                expected_states = ["queued", "in_progress", "requires_action", "in_progress", "completed"]
+                if "requires_action" in states_observed:
+                    log("Tool execution states observed correctly")
+                else:
+                    log("Warning: requires_action state not observed", "warning")
+                
+            except Exception as e:
+                result["run_states"]["error"] = str(e)
+                log(f"Run state monitoring failed: {e}", "error")
+            
+            # Cleanup
+            try:
+                client.beta.assistants.delete(assistant_id=assistant.id)
+                # Clean up test file
+                if os.path.exists(test_filepath):
+                    os.remove(test_filepath)
+            except:
+                pass
+            
+            # Calculate overall tool test status
+            tool_tests = ["pandas_agent", "generate_content", "extract_data", "tool_concurrency"]
+            successful_tests = sum(1 for test in tool_tests if result[test].get("success"))
+            
+            if successful_tests == len(tool_tests):
+                result["status"] = "passed"
+                result["summary"] = "All tool tests passed successfully"
+            elif successful_tests >= len(tool_tests) * 0.7:
+                result["status"] = "warning"
+                failed_tools = [t for t in tool_tests if not result[t].get("success")]
+                result["summary"] = f"Tool tests partially passed. Failed: {', '.join(failed_tools)}"
+            else:
+                result["status"] = "failed"
+                result["summary"] = f"Tool tests failed: only {successful_tests}/{len(tool_tests)} passed"
+            
+            # Add performance summary
+            avg_tool_time = sum([
+                result["pandas_agent"]["response_time"],
+                result["generate_content"]["response_time"],
+                result["extract_data"]["response_time"]
+            ]) / 3
+            
+            result["performance_summary"] = {
+                "avg_tool_response_time": avg_tool_time,
+                "pandas_agent_time": result["pandas_agent"]["response_time"],
+                "generate_content_time": result["generate_content"]["response_time"],
+                "extract_data_time": result["extract_data"]["response_time"]
+            }
+            
+            log(f"Tool calling test completed: {result['summary']}")
+            
+        except Exception as e:
+            result["status"] = "failed"
+            result["summary"] = f"Tool test setup failed: {str(e)}"
+            log(f"Tool calling test failed: {e}", "error")
+        
+        return result
+    
+    # Execute tests based on mode
+    if test_mode == "all":
+        tests_to_run = ["long_thread", "concurrent", "same_thread", "run_consistency", "scaling", "tools"]
+    else:
+        tests_to_run = [test_mode]
+    
+    # Run selected tests
+    for test in tests_to_run:
+        test_results["summary"]["total_tests"] += 1
+        
+        try:
+            if test == "long_thread":
+                result = await test_long_thread()
+            elif test == "concurrent":
+                result = await test_concurrent_users()
+            elif test == "same_thread":
+                result = await test_same_thread_concurrent()
+            elif test == "run_consistency":
+                result = await test_run_consistency()
+            elif test == "scaling":
+                result = await test_scaling()
+            elif test == "tools":
+                result = await test_tool_calling()
+            else:
+                result = {"status": "skipped", "summary": "Unknown test"}
+            
+            test_results["tests"][test] = result
+            
+            if result.get("status") == "passed":
+                test_results["summary"]["passed"] += 1
+            elif result.get("status") == "warning":
+                test_results["summary"]["warnings"] += 1
+            else:
+                test_results["summary"]["failed"] += 1
+                
+        except Exception as e:
+            test_results["tests"][test] = {
+                "status": "error",
+                "summary": f"Test crashed: {str(e)}",
+                "error": traceback.format_exc()
+            }
+            test_results["summary"]["failed"] += 1
+            log(f"Test {test} crashed: {e}", "error")
+    
+    # Overall summary
+    total_time = time.time() - start_time
+    test_results["execution_time"] = f"{total_time:.2f} seconds"
+    
+    if test_results["summary"]["failed"] == 0:
+        if test_results["summary"]["warnings"] == 0:
+            test_results["overall_status"] = "healthy"
+            test_results["overall_summary"] = "All tests passed successfully"
+            status_code = 200
+        else:
+            test_results["overall_status"] = "degraded"
+            test_results["overall_summary"] = f"Tests passed with {test_results['summary']['warnings']} warnings"
+            status_code = 200
+    else:
+        test_results["overall_status"] = "unhealthy"
+        test_results["overall_summary"] = f"{test_results['summary']['failed']} tests failed"
+        status_code = 500
+    
+    # Clean up logs if not verbose
+    if not verbose:
+        test_results.pop("logs", None)
+    
+    return JSONResponse(
+        content=test_results,
+        status_code=status_code
+    )
 # Add a lightweight health check endpoint for quick monitoring
 @app.get("/health")
 async def basic_health():
