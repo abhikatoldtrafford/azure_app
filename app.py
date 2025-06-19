@@ -5170,6 +5170,15 @@ async def process_conversation(
                                                             break
                                                     except:
                                                         break
+                                                try:
+                                                    client.beta.threads.messages.create(
+                                                        thread_id=session,
+                                                        role="system",
+                                                        content="[Previous operation was cancelled due to timeout. Processing new request.]"
+                                                    )
+                                                    logging.info("Added cancellation notice to thread")
+                                                except Exception as notice_e:
+                                                    logging.warning(f"Could not add cancellation notice: {notice_e}")
                                             except Exception as cancel_e:
                                                 logging.error(f"Failed to cancel run {run_id}: {cancel_e}")
                                 else:
@@ -5182,35 +5191,22 @@ async def process_conversation(
                                     except Exception as cancel_e:
                                         logging.error(f"Failed to cancel old run {run_id}: {cancel_e}")
                                         
-                            elif run_status.status == "requires_action" and requires_action_tools:
+                            elif run_status.status == "requires_action":
                                 # For requires_action, check age and handle accordingly
                                 if run_age_seconds > 60:  # If stuck in requires_action for > 1 minute
-                                    logging.warning(f"Run {run_id} stuck in requires_action for {run_age_seconds}s, submitting cancel outputs")
-                                    # Submit empty outputs for each tool call
-                                    tool_outputs = []
-                                    for tool_call in requires_action_tools:
-                                        tool_outputs.append({
-                                            "tool_call_id": tool_call.id,
-                                            "output": "Cancelled due to timeout and new user request"
-                                        })
+                                    logging.warning(f"Run {run_id} stuck in requires_action for {run_age_seconds}s, cancelling directly")
+                                    # Skip tool output submission and cancel directly
                                     try:
-                                        client.beta.threads.runs.submit_tool_outputs(
-                                            thread_id=session,
-                                            run_id=run_id,
-                                            tool_outputs=tool_outputs
-                                        )
-                                        logging.info(f"Submitted cancellation outputs for stuck run {run_id}")
-                                        time.sleep(3)
-                                    except Exception as e:
-                                        # If submission fails, try to cancel
-                                        try:
-                                            client.beta.threads.runs.cancel(thread_id=session, run_id=run_id)
-                                            logging.info(f"Cancelled run {run_id} after failed tool output submission")
-                                            time.sleep(2)
-                                        except:
-                                            pass
+                                        client.beta.threads.runs.cancel(thread_id=session, run_id=run_id)
+                                        logging.info(f"Cancelled stuck requires_action run {run_id}")
+                                        time.sleep(2)  # Brief wait for cancellation
+                                    except Exception as cancel_e:
+                                        logging.error(f"Failed to cancel requires_action run {run_id}: {cancel_e}")
+                                        # Continue anyway - the add message will handle it
                                 else:
-                                    logging.info(f"Run {run_id} is in requires_action state ({run_age_seconds}s old), will proceed with new message")
+                                    logging.info(f"Run {run_id} is in requires_action state ({run_age_seconds}s old), waiting briefly")
+                                    # For young requires_action runs, wait a bit longer
+                                    time.sleep(5)
                                     
                         except Exception as run_e:
                             logging.warning(f"Error handling active run: {run_e}")
