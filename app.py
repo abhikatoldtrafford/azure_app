@@ -5354,6 +5354,90 @@ async def process_conversation(
                                             continue
                                         except:
                                             pass
+                            elif run_status.status == "requires_action":
+                                if run_status.required_action.type == "submit_tool_outputs":
+                                    tool_calls = run_status.required_action.submit_tool_outputs.tool_calls
+                                    tool_outputs = []
+                                    
+                                    for tool_call in tool_calls:
+                                        if tool_call.function.name == "pandas_agent":
+                                            try:
+                                                # Extract arguments
+                                                args = json.loads(tool_call.function.arguments)
+                                                query = args.get("query", "")
+                                                filename = args.get("filename", None)
+                                                
+                                                # Get pandas files for this thread
+                                                pandas_files = []
+                                                retry_count = 0
+                                                max_retries = 3
+                                                
+                                                while retry_count < max_retries:
+                                                    try:
+                                                        messages = client.beta.threads.messages.list(
+                                                            thread_id=session,
+                                                            order="desc",
+                                                            limit=50
+                                                        )
+                                                        
+                                                        for msg in messages.data:
+                                                            if hasattr(msg, 'metadata') and msg.metadata and msg.metadata.get('type') == 'pandas_agent_files':
+                                                                try:
+                                                                    pandas_files = json.loads(msg.metadata.get('files', '[]'))
+                                                                except Exception as parse_e:
+                                                                    logging.error(f"Error parsing pandas files metadata: {parse_e}")
+                                                                break
+                                                        break  # Success, exit retry loop
+                                                    except Exception as list_e:
+                                                        retry_count += 1
+                                                        logging.error(f"Error retrieving pandas files (attempt {retry_count}): {list_e}")
+                                                        time.sleep(1)
+                                                
+                                                # Filter by filename if specified
+                                                if filename:
+                                                    pandas_files = [f for f in pandas_files if f.get("name") == filename]
+                                                
+                                                # Generate operation ID for status tracking
+                                                pandas_agent_operation_id = f"pandas_agent_{int(time.time())}_{os.urandom(2).hex()}"
+                                                
+                                                # Execute the pandas_agent using manager directly
+                                                manager = PandasAgentManager.get_instance()
+                                                result, error, removed_files = manager.analyze(
+                                                    thread_id=session,
+                                                    query=query,
+                                                    files=pandas_files
+                                                )
+                                                
+                                                # Format the analysis result (same as streaming)
+                                                analysis_result = result if result else ""
+                                                if error:
+                                                    analysis_result = f"Error analyzing data: {error}"
+                                                if removed_files:
+                                                    removed_files_str = ", ".join(f"'{f}'" for f in removed_files)
+                                                    analysis_result += f"\n\nNote: The following file(s) were removed due to the 3-file limit: {removed_files_str}"
+                                                
+                                                # Add to tool outputs
+                                                tool_outputs.append({
+                                                    "tool_call_id": tool_call.id,
+                                                    "output": analysis_result
+                                                })
+                                                
+                                                # Save for potential fallback
+                                                tool_call_results.append(analysis_result)
+                                                
+                                            except Exception as e:
+                                                error_details = traceback.format_exc()
+                                                logging.error(f"Error executing pandas_agent: {e}\n{error_details}")
+                                                error_msg = f"Error analyzing data: {str(e)}"
+                                                
+                                                # Add error to tool outputs
+                                                tool_outputs.append({
+                                                    "tool_call_id": tool_call.id,
+                                                    "output": error_msg
+                                                })
+                                                
+                                                # Save for potential fallback
+                                                tool_call_results.append(error_msg)
                             else:
                                 logging.error(f"Run ended with status: {run_status.status}")
                             
