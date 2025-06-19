@@ -4045,6 +4045,9 @@ async def process_conversation(
             messages = [{"role": "system", "content": system_prompt}]
             
             # Try to get previous messages for context
+            context_messages = []
+            file_awareness_messages = []
+            
             if session:
                 try:
                     thread_messages = client.beta.threads.messages.list(
@@ -4053,12 +4056,17 @@ async def process_conversation(
                         limit=5  # Get more messages for better context
                     )
                     
-                    context_messages = []
                     for msg in reversed(thread_messages.data):
-                        # Skip system messages
+                        # Skip system messages but capture file awareness
                         if hasattr(msg, 'metadata') and msg.metadata:
                             msg_type = msg.metadata.get('type', '')
-                            if msg_type in ['user_persona_context', 'file_awareness', 'pandas_agent_files', 'pandas_agent_instruction']:
+                            if msg_type == 'file_awareness':
+                                # Capture file awareness messages
+                                for part in msg.content:
+                                    if part.type == 'text':
+                                        file_awareness_messages.append(part.text.value)
+                                continue
+                            elif msg_type in ['user_persona_context', 'pandas_agent_files', 'pandas_agent_instruction']:
                                 continue
                         
                         # Extract text content
@@ -4080,6 +4088,56 @@ async def process_conversation(
                 except Exception as context_e:
                     logging.warning(f"Could not retrieve context messages: {context_e}")
             
+            # Try to get vector store context if assistant ID is available
+            vector_store_context = ""
+            if assistant:
+                try:
+                    # Retrieve assistant details
+                    assistant_obj = client.beta.assistants.retrieve(assistant_id=assistant)
+                    
+                    # Get vector store IDs from assistant
+                    vector_store_ids = []
+                    if hasattr(assistant_obj, 'tool_resources') and assistant_obj.tool_resources:
+                        file_search_resources = getattr(assistant_obj.tool_resources, 'file_search', None)
+                        if file_search_resources and hasattr(file_search_resources, 'vector_store_ids'):
+                            vector_store_ids = list(file_search_resources.vector_store_ids)
+                    
+                    # Search vector stores if available and prompt exists
+                    if vector_store_ids and prompt:
+                        search_results = []
+                        for vs_id in vector_store_ids[:2]:  # Limit to first 2 vector stores
+                            try:
+                                results = client.vector_stores.search(
+                                    vector_store_id=vs_id,
+                                    query=prompt,
+                                    max_num_results=3  # Limit results
+                                )
+                                
+                                if results and hasattr(results, 'data'):
+                                    for result in results.data[:2]:  # Top 2 results per store
+                                        if hasattr(result, 'content'):
+                                            for content_part in result.content:
+                                                if hasattr(content_part, 'text') and content_part.text:
+                                                    search_results.append(content_part.text[:500])  # Limit length
+                            except Exception as search_e:
+                                logging.warning(f"Could not search vector store {vs_id}: {search_e}")
+                        
+                        if search_results:
+                            vector_store_context = "\n\nRelevant context from documents:\n" + "\n".join(search_results)
+                    
+                except Exception as vs_e:
+                    logging.warning(f"Could not retrieve vector store context: {vs_e}")
+            
+            # Enhanced system prompt with file awareness
+            enhanced_system_prompt = system_prompt
+            if file_awareness_messages:
+                enhanced_system_prompt += "\n\nFILE CONTEXT:\n" + "\n".join(file_awareness_messages[:3])  # Limit to 3 most recent
+            if vector_store_context:
+                enhanced_system_prompt += vector_store_context
+            
+            # Update the system message
+            messages[0] = {"role": "system", "content": enhanced_system_prompt}
+            
             # Add current prompt
             if prompt:
                 messages.append({"role": "user", "content": prompt})
@@ -4095,11 +4153,39 @@ async def process_conversation(
                 stream=stream_output
             )
             
+            # For non-streaming, add messages to thread for continuity
+            if not stream_output and session:
+                try:
+                    # Add user message to thread
+                    if prompt:
+                        client.beta.threads.messages.create(
+                            thread_id=session,
+                            role="user",
+                            content=prompt
+                        )
+                    
+                    # Add assistant response to thread
+                    response_content = completion.choices[0].message.content
+                    client.beta.threads.messages.create(
+                        thread_id=session,
+                        role="assistant",
+                        content=f"[Fallback Response]: {response_content}",
+                        metadata={"type": "fallback_completion"}
+                    )
+                    logging.info(f"Added fallback completion messages to thread {session}")
+                except Exception as thread_e:
+                    logging.warning(f"Could not add fallback messages to thread: {thread_e}")
+            
             if stream_output:
                 def fallback_stream():
                     try:
+                        collected_content = []  # Collect content for thread update
+                        
                         for chunk in completion:
                             if chunk.choices[0].delta.content:
+                                chunk_content = chunk.choices[0].delta.content
+                                collected_content.append(chunk_content)
+                                
                                 chunk_data = {
                                     "id": f"chatcmpl-{chunk.id}",
                                     "object": "chat.completion.chunk",
@@ -4108,12 +4194,35 @@ async def process_conversation(
                                     "choices": [{
                                         "index": 0,
                                         "delta": {
-                                            "content": chunk.choices[0].delta.content
+                                            "content": chunk_content
                                         },
                                         "finish_reason": chunk.choices[0].finish_reason
                                     }]
                                 }
                                 yield f"data: {json.dumps(chunk_data)}\n\n"
+                        
+                        # After streaming completes, add to thread
+                        if session and collected_content:
+                            try:
+                                # Add user message
+                                if prompt:
+                                    client.beta.threads.messages.create(
+                                        thread_id=session,
+                                        role="user",
+                                        content=prompt
+                                    )
+                                
+                                # Add assistant response
+                                full_response = ''.join(collected_content)
+                                client.beta.threads.messages.create(
+                                    thread_id=session,
+                                    role="assistant",
+                                    content=f"[Fallback Response]: {full_response}",
+                                    metadata={"type": "fallback_completion"}
+                                )
+                                logging.info(f"Added fallback streaming messages to thread {session}")
+                            except Exception as thread_e:
+                                logging.warning(f"Could not add fallback streaming messages to thread: {thread_e}")
                         
                         final_chunk = {
                             "id": f"chatcmpl-final",
@@ -4356,6 +4465,55 @@ async def process_conversation(
                                 }]
                             }
                             yield f"data: {json.dumps(status_chunk)}\n\n"
+                            
+                            # Display tool activity information
+                            if tool_calls:
+                                tool_activity_text = "\n**🔧 Tool Activity:**\n"
+                                
+                                for tool_call in tool_calls:
+                                    if tool_call.function.name == "generate_content":
+                                        args = json.loads(tool_call.function.arguments)
+                                        output_format = args.get("output_format", "text")
+                                        prompt = args.get("prompt", "")
+                                        
+                                        tool_activity_text += f"\n**📝 Requested:** Content generation in `{output_format}` format\n"
+                                        tool_activity_text += f"**Prompt:**\n```\n{prompt[:500]}{'...' if len(prompt) > 500 else ''}\n```\n"
+                                        
+                                    elif tool_call.function.name == "extract_data":
+                                        args = json.loads(tool_call.function.arguments)
+                                        mode = args.get("mode", "auto")
+                                        output_format = args.get("output_format", "excel")
+                                        prompt = args.get("prompt", "")
+                                        
+                                        operation = "Data extraction" if mode == "extract" else "Data generation"
+                                        tool_activity_text += f"\n**📊 Requested:** {operation} in `{output_format}` format\n"
+                                        tool_activity_text += f"**Instructions:**\n```\n{prompt[:500]}{'...' if len(prompt) > 500 else ''}\n```\n"
+                                        
+                                    elif tool_call.function.name == "pandas_agent":
+                                        args = json.loads(tool_call.function.arguments)
+                                        query = args.get("query", "")
+                                        filename = args.get("filename", None)
+                                        
+                                        tool_activity_text += f"\n**📈 Requested:** Data analysis"
+                                        if filename:
+                                            tool_activity_text += f" on file `{filename}`"
+                                        tool_activity_text += f"\n**Query:**\n```\n{query}\n```\n"
+                                
+                                # Stream the tool activity information
+                                activity_chunk = {
+                                    "id": f"chatcmpl-{run_id or 'stream'}",
+                                    "object": "chat.completion.chunk",
+                                    "created": int(time.time()),
+                                    "model": "gpt-4.1-mini",
+                                    "choices": [{
+                                        "index": 0,
+                                        "delta": {
+                                            "content": tool_activity_text
+                                        },
+                                        "finish_reason": None
+                                    }]
+                                }
+                                yield f"data: {json.dumps(activity_chunk)}\n\n"
                             
                             for tool_call in tool_calls:
                                 if tool_call.function.name == "pandas_agent":
