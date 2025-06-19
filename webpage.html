@@ -3660,7 +3660,14 @@
                 
                 const response = await fetch(`${API_BASE_URL}/test-comprehensive`, {
                     method: 'POST',
-                    body: formData
+                    body: formData,
+                    signal: AbortSignal.timeout(300000), // 5 minute timeout
+                    keepalive: true,
+                    headers: {
+                        // These headers help prevent proxy timeouts
+                        'Connection': 'keep-alive',
+                        'Keep-Alive': 'timeout=300'
+                    }
                 });
                 
                 if (!response.ok) {
@@ -3672,7 +3679,14 @@
                 const decoder = new TextDecoder();
                 let buffer = '';
                 let allUpdates = [];
-                
+                // Add timeout detection
+                let lastUpdateTime = Date.now();
+                const timeoutChecker = setInterval(() => {
+                    const timeSinceLastUpdate = Date.now() - lastUpdateTime;
+                    if (timeSinceLastUpdate > 30000) { // 30 seconds without updates
+                        resultsDiv.innerHTML += `<div style="color: #fbbf24; margin-top: 10px;">⚠️ No updates for ${Math.round(timeSinceLastUpdate/1000)} seconds - test may still be running...</div>`;
+                    }
+                }, 10000);
                 while (true) {
                     const { done, value } = await reader.read();
                     if (done) break;
@@ -3683,6 +3697,7 @@
                     
                     for (const line of lines) {
                         if (line.trim()) {
+                            lastUpdateTime = Date.now(); // ADD THIS LINE HERE
                             try {
                                 const update = JSON.parse(line);
                                 allUpdates.push(update);
@@ -3732,6 +3747,7 @@
                 resultsDiv.innerHTML += `<div style="color: #f87171; margin-top: 20px;">Error: ${error.message}</div>`;
                 showToast('Test failed', 'error');
             } finally {
+                clearInterval(timeoutChecker); // Add this line
                 testBtn.disabled = false;
                 testBtn.textContent = 'Run Comprehensive Test';
             }
