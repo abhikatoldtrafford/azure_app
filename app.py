@@ -7764,8 +7764,24 @@ async def comprehensive_system_test(
         if not test_token:
             raise HTTPException(status_code=403, detail="Test endpoint disabled in production")
     
-    async def stream_test_updates() -> AsyncGenerator[str, None]:
-        """Async generator that yields test updates as JSON lines"""
+    # Create a queue for streaming updates
+    update_queue = asyncio.Queue()
+    
+    async def stream_updates() -> AsyncGenerator[str, None]:
+        """Async generator that yields updates from the queue"""
+        while True:
+            try:
+                # Wait for updates with a timeout
+                update = await asyncio.wait_for(update_queue.get(), timeout=0.5)
+                if update is None:  # Sentinel value to stop streaming
+                    break
+                yield json.dumps(update) + "\n"
+            except asyncio.TimeoutError:
+                # Continue waiting for updates
+                continue
+    
+    async def run_tests():
+        """Run the actual tests and put updates in the queue"""
         start_time = time.time()
         
         # Initial test setup
@@ -7789,16 +7805,16 @@ async def comprehensive_system_test(
         
         client = create_client()
         
-        # Helper function to yield updates
-        async def yield_update(update_type: str, data: Dict[str, Any]):
-            """Yield a streaming update"""
+        # Helper function to queue updates
+        async def queue_update(update_type: str, data: Dict[str, Any]):
+            """Queue a streaming update"""
             update = {
                 "type": update_type,
                 "timestamp": datetime.now().isoformat(),
                 "elapsed_time": round(time.time() - start_time, 2),
                 "data": data
             }
-            yield json.dumps(update) + "\n"
+            await update_queue.put(update)
         
         # Helper function to log with streaming
         async def log_stream(message: str, level: str = "info"):
@@ -7811,29 +7827,26 @@ async def comprehensive_system_test(
                 }
                 test_results["logs"].append(log_entry)
                 # Stream the log entry
-                async for update in yield_update("log", log_entry):
-                    yield update
+                await queue_update("log", log_entry)
         
-        # Yield initial status
-        async for update in yield_update("test_started", {
+        # Queue initial status
+        await queue_update("test_started", {
             "test_mode": test_mode,
             "total_tests": 6 if test_mode == "all" else 1,
             "parameters": test_results["parameters"]
-        }):
-            yield update
+        })
         
         # Test 1: Long Thread Response Test
         async def test_long_thread():
             """Test thread trimming and long conversation handling"""
             test_name = "long_thread"
             
-            # Yield test start
-            async for update in yield_update("test_progress", {
+            # Queue test start
+            await queue_update("test_progress", {
                 "test_name": test_name,
                 "status": "starting",
                 "message": "Starting long thread test"
-            }):
-                yield update
+            })
             
             result = {
                 "status": "running",
@@ -7854,8 +7867,7 @@ async def comprehensive_system_test(
                 )
                 thread = client.beta.threads.create()
                 
-                async for update in log_stream(f"Created test assistant {assistant.id} and thread {thread.id}"):
-                    yield update
+                await log_stream(f"Created test assistant {assistant.id} and thread {thread.id}")
                 
                 # Fill thread with messages
                 for i in range(messages_per_thread):
@@ -7889,13 +7901,12 @@ async def comprehensive_system_test(
                         
                         # Stream progress every 10 messages
                         if (i + 1) % 10 == 0:
-                            async for update in yield_update("test_progress", {
+                            await queue_update("test_progress", {
                                 "test_name": test_name,
                                 "status": "running",
                                 "progress": f"{i+1}/{messages_per_thread}",
                                 "message": f"Created {i+1} messages, avg response time: {sum(result['response_times'])/len(result['response_times']):.2f}s"
-                            }):
-                                yield update
+                            })
                         
                         # Check for thread trimming (usually around 50 messages)
                         if i > 45:
@@ -7905,13 +7916,11 @@ async def comprehensive_system_test(
                                 result["trim_triggered"] = True
                                 result["trim_behavior"]["detected_at_message"] = i + 1
                                 result["trim_behavior"]["message_count_after_trim"] = current_count
-                                async for update in log_stream(f"Thread trimming detected at message {i+1}. Current count: {current_count}"):
-                                    yield update
+                                await log_stream(f"Thread trimming detected at message {i+1}. Current count: {current_count}")
                                 
                     except Exception as e:
                         result["errors"].append(f"Message {i+1}: {str(e)}")
-                        async for update in log_stream(f"Error at message {i+1}: {e}", "error"):
-                            yield update
+                        await log_stream(f"Error at message {i+1}: {e}", "error")
                         
                         if "limit" in str(e).lower() or "trim" in str(e).lower():
                             result["trim_triggered"] = True
@@ -7919,8 +7928,7 @@ async def comprehensive_system_test(
                             break
                 
                 # Test non-streaming endpoint with full thread
-                async for update in log_stream("Testing non-streaming endpoint with full thread"):
-                    yield update
+                await log_stream("Testing non-streaming endpoint with full thread")
                     
                 try:
                     response = await process_conversation(
@@ -7934,19 +7942,16 @@ async def comprehensive_system_test(
                         response_data = json.loads(response.body.decode())
                         result["non_streaming_endpoint_works"] = True
                         result["final_response_preview"] = response_data.get("response", "")[:200]
-                        async for update in log_stream("Non-streaming endpoint handled full thread successfully"):
-                            yield update
+                        await log_stream("Non-streaming endpoint handled full thread successfully")
                         
                 except Exception as e:
                     result["non_streaming_endpoint_error"] = str(e)
-                    async for update in log_stream(f"Non-streaming endpoint error: {e}", "error"):
-                        yield update
+                    await log_stream(f"Non-streaming endpoint error: {e}", "error")
                 
                 # Cleanup
                 try:
                     client.beta.assistants.delete(assistant_id=assistant.id)
-                    async for update in log_stream(f"Cleaned up assistant {assistant.id}"):
-                        yield update
+                    await log_stream(f"Cleaned up assistant {assistant.id}")
                 except:
                     pass
                 
@@ -7968,8 +7973,7 @@ async def comprehensive_system_test(
             except Exception as e:
                 result["status"] = "failed"
                 result["summary"] = f"Test failed: {str(e)}"
-                async for update in log_stream(f"Long thread test failed: {e}", "error"):
-                    yield update
+                await log_stream(f"Long thread test failed: {e}", "error")
             
             return result
         
@@ -7978,12 +7982,11 @@ async def comprehensive_system_test(
             """Test multiple users talking to different assistants concurrently"""
             test_name = "concurrent_users"
             
-            async for update in yield_update("test_progress", {
+            await queue_update("test_progress", {
                 "test_name": test_name,
                 "status": "starting",
                 "message": f"Starting concurrent users test with {concurrent_users} users"
-            }):
-                yield update
+            })
             
             result = {
                 "status": "running",
@@ -8008,21 +8011,18 @@ async def comprehensive_system_test(
                     assistants.append(assistant)
                     
                     if (i + 1) % 2 == 0:  # Update every 2 assistants
-                        async for update in yield_update("test_progress", {
+                        await queue_update("test_progress", {
                             "test_name": test_name,
                             "status": "preparing",
                             "progress": f"{i+1}/{concurrent_users}",
                             "message": f"Created {i+1} test assistants"
-                        }):
-                            yield update
+                        })
                             
                 except Exception as e:
                     result["errors"].append(f"Failed to create assistant {i}: {str(e)}")
-                    async for update in log_stream(f"Failed to create assistant {i}: {e}", "error"):
-                        yield update
+                    await log_stream(f"Failed to create assistant {i}: {e}", "error")
             
-            async for update in log_stream(f"Created {len(assistants)} test assistants"):
-                yield update
+            await log_stream(f"Created {len(assistants)} test assistants")
             
             # Define concurrent conversation task
             async def have_conversation(user_id: int, assistant):
@@ -8079,8 +8079,7 @@ async def comprehensive_system_test(
                     return conv_result
             
             # Run concurrent conversations
-            async for update in log_stream("Starting concurrent conversations"):
-                yield update
+            await log_stream("Starting concurrent conversations")
                 
             tasks = []
             for i in range(len(assistants)):
@@ -8107,13 +8106,12 @@ async def comprehensive_system_test(
                 
                 # Stream progress
                 if (i + 1) % 2 == 0:
-                    async for update in yield_update("test_progress", {
+                    await queue_update("test_progress", {
                         "test_name": test_name,
                         "status": "running",
                         "progress": f"{i+1}/{len(assistants)}",
                         "message": f"Processed {i+1} conversations, {result['successful_conversations']} successful"
-                    }):
-                        yield update
+                    })
             
             # Cleanup assistants
             for assistant in assistants:
@@ -8136,8 +8134,7 @@ async def comprehensive_system_test(
                 result["status"] = "failed"
                 result["summary"] = f"Concurrent users test failed: only {result['success_rate']*100:.1f}% success rate"
             
-            async for update in log_stream(f"Concurrent users test completed: {result['summary']}"):
-                yield update
+            await log_stream(f"Concurrent users test completed: {result['summary']}")
                 
             return result
         
@@ -8146,12 +8143,11 @@ async def comprehensive_system_test(
             """Test multiple concurrent requests to the same thread"""
             test_name = "same_thread_concurrent"
             
-            async for update in yield_update("test_progress", {
+            await queue_update("test_progress", {
                 "test_name": test_name,
                 "status": "starting",
                 "message": "Starting same thread concurrent access test"
-            }):
-                yield update
+            })
             
             result = {
                 "status": "running",
@@ -8173,8 +8169,7 @@ async def comprehensive_system_test(
                 )
                 thread = client.beta.threads.create()
                 
-                async for update in log_stream(f"Created shared assistant {assistant.id} and thread {thread.id}"):
-                    yield update
+                await log_stream(f"Created shared assistant {assistant.id} and thread {thread.id}")
                 
                 async def send_concurrent_message(msg_id: int):
                     """Send a message and track order"""
@@ -8214,8 +8209,7 @@ async def comprehensive_system_test(
                     return msg_result
                 
                 # Send concurrent messages
-                async for update in log_stream("Sending concurrent messages to same thread"):
-                    yield update
+                await log_stream("Sending concurrent messages to same thread")
                     
                 tasks = []
                 for i in range(result["concurrent_requests"]):
@@ -8234,13 +8228,12 @@ async def comprehensive_system_test(
                         result["response_order"].append(msg_result)
                         
                         # Stream progress
-                        async for update in yield_update("test_progress", {
+                        await queue_update("test_progress", {
                             "test_name": test_name,
                             "status": "running",
                             "progress": f"{i+1}/{result['concurrent_requests']}",
                             "message": f"Processed {i+1} concurrent requests"
-                        }):
-                            yield update
+                        })
                 
                 # Cleanup
                 try:
@@ -8259,14 +8252,12 @@ async def comprehensive_system_test(
                     result["status"] = "failed"
                     result["summary"] = "All concurrent requests failed"
                 
-                async for update in log_stream(f"Same thread concurrent test: {result['summary']}"):
-                    yield update
+                await log_stream(f"Same thread concurrent test: {result['summary']}")
                 
             except Exception as e:
                 result["status"] = "failed"
                 result["summary"] = f"Test setup failed: {str(e)}"
-                async for update in log_stream(f"Same thread concurrent test failed: {e}", "error"):
-                    yield update
+                await log_stream(f"Same thread concurrent test failed: {e}", "error")
             
             return result
         
@@ -8275,12 +8266,11 @@ async def comprehensive_system_test(
             """Test run handling, cleanup, and error recovery"""
             test_name = "run_consistency"
             
-            async for update in yield_update("test_progress", {
+            await queue_update("test_progress", {
                 "test_name": test_name,
                 "status": "starting",
                 "message": "Starting run consistency and cleanup test"
-            }):
-                yield update
+            })
             
             result = {
                 "status": "running",
@@ -8300,8 +8290,7 @@ async def comprehensive_system_test(
                 thread = client.beta.threads.create()
                 
                 # Test 1: Abandoned run handling
-                async for update in log_stream("Testing abandoned run handling"):
-                    yield update
+                await log_stream("Testing abandoned run handling")
                 
                 # Create a run but don't wait for it
                 run1 = client.beta.threads.runs.create(
@@ -8322,25 +8311,21 @@ async def comprehensive_system_test(
                     )
                     
                     result["tests_performed"].append("active_run_handling")
-                    async for update in log_stream("Successfully handled active run scenario"):
-                        yield update
+                    await log_stream("Successfully handled active run scenario")
                     
-                    async for update in yield_update("test_progress", {
+                    await queue_update("test_progress", {
                         "test_name": test_name,
                         "status": "running",
                         "progress": "1/3",
                         "message": "Active run handling test passed"
-                    }):
-                        yield update
+                    })
                     
                 except Exception as e:
                     result["issues_found"].append(f"Active run handling failed: {str(e)}")
-                    async for update in log_stream(f"Active run handling error: {e}", "error"):
-                        yield update
+                    await log_stream(f"Active run handling error: {e}", "error")
                 
                 # Test 2: Thread state after errors
-                async for update in log_stream("Testing thread state consistency"):
-                    yield update
+                await log_stream("Testing thread state consistency")
                 
                 # Check thread messages
                 messages = client.beta.threads.messages.list(thread_id=thread.id)
@@ -8355,17 +8340,15 @@ async def comprehensive_system_test(
                 else:
                     result["tests_performed"].append("no_duplicate_messages")
                 
-                async for update in yield_update("test_progress", {
+                await queue_update("test_progress", {
                     "test_name": test_name,
                     "status": "running",
                     "progress": "2/3",
                     "message": "Thread state consistency checked"
-                }):
-                    yield update
+                })
                 
                 # Test 3: Cleanup test
-                async for update in log_stream("Testing cleanup"):
-                    yield update
+                await log_stream("Testing cleanup")
                 
                 try:
                     client.beta.assistants.delete(assistant_id=assistant.id)
@@ -8374,13 +8357,12 @@ async def comprehensive_system_test(
                     result["cleanup_success"] = False
                     result["issues_found"].append(f"Cleanup failed: {str(e)}")
                 
-                async for update in yield_update("test_progress", {
+                await queue_update("test_progress", {
                     "test_name": test_name,
                     "status": "running",
                     "progress": "3/3",
                     "message": "Cleanup test completed"
-                }):
-                    yield update
+                })
                 
                 # Determine status
                 if len(result["issues_found"]) == 0:
@@ -8393,14 +8375,12 @@ async def comprehensive_system_test(
                     result["status"] = "failed"
                     result["summary"] = f"Multiple issues: {', '.join(result['issues_found'])}"
                 
-                async for update in log_stream(f"Run consistency test: {result['summary']}"):
-                    yield update
+                await log_stream(f"Run consistency test: {result['summary']}")
                 
             except Exception as e:
                 result["status"] = "failed"
                 result["summary"] = f"Test failed: {str(e)}"
-                async for update in log_stream(f"Run consistency test error: {e}", "error"):
-                    yield update
+                await log_stream(f"Run consistency test error: {e}", "error")
             
             return result
         
@@ -8409,12 +8389,11 @@ async def comprehensive_system_test(
             """Test system performance under sustained load"""
             test_name = "scaling"
             
-            async for update in yield_update("test_progress", {
+            await queue_update("test_progress", {
                 "test_name": test_name,
                 "status": "starting",
                 "message": f"Starting scaling test for {test_duration} seconds"
-            }):
-                yield update
+            })
             
             result = {
                 "status": "running",
@@ -8428,7 +8407,7 @@ async def comprehensive_system_test(
             }
             
             try:
-                start_time = time.time()
+                scaling_start_time = time.time()
                 response_times = []
                 
                 # Create test assistant
@@ -8445,15 +8424,14 @@ async def comprehensive_system_test(
                     thread = client.beta.threads.create()
                     threads.append(thread.id)
                 
-                async for update in log_stream(f"Created {len(threads)} threads for scaling test"):
-                    yield update
+                await log_stream(f"Created {len(threads)} threads for scaling test")
                 
                 # Send messages for test_duration seconds
                 message_count = 0
                 errors_count = 0
                 last_update_time = time.time()
                 
-                while time.time() - start_time < test_duration:
+                while time.time() - scaling_start_time < test_duration:
                     # Round-robin through threads
                     thread_id = threads[message_count % len(threads)]
                     
@@ -8478,8 +8456,7 @@ async def comprehensive_system_test(
                             
                             if recent_avg > overall_avg * 1.5:
                                 result["performance_degradation"] = True
-                                async for update in log_stream(f"Performance degradation detected: recent avg {recent_avg:.2f}s vs overall {overall_avg:.2f}s", "warning"):
-                                    yield update
+                                await log_stream(f"Performance degradation detected: recent avg {recent_avg:.2f}s vs overall {overall_avg:.2f}s", "warning")
                         
                     except Exception as e:
                         errors_count += 1
@@ -8493,16 +8470,15 @@ async def comprehensive_system_test(
                     
                     # Stream progress every 5 seconds
                     if time.time() - last_update_time > 5:
-                        elapsed = time.time() - start_time
+                        elapsed = time.time() - scaling_start_time
                         rate = result["successful_messages"] / elapsed if elapsed > 0 else 0
                         
-                        async for update in yield_update("test_progress", {
+                        await queue_update("test_progress", {
                             "test_name": test_name,
                             "status": "running",
                             "progress": f"{int(elapsed)}/{test_duration}s",
                             "message": f"Processed {result['successful_messages']} messages at {rate:.1f} msg/s"
-                        }):
-                            yield update
+                        })
                         
                         last_update_time = time.time()
                 
@@ -8530,14 +8506,12 @@ async def comprehensive_system_test(
                     result["status"] = "failed"
                     result["summary"] = f"Scaling test failed: only {success_rate*100:.1f}% success rate"
                 
-                async for update in log_stream(f"Scaling test completed: {result['summary']}"):
-                    yield update
+                await log_stream(f"Scaling test completed: {result['summary']}")
                 
             except Exception as e:
                 result["status"] = "failed"
                 result["summary"] = f"Scaling test failed: {str(e)}"
-                async for update in log_stream(f"Scaling test error: {e}", "error"):
-                    yield update
+                await log_stream(f"Scaling test error: {e}", "error")
             
             return result
         
@@ -8546,12 +8520,11 @@ async def comprehensive_system_test(
             """Test all tool calling functionality including pandas_agent, generate_content, and extract_data"""
             test_name = "tool_calling"
             
-            async for update in yield_update("test_progress", {
+            await queue_update("test_progress", {
                 "test_name": test_name,
                 "status": "starting",
                 "message": "Starting tool calling functionality test"
-            }):
-                yield update
+            })
             
             result = {
                 "status": "running",
@@ -8644,12 +8617,10 @@ async def comprehensive_system_test(
                 )
                 thread = client.beta.threads.create()
                 
-                async for update in log_stream(f"Created test assistant {assistant.id} with tools"):
-                    yield update
+                await log_stream(f"Created test assistant {assistant.id} with tools")
                 
                 # Test 1: Pandas Agent
-                async for update in log_stream("Testing pandas_agent tool"):
-                    yield update
+                await log_stream("Testing pandas_agent tool")
                 
                 try:
                     pandas_start = time.time()
@@ -8667,27 +8638,23 @@ async def comprehensive_system_test(
                     
                     if hasattr(response, 'body'):
                         result["pandas_agent"]["success"] = True
-                        async for update in log_stream(f"Pandas agent test successful, response time: {pandas_duration:.2f}s"):
-                            yield update
+                        await log_stream(f"Pandas agent test successful, response time: {pandas_duration:.2f}s")
                     else:
                         result["pandas_agent"]["errors"].append("No response body")
                     
-                    async for update in yield_update("test_progress", {
+                    await queue_update("test_progress", {
                         "test_name": test_name,
                         "status": "running",
                         "progress": "1/4",
                         "message": "Pandas agent test completed"
-                    }):
-                        yield update
+                    })
                     
                 except Exception as e:
                     result["pandas_agent"]["errors"].append(str(e))
-                    async for update in log_stream(f"Pandas agent test failed: {e}", "error"):
-                        yield update
+                    await log_stream(f"Pandas agent test failed: {e}", "error")
                 
                 # Test 2: Generate Content
-                async for update in log_stream("Testing generate_content tool"):
-                    yield update
+                await log_stream("Testing generate_content tool")
                 
                 try:
                     generate_start = time.time()
@@ -8711,29 +8678,25 @@ async def comprehensive_system_test(
                         if "download" in response_text.lower() and ("http" in response_text or "/download" in response_text):
                             result["generate_content"]["success"] = True
                             result["generate_content"]["download_url"] = "URL found in response"
-                            async for update in log_stream(f"Generate content test successful, response time: {generate_duration:.2f}s"):
-                                yield update
+                            await log_stream(f"Generate content test successful, response time: {generate_duration:.2f}s")
                         else:
                             result["generate_content"]["errors"].append("No download URL in response")
                     else:
                         result["generate_content"]["errors"].append("No response body")
                     
-                    async for update in yield_update("test_progress", {
+                    await queue_update("test_progress", {
                         "test_name": test_name,
                         "status": "running",
                         "progress": "2/4",
                         "message": "Generate content test completed"
-                    }):
-                        yield update
+                    })
                     
                 except Exception as e:
                     result["generate_content"]["errors"].append(str(e))
-                    async for update in log_stream(f"Generate content test failed: {e}", "error"):
-                        yield update
+                    await log_stream(f"Generate content test failed: {e}", "error")
                 
                 # Test 3: Extract Data
-                async for update in log_stream("Testing extract_data tool"):
-                    yield update
+                await log_stream("Testing extract_data tool")
                 
                 try:
                     extract_start = time.time()
@@ -8770,29 +8733,24 @@ async def comprehensive_system_test(
                             if rows_match:
                                 result["extract_data"]["rows_extracted"] = int(rows_match.group(1))
                             
-                            async for update in log_stream(f"Extract data test successful, response time: {extract_duration:.2f}s"):
-                                yield update
+                            await log_stream(f"Extract data test successful, response time: {extract_duration:.2f}s")
                         else:
                             result["extract_data"]["errors"].append("No extraction confirmation in response")
-                            async for update in log_stream("Extract data response doesn't confirm extraction", "warning"):
-                                yield update
+                            await log_stream("Extract data response doesn't confirm extraction", "warning")
                     
-                    async for update in yield_update("test_progress", {
+                    await queue_update("test_progress", {
                         "test_name": test_name,
                         "status": "running",
                         "progress": "3/4",
                         "message": "Extract data test completed"
-                    }):
-                        yield update
+                    })
                     
                 except Exception as e:
                     result["extract_data"]["errors"].append(str(e))
-                    async for update in log_stream(f"Extract data test failed: {e}", "error"):
-                        yield update
+                    await log_stream(f"Extract data test failed: {e}", "error")
                 
                 # Test 4: Concurrent Tool Usage
-                async for update in log_stream("Testing concurrent tool usage"):
-                    yield update
+                await log_stream("Testing concurrent tool usage")
                 
                 try:
                     # Create multiple threads for concurrent tool testing
@@ -8844,21 +8802,18 @@ async def comprehensive_system_test(
                     result["tool_concurrency"]["success"] = successful_concurrent == len(tasks)
                     result["tool_concurrency"]["details"] = concurrent_results
                     
-                    async for update in log_stream(f"Concurrent tool test: {successful_concurrent}/{len(tasks)} successful"):
-                        yield update
+                    await log_stream(f"Concurrent tool test: {successful_concurrent}/{len(tasks)} successful")
                         
-                    async for update in yield_update("test_progress", {
+                    await queue_update("test_progress", {
                         "test_name": test_name,
                         "status": "running",
                         "progress": "4/4",
                         "message": "Concurrent tool test completed"
-                    }):
-                        yield update
+                    })
                     
                 except Exception as e:
                     result["tool_concurrency"]["errors"].append(str(e))
-                    async for update in log_stream(f"Concurrent tool test failed: {e}", "error"):
-                        yield update
+                    await log_stream(f"Concurrent tool test failed: {e}", "error")
                 
                 # Cleanup
                 try:
@@ -8895,14 +8850,12 @@ async def comprehensive_system_test(
                     "extract_data_time": result["extract_data"]["response_time"]
                 }
                 
-                async for update in log_stream(f"Tool calling test completed: {result['summary']}"):
-                    yield update
+                await log_stream(f"Tool calling test completed: {result['summary']}")
                 
             except Exception as e:
                 result["status"] = "failed"
                 result["summary"] = f"Tool test setup failed: {str(e)}"
-                async for update in log_stream(f"Tool calling test failed: {e}", "error"):
-                    yield update
+                await log_stream(f"Tool calling test failed: {e}", "error")
             
             return result
         
@@ -8912,24 +8865,22 @@ async def comprehensive_system_test(
         else:
             tests_to_run = [test_mode]
         
-        # Yield total number of tests
-        async for update in yield_update("tests_initialized", {
+        # Queue total number of tests
+        await queue_update("tests_initialized", {
             "total_tests": len(tests_to_run),
             "test_names": tests_to_run
-        }):
-            yield update
+        })
         
         # Run selected tests
         for test_index, test in enumerate(tests_to_run):
             test_results["summary"]["total_tests"] += 1
             
-            # Yield test starting
-            async for update in yield_update("test_starting", {
+            # Queue test starting
+            await queue_update("test_starting", {
                 "test_name": test,
                 "test_number": test_index + 1,
                 "total_tests": len(tests_to_run)
-            }):
-                yield update
+            })
             
             try:
                 if test == "long_thread":
@@ -8956,8 +8907,8 @@ async def comprehensive_system_test(
                 else:
                     test_results["summary"]["failed"] += 1
                 
-                # Yield test completed
-                async for update in yield_update("test_completed", {
+                # Queue test completed
+                await queue_update("test_completed", {
                     "test_name": test,
                     "test_number": test_index + 1,
                     "total_tests": len(tests_to_run),
@@ -8968,8 +8919,7 @@ async def comprehensive_system_test(
                         "failed": test_results["summary"]["failed"],
                         "warnings": test_results["summary"]["warnings"]
                     }
-                }):
-                    yield update
+                })
                     
             except Exception as e:
                 test_results["tests"][test] = {
@@ -8979,16 +8929,14 @@ async def comprehensive_system_test(
                 }
                 test_results["summary"]["failed"] += 1
                 
-                async for update in log_stream(f"Test {test} crashed: {e}", "error"):
-                    yield update
+                await log_stream(f"Test {test} crashed: {e}", "error")
                 
-                # Yield test error
-                async for update in yield_update("test_error", {
+                # Queue test error
+                await queue_update("test_error", {
                     "test_name": test,
                     "error": str(e),
                     "traceback": traceback.format_exc()
-                }):
-                    yield update
+                })
         
         # Overall summary
         total_time = time.time() - start_time
@@ -9012,27 +8960,32 @@ async def comprehensive_system_test(
         if not verbose:
             test_results.pop("logs", None)
         
-        # Yield final results
-        async for update in yield_update("test_suite_completed", {
+        # Queue final results
+        await queue_update("test_suite_completed", {
             "status": test_results["overall_status"],
             "summary": test_results["overall_summary"],
             "execution_time": test_results["execution_time"],
             "final_results": test_results["summary"],
             "status_code": status_code
-        }):
-            yield update
+        })
         
-        # Yield the complete test results as the final message
-        yield json.dumps({
+        # Queue the complete test results as the final message
+        await update_queue.put({
             "type": "final_results",
             "timestamp": datetime.now().isoformat(),
             "data": test_results,
             "status_code": status_code
-        }) + "\n"
+        })
+        
+        # Signal end of stream
+        await update_queue.put(None)
+    
+    # Start the test runner in the background
+    asyncio.create_task(run_tests())
     
     # Return streaming response
     return StreamingResponse(
-        stream_test_updates(),
+        stream_updates(),
         media_type="application/x-ndjson",
         headers={
             "X-Content-Type-Options": "nosniff",
