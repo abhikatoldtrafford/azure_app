@@ -936,45 +936,11 @@
         }
 
         /* Test Progress Styles */
-        .test-progress {
-            margin-bottom: 20px;
-        }
-        
-        .progress-bar {
-            width: 100%;
-            height: 20px;
-            background-color: var(--bg-tertiary);
-            border-radius: 10px;
-            overflow: hidden;
-            margin-bottom: 10px;
-            border: 1px solid var(--border);
-        }
-        
-        .progress-fill {
-            height: 100%;
-            background: linear-gradient(90deg, var(--accent) 0%, #0066cc 100%);
-            transition: width 0.3s ease;
-            display: flex;
-            align-items: center;
-            justify-content: flex-end;
-            padding-right: 10px;
-            color: white;
-            font-size: 12px;
-            font-weight: 600;
-        }
-        
-        .progress-status {
-            text-align: center;
-            font-weight: 600;
-            color: var(--accent);
-            margin-bottom: 10px;
-        }
-        
-        .progress-details {
-            font-size: 12px;
-            color: var(--text-secondary);
-            text-align: center;
-            min-height: 20px;
+        .test-results {
+            max-height: 500px;
+            overflow-y: auto;
+            font-family: monospace;
+            line-height: 1.6;
         }
         
         .test-description {
@@ -2408,13 +2374,6 @@
                                 </div>
                             </div>
                             <div id="test-comprehensive-response" class="test-response" style="display: none;">
-                                <div id="test-progress" class="test-progress" style="display: none;">
-                                    <div class="progress-bar">
-                                        <div id="progress-fill" class="progress-fill" style="width: 0%"></div>
-                                    </div>
-                                    <div id="progress-status" class="progress-status">Initializing tests...</div>
-                                    <div id="progress-details" class="progress-details"></div>
-                                </div>
                                 <div id="test-results" style="display: none;"></div>
                             </div>
                         </div>
@@ -3682,63 +3641,12 @@
             const messages = document.getElementById('test-comprehensive-messages').value;
             const verbose = document.getElementById('test-comprehensive-verbose').checked;
             const responseDiv = document.getElementById('test-comprehensive-response');
-            const progressDiv = document.getElementById('test-progress');
             const resultsDiv = document.getElementById('test-results');
-            const progressFill = document.getElementById('progress-fill');
-            const progressStatus = document.getElementById('progress-status');
-            const progressDetails = document.getElementById('progress-details');
             const testBtn = document.getElementById('comprehensive-test-btn');
             
-            // Reset UI
             responseDiv.style.display = 'block';
-            progressDiv.style.display = 'block';
-            resultsDiv.style.display = 'none';
-            resultsDiv.innerHTML = '';
+            resultsDiv.innerHTML = '<div style="color: #4ade80;">Starting comprehensive test...</div>';
             testBtn.disabled = true;
-            testBtn.textContent = 'Running...';
-            
-            // Progress simulation
-            let progress = 0;
-            const progressInterval = setInterval(() => {
-                if (progress < 90) {
-                    progress += Math.random() * 5;
-                    progress = Math.min(progress, 90);
-                    progressFill.style.width = progress + '%';
-                    progressFill.textContent = Math.round(progress) + '%';
-                    
-                    // Update status messages based on test mode
-                    if (mode === 'tools') {
-                        if (progress < 30) {
-                            progressStatus.textContent = 'Testing pandas agent...';
-                            progressDetails.textContent = 'Analyzing data with AI tools';
-                        } else if (progress < 60) {
-                            progressStatus.textContent = 'Testing content generation...';
-                            progressDetails.textContent = 'Creating documents and datasets';
-                        } else {
-                            progressStatus.textContent = 'Testing data extraction...';
-                            progressDetails.textContent = 'Extracting structured data';
-                        }
-                    } else {
-                        // Original status messages for other modes
-                        if (progress < 20) {
-                            progressStatus.textContent = 'Initializing test environment...';
-                            progressDetails.textContent = 'Setting up assistants and threads';
-                        } else if (progress < 40) {
-                            progressStatus.textContent = 'Running test scenarios...';
-                            progressDetails.textContent = `Test mode: ${mode}`;
-                        } else if (progress < 60) {
-                            progressStatus.textContent = 'Processing concurrent operations...';
-                            progressDetails.textContent = `Simulating ${users} concurrent users`;
-                        } else if (progress < 80) {
-                            progressStatus.textContent = 'Analyzing results...';
-                            progressDetails.textContent = 'Collecting metrics and performance data';
-                        } else {
-                            progressStatus.textContent = 'Finalizing tests...';
-                            progressDetails.textContent = 'Cleaning up resources';
-                        }
-                    }
-                }
-            }, 500);
             
             try {
                 const formData = new FormData();
@@ -3753,70 +3661,76 @@
                     body: formData
                 });
                 
-                clearInterval(progressInterval);
-                progress = 100;
-                progressFill.style.width = '100%';
-                progressFill.textContent = '100%';
-                progressStatus.textContent = 'Tests completed!';
-                progressDetails.textContent = 'Processing results...';
-                
-                if (response.status === 403) {
-                    throw new Error('This endpoint requires authentication in production environment.');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
                 }
                 
-                // Get response text first to debug
-                const responseText = await response.text();
+                // Handle streaming response
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                let allUpdates = [];
                 
-                let data;
-                try {
-                    data = JSON.parse(responseText);
-                } catch (parseError) {
-                    console.error('Failed to parse JSON response:', responseText);
-                    // Try to extract meaningful error from response
-                    if (responseText.includes('Internal Server Error')) {
-                        throw new Error('Server error occurred. Check backend logs for details.');
-                    } else if (responseText.startsWith('OK')) {
-                        // Handle the specific "OK" prefix issue
-                        throw new Error('Invalid response format from server. Response started with: ' + responseText.substring(0, 100));
-                    } else {
-                        throw new Error('Invalid JSON response: ' + responseText.substring(0, 200));
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || '';
+                    
+                    for (const line of lines) {
+                        if (line.trim()) {
+                            try {
+                                const update = JSON.parse(line);
+                                allUpdates.push(update);
+                                
+                                // Handle different update types
+                                if (update.type === 'test_start') {
+                                    resultsDiv.innerHTML += `<div style="margin-top: 10px;"><strong>🚀 ${update.data.test_name}</strong></div>`;
+                                    resultsDiv.innerHTML += `<div style="color: #94a3b8;">${update.data.description}</div>`;
+                                } else if (update.type === 'test_progress') {
+                                    resultsDiv.innerHTML += `<div style="color: #60a5fa; margin-left: 20px;">• ${update.data.message}</div>`;
+                                } else if (update.type === 'test_complete') {
+                                    const statusColor = update.data.status === 'passed' ? '#4ade80' : 
+                                                      update.data.status === 'warning' ? '#fbbf24' : '#f87171';
+                                    resultsDiv.innerHTML += `<div style="color: ${statusColor}; margin-left: 20px;">✓ Test completed: ${update.data.status.toUpperCase()}</div>`;
+                                    if (update.data.summary) {
+                                        resultsDiv.innerHTML += `<div style="margin-left: 40px; color: #e2e8f0;">${update.data.summary}</div>`;
+                                    }
+                                } else if (update.type === 'error') {
+                                    resultsDiv.innerHTML += `<div style="color: #f87171; margin-left: 20px;">❌ Error: ${update.data.message}</div>`;
+                                } else if (update.type === 'test_suite_completed') {
+                                    resultsDiv.innerHTML += `<hr style="margin: 20px 0; border-color: #475569;">`;
+                                    resultsDiv.innerHTML += `<div style="font-size: 18px; font-weight: bold;">📊 Test Suite Completed</div>`;
+                                    resultsDiv.innerHTML += `<div>Status: <span style="color: ${update.data.status === 'healthy' ? '#4ade80' : '#f87171'}">${update.data.status.toUpperCase()}</span></div>`;
+                                    resultsDiv.innerHTML += `<div>${update.data.summary}</div>`;
+                                    resultsDiv.innerHTML += `<div>Execution time: ${update.data.execution_time}</div>`;
+                                    if (update.data.final_results) {
+                                        resultsDiv.innerHTML += `<div style="margin-top: 10px;">Results: Passed: ${update.data.final_results.passed}, Failed: ${update.data.final_results.failed}, Warnings: ${update.data.final_results.warnings}</div>`;
+                                    }
+                                } else if (update.type === 'final_results') {
+                                    // Display complete test results
+                                    if (update.data && verbose) {
+                                        resultsDiv.innerHTML += `<details style="margin-top: 20px;"><summary style="cursor: pointer; color: #60a5fa;">View Detailed Results</summary><pre style="background: var(--bg-primary); padding: 12px; border-radius: 4px; margin-top: 10px; overflow-x: auto;">${JSON.stringify(update.data, null, 2)}</pre></details>`;
+                                    }
+                                }
+                                
+                                // Auto-scroll to bottom
+                                resultsDiv.scrollTop = resultsDiv.scrollHeight;
+                            } catch (e) {
+                                console.error('Error parsing update:', e);
+                            }
+                        }
                     }
                 }
                 
-                // Hide progress, show results
-                setTimeout(() => {
-                    progressDiv.style.display = 'none';
-                    resultsDiv.style.display = 'block';
-                    displayComprehensiveResults(data, resultsDiv);
-                }, 500);
-                
+                showToast('Comprehensive test completed', 'success');
             } catch (error) {
-                clearInterval(progressInterval);
-                progressDiv.style.display = 'none';
-                resultsDiv.style.display = 'block';
-                
-                // Enhanced error display
-                let errorHtml = '<div class="test-card">';
-                errorHtml += '<div class="test-card-header">';
-                errorHtml += '<span class="test-card-title">Test Error</span>';
-                errorHtml += '<span class="test-status-badge status-failed">FAILED</span>';
-                errorHtml += '</div>';
-                errorHtml += `<div class="error" style="margin-top: 12px;">`;
-                errorHtml += `<strong>Error:</strong> ${error.message}<br>`;
-                errorHtml += `<p style="margin-top: 8px; color: var(--text-secondary);">`;
-                errorHtml += `This usually happens when:<br>`;
-                errorHtml += `• The backend encountered an error during tool testing<br>`;
-                errorHtml += `• The test environment is not properly configured<br>`;
-                errorHtml += `• Tool handlers are missing required parameters<br>`;
-                errorHtml += `</p>`;
-                errorHtml += `<p style="margin-top: 8px;">Please check the backend logs for more details.</p>`;
-                errorHtml += `</div>`;
-                errorHtml += '</div>';
-                
-                resultsDiv.innerHTML = errorHtml;
+                resultsDiv.innerHTML += `<div style="color: #f87171; margin-top: 20px;">Error: ${error.message}</div>`;
+                showToast('Test failed', 'error');
             } finally {
                 testBtn.disabled = false;
-                testBtn.textContent = 'Run Comprehensive Test';
             }
         }
         
