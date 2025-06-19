@@ -4186,399 +4186,403 @@ async def process_conversation(
                     content={"response": "I apologize, but I'm experiencing technical difficulties. Please try again in a moment."},
                     status_code=503
                 )
-    
+    ######################### START OF def stream_response() #####################################
+
     def stream_response():
-        """Modified to be compatible with Bubble's streaming API while maintaining all features"""
-        
-        buffer = []
-        completed = False
-        tool_call_results = []
-        run_id = None
-        tool_outputs_submitted = False
-        wait_for_final_response = False
-        latest_message_id = None
+    """Modified to be compatible with Bubble's streaming API while maintaining all features"""
+    
+    buffer = []
+    completed = False
+    tool_call_results = []
+    run_id = None
+    tool_outputs_submitted = False
+    wait_for_final_response = False
+    latest_message_id = None
+    try:
+        # Get the most recent message ID before starting the run
         try:
-            # Get the most recent message ID before starting the run
-            try:
-                pre_run_messages = client.beta.threads.messages.list(
-                    thread_id=session,
-                    order="desc",
-                    limit=1
-                )
-                if pre_run_messages and pre_run_messages.data:
-                    latest_message_id = pre_run_messages.data[0].id
-                    logging.info(f"Latest message before run: {latest_message_id}")
-            except Exception as e:
-                logging.warning(f"Could not get latest message before run: {e}")
-            
-            # Check message count and trim if needed (sync version for streaming)
-            try:
-                messages_response = client.beta.threads.messages.list(thread_id=session, limit=100)
-                message_count = len(messages_response.data)
-                if message_count > 50:  # Trim when thread gets long
-                    sync_trim_thread(client, session, keep_messages=30)
-                    logging.info(f"Trimmed thread {session} from {message_count} messages")
-            except Exception as e:
-                logging.warning(f"Could not check/trim thread: {e}")
-            
-            # Create run and stream the response
-            with client.beta.threads.runs.stream(
+            pre_run_messages = client.beta.threads.messages.list(
                 thread_id=session,
-                assistant_id=assistant,
-                truncation_strategy={
-                    "type": "last_messages",
-                    "last_messages": 10
-                }
-            ) as stream:
-                for event in stream:
-                    # Store run ID for potential use
-                    if hasattr(event, 'data') and hasattr(event.data, 'id'):
-                        run_id = event.data.id
-                        
-                    # Check for message creation and completion
-                    if event.event == "thread.message.created":
-                        logging.info(f"New message created: {event.data.id}")
-                        if tool_outputs_submitted and event.data.id != latest_message_id:
-                            wait_for_final_response = True
-                            latest_message_id = event.data.id
-                        
-                    # Handle text deltas
-                    if event.event == "thread.message.delta":
-                        delta = event.data.delta
-                        if delta.content:
-                            for content_part in delta.content:
-                                if content_part.type == 'text' and content_part.text:
-                                    text_value = content_part.text.value
-                                    if text_value:
-                                        # Check if this is text after the tool outputs were submitted
-                                        if tool_outputs_submitted and wait_for_final_response:
-                                            # This is the assistant's final response after analyzing the data
-                                            buffer.append(text_value)
-                                            # Yield chunks more frequently for better streaming
-                                            if len(buffer) >= 2:
-                                                joined_text = ''.join(buffer)
-                                                # Format as OpenAI-compatible streaming response for Bubble
-                                                chunk_data = {
-                                                    "id": f"chatcmpl-{run_id or 'stream'}",
-                                                    "object": "chat.completion.chunk",
-                                                    "created": int(time.time()),
-                                                    "model": "gpt-4.1-mini",
-                                                    "choices": [{
-                                                        "index": 0,
-                                                        "delta": {
-                                                            "content": joined_text
-                                                        },
-                                                        "finish_reason": None
-                                                    }]
-                                                }
-                                                yield f"data: {json.dumps(chunk_data)}\n\n"
-                                                buffer = []
-                                        elif not tool_outputs_submitted:
-                                            # Normal text before tool outputs were submitted
-                                            buffer.append(text_value)
-                                            if len(buffer) >= 3:
-                                                joined_text = ''.join(buffer)
-                                                chunk_data = {
-                                                    "id": f"chatcmpl-{run_id or 'stream'}",
-                                                    "object": "chat.completion.chunk",
-                                                    "created": int(time.time()),
-                                                    "model": "gpt-4.1-mini",
-                                                    "choices": [{
-                                                        "index": 0,
-                                                        "delta": {
-                                                            "content": joined_text
-                                                        },
-                                                        "finish_reason": None
-                                                    }]
-                                                }
-                                                yield f"data: {json.dumps(chunk_data)}\n\n"
-                                                buffer = []
+                order="desc",
+                limit=1
+            )
+            if pre_run_messages and pre_run_messages.data:
+                latest_message_id = pre_run_messages.data[0].id
+                logging.info(f"Latest message before run: {latest_message_id}")
+        except Exception as e:
+            logging.warning(f"Could not get latest message before run: {e}")
+        
+        # Check message count and trim if needed (sync version for streaming)
+        try:
+            messages_response = client.beta.threads.messages.list(thread_id=session, limit=100)
+            message_count = len(messages_response.data)
+            if message_count > 50:  # Trim when thread gets long
+                sync_trim_thread(client, session, keep_messages=30)
+                logging.info(f"Trimmed thread {session} from {message_count} messages")
+        except Exception as e:
+            logging.warning(f"Could not check/trim thread: {e}")
+        
+        # Create run and stream the response
+        with client.beta.threads.runs.stream(
+            thread_id=session,
+            assistant_id=assistant,
+            truncation_strategy={
+                "type": "last_messages",
+                "last_messages": 10
+            }
+        ) as stream:
+            for event in stream:
+                # Store run ID for potential use
+                if hasattr(event, 'data') and hasattr(event.data, 'id'):
+                    run_id = event.data.id
                     
-                    # Explicitly handle run completion event
-                    if event.event == "thread.run.completed":
-                        logging.info(f"Run completed: {event.data.id}")
-                        completed = True
-                        
-                        # Yield any remaining text in the buffer
-                        if buffer:
-                            joined_text = ''.join(buffer)
-                            chunk_data = {
-                                "id": f"chatcmpl-{run_id or 'stream'}",
-                                "object": "chat.completion.chunk",
-                                "created": int(time.time()),
-                                "model": "gpt-4.1-mini",
-                                "choices": [{
-                                    "index": 0,
-                                    "delta": {
-                                        "content": joined_text
-                                    },
-                                    "finish_reason": None
-                                }]
-                            }
-                            yield f"data: {json.dumps(chunk_data)}\n\n"
-                            buffer = []
-                        
-                        # Send final chunk to indicate completion
-                        final_chunk = {
+                # Check for message creation and completion
+                if event.event == "thread.message.created":
+                    logging.info(f"New message created: {event.data.id}")
+                    if tool_outputs_submitted and event.data.id != latest_message_id:
+                        wait_for_final_response = True
+                        latest_message_id = event.data.id
+                    
+                # Handle text deltas
+                if event.event == "thread.message.delta":
+                    delta = event.data.delta
+                    if delta.content:
+                        for content_part in delta.content:
+                            if content_part.type == 'text' and content_part.text:
+                                text_value = content_part.text.value
+                                if text_value:
+                                    # Check if this is text after the tool outputs were submitted
+                                    if tool_outputs_submitted and wait_for_final_response:
+                                        # This is the assistant's final response after analyzing the data
+                                        buffer.append(text_value)
+                                        # Yield chunks more frequently for better streaming
+                                        if len(buffer) >= 2:
+                                            joined_text = ''.join(buffer)
+                                            # Format as OpenAI-compatible streaming response for Bubble
+                                            chunk_data = {
+                                                "id": f"chatcmpl-{run_id or 'stream'}",
+                                                "object": "chat.completion.chunk",
+                                                "created": int(time.time()),
+                                                "model": "gpt-4.1-mini",
+                                                "choices": [{
+                                                    "index": 0,
+                                                    "delta": {
+                                                        "content": joined_text
+                                                    },
+                                                    "finish_reason": None
+                                                }]
+                                            }
+                                            yield f"data: {json.dumps(chunk_data)}\n\n"
+                                            buffer = []
+                                    elif not tool_outputs_submitted:
+                                        # Normal text before tool outputs were submitted
+                                        buffer.append(text_value)
+                                        if len(buffer) >= 3:
+                                            joined_text = ''.join(buffer)
+                                            chunk_data = {
+                                                "id": f"chatcmpl-{run_id or 'stream'}",
+                                                "object": "chat.completion.chunk",
+                                                "created": int(time.time()),
+                                                "model": "gpt-4.1-mini",
+                                                "choices": [{
+                                                    "index": 0,
+                                                    "delta": {
+                                                        "content": joined_text
+                                                    },
+                                                    "finish_reason": None
+                                                }]
+                                            }
+                                            yield f"data: {json.dumps(chunk_data)}\n\n"
+                                            buffer = []
+                
+                # Explicitly handle run completion event
+                if event.event == "thread.run.completed":
+                    logging.info(f"Run completed: {event.data.id}")
+                    completed = True
+                    
+                    # Yield any remaining text in the buffer
+                    if buffer:
+                        joined_text = ''.join(buffer)
+                        chunk_data = {
                             "id": f"chatcmpl-{run_id or 'stream'}",
                             "object": "chat.completion.chunk",
                             "created": int(time.time()),
                             "model": "gpt-4.1-mini",
                             "choices": [{
                                 "index": 0,
-                                "delta": {},
-                                "finish_reason": "stop"
+                                "delta": {
+                                    "content": joined_text
+                                },
+                                "finish_reason": None
                             }]
                         }
-                        yield f"data: {json.dumps(final_chunk)}\n\n"
-                        yield "data: [DONE]\n\n"
+                        yield f"data: {json.dumps(chunk_data)}\n\n"
+                        buffer = []
+                    
+                    # Send final chunk to indicate completion
+                    final_chunk = {
+                        "id": f"chatcmpl-{run_id or 'stream'}",
+                        "object": "chat.completion.chunk",
+                        "created": int(time.time()),
+                        "model": "gpt-4.1-mini",
+                        "choices": [{
+                            "index": 0,
+                            "delta": {},
+                            "finish_reason": "stop"
+                        }]
+                    }
+                    yield f"data: {json.dumps(final_chunk)}\n\n"
+                    yield "data: [DONE]\n\n"
+                    
+                # Handle tool calls (including pandas_agent, generate_content, extract_data)
+                elif event.event == "thread.run.requires_action":
+                    if event.data.required_action.type == "submit_tool_outputs":
+                        tool_calls = event.data.required_action.submit_tool_outputs.tool_calls
+                        tool_outputs = []
                         
-                    # Handle tool calls (including pandas_agent, generate_content, extract_data)
-                    elif event.event == "thread.run.requires_action":
-                        if event.data.required_action.type == "submit_tool_outputs":
-                            tool_calls = event.data.required_action.submit_tool_outputs.tool_calls
-                            tool_outputs = []
+                        # Stream status message
+                        status_text = "\n[Processing request...]\n"
+                        status_chunk = {
+                            "id": f"chatcmpl-{run_id or 'stream'}",
+                            "object": "chat.completion.chunk",
+                            "created": int(time.time()),
+                            "model": "gpt-4.1-mini",
+                            "choices": [{
+                                "index": 0,
+                                "delta": {
+                                    "content": status_text
+                                },
+                                "finish_reason": None
+                            }]
+                        }
+                        yield f"data: {json.dumps(status_chunk)}\n\n"
+                        
+                        for tool_call in tool_calls:
+                            if tool_call.function.name == "pandas_agent":
+                                try:
+                                    # Extract arguments
+                                    args = json.loads(tool_call.function.arguments)
+                                    query = args.get("query", "")
+                                    filename = args.get("filename", None)
+                                    
+                                    # Get pandas files for this thread
+                                    pandas_files = []
+                                    retry_count = 0
+                                    max_retries = 3
+                                    
+                                    while retry_count < max_retries:
+                                        try:
+                                            messages = client.beta.threads.messages.list(
+                                                thread_id=session,
+                                                order="desc",
+                                                limit=50
+                                            )
+                                            
+                                            for msg in messages.data:
+                                                if hasattr(msg, 'metadata') and msg.metadata and msg.metadata.get('type') == 'pandas_agent_files':
+                                                    try:
+                                                        pandas_files = json.loads(msg.metadata.get('files', '[]'))
+                                                    except Exception as parse_e:
+                                                        logging.error(f"Error parsing pandas files metadata: {parse_e}")
+                                                    break
+                                            break  # Success, exit retry loop
+                                        except Exception as list_e:
+                                            retry_count += 1
+                                            logging.error(f"Error retrieving pandas files (attempt {retry_count}): {list_e}")
+                                            time.sleep(1)
+                                    
+                                    # Filter by filename if specified
+                                    if filename:
+                                        pandas_files = [f for f in pandas_files if f.get("name") == filename]
+                                    
+                                    # Generate operation ID for status tracking
+                                    pandas_agent_operation_id = f"pandas_agent_{int(time.time())}_{os.urandom(2).hex()}"
+                                    
+                                    # Execute the pandas_agent
+                                    manager = PandasAgentManager.get_instance()
+                                    result, error, removed_files = manager.analyze(
+                                        thread_id=session,
+                                        query=query,
+                                        files=pandas_files
+                                    )
+                                    
+                                    # Form the analysis result
+                                    analysis_result = result if result else ""
+                                    if error:
+                                        analysis_result = f"Error analyzing data: {error}"
+                                    if removed_files:
+                                        removed_files_str = ", ".join(f"'{f}'" for f in removed_files)
+                                        analysis_result += f"\n\nNote: The following file(s) were removed due to the 3-file limit: {removed_files_str}"
+                                    
+                                    # Stream data completion status
+                                    complete_text = "\n[Data analysis complete]\n"
+                                    complete_chunk = {
+                                        "id": f"chatcmpl-{run_id or 'stream'}",
+                                        "object": "chat.completion.chunk",
+                                        "created": int(time.time()),
+                                        "model": "gpt-4.1-mini",
+                                        "choices": [{
+                                            "index": 0,
+                                            "delta": {
+                                                "content": complete_text
+                                            },
+                                            "finish_reason": None
+                                        }]
+                                    }
+                                    yield f"data: {json.dumps(complete_chunk)}\n\n"
+                                    
+                                    # Add to tool outputs
+                                    tool_outputs.append({
+                                        "tool_call_id": tool_call.id,
+                                        "output": analysis_result
+                                    })
+                                    
+                                    # Save for potential fallback
+                                    tool_call_results.append(analysis_result)
+                                    
+                                except Exception as e:
+                                    error_details = traceback.format_exc()
+                                    logging.error(f"Error executing pandas_agent: {e}\n{error_details}")
+                                    error_msg = f"Error analyzing data: {str(e)}"
+                                    
+                                    # Add error to tool outputs
+                                    tool_outputs.append({
+                                        "tool_call_id": tool_call.id,
+                                        "output": error_msg
+                                    })
+                                    
+                                    # Stream error to user
+                                    error_text = f"\n[Error: {str(e)}]\n"
+                                    error_chunk = {
+                                        "id": f"chatcmpl-{run_id or 'stream'}",
+                                        "object": "chat.completion.chunk",
+                                        "created": int(time.time()),
+                                        "model": "gpt-4.1-mini",
+                                        "choices": [{
+                                            "index": 0,
+                                            "delta": {
+                                                "content": error_text
+                                            },
+                                            "finish_reason": None
+                                        }]
+                                    }
+                                    yield f"data: {json.dumps(error_chunk)}\n\n"
+                                    
+                                    # Save for potential fallback
+                                    tool_call_results.append(error_msg)
                             
-                            # Stream status message
-                            status_text = "\n[Processing request...]\n"
-                            status_chunk = {
-                                "id": f"chatcmpl-{run_id or 'stream'}",
-                                "object": "chat.completion.chunk",
-                                "created": int(time.time()),
-                                "model": "gpt-4.1-mini",
-                                "choices": [{
-                                    "index": 0,
-                                    "delta": {
-                                        "content": status_text
-                                    },
-                                    "finish_reason": None
-                                }]
-                            }
-                            yield f"data: {json.dumps(status_chunk)}\n\n"
-                            
-                            for tool_call in tool_calls:
-                                if tool_call.function.name == "pandas_agent":
-                                    try:
-                                        # Extract arguments
-                                        args = json.loads(tool_call.function.arguments)
-                                        query = args.get("query", "")
-                                        filename = args.get("filename", None)
-                                        
-                                        # Get pandas files for this thread
-                                        pandas_files = []
-                                        retry_count = 0
-                                        max_retries = 3
-                                        
-                                        while retry_count < max_retries:
-                                            try:
-                                                messages = client.beta.threads.messages.list(
-                                                    thread_id=session,
-                                                    order="desc",
-                                                    limit=50
-                                                )
-                                                
-                                                for msg in messages.data:
-                                                    if hasattr(msg, 'metadata') and msg.metadata and msg.metadata.get('type') == 'pandas_agent_files':
-                                                        try:
-                                                            pandas_files = json.loads(msg.metadata.get('files', '[]'))
-                                                        except Exception as parse_e:
-                                                            logging.error(f"Error parsing pandas files metadata: {parse_e}")
-                                                        break
-                                                break  # Success, exit retry loop
-                                            except Exception as list_e:
-                                                retry_count += 1
-                                                logging.error(f"Error retrieving pandas files (attempt {retry_count}): {list_e}")
-                                                time.sleep(1)
-                                        
-                                        # Filter by filename if specified
-                                        if filename:
-                                            pandas_files = [f for f in pandas_files if f.get("name") == filename]
-                                        
-                                        # Generate operation ID for status tracking
-                                        pandas_agent_operation_id = f"pandas_agent_{int(time.time())}_{os.urandom(2).hex()}"
-                                        
-                                        # Execute the pandas_agent
-                                        manager = PandasAgentManager.get_instance()
-                                        result, error, removed_files = manager.analyze(
-                                            thread_id=session,
-                                            query=query,
-                                            files=pandas_files
+                            elif tool_call.function.name == "generate_content":
+                                try:
+                                    # Extract arguments
+                                    args = json.loads(tool_call.function.arguments)
+                                    logging.info(f"generate_content tool call with args: {args}")
+                                    
+                                    # Create a mock request object for the handler
+                                    # Check if we're on Azure
+                                    host = os.environ.get('WEBSITE_HOSTNAME', 'localhost:8080')
+                                    base_url = f"https://{host}" if 'azurewebsites.net' in host else f"http://{host}"
+                                    mock_request = type('Request', (), {
+                                        'base_url': base_url,
+                                        'headers': {'host': host}
+                                    })()
+                                    
+                                    # Call the async handler from sync context
+                                    # Since we're in a sync generator, we need to handle this carefully
+                                    import concurrent.futures
+                                    import asyncio
+                                    
+                                    # Run in a thread pool to avoid event loop issues
+                                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                                        future = executor.submit(
+                                            asyncio.run,
+                                            handle_generate_content(args, session, client, mock_request)
                                         )
-                                        
-                                        # Form the analysis result
-                                        analysis_result = result if result else ""
-                                        if error:
-                                            analysis_result = f"Error analyzing data: {error}"
-                                        if removed_files:
-                                            removed_files_str = ", ".join(f"'{f}'" for f in removed_files)
-                                            analysis_result += f"\n\nNote: The following file(s) were removed due to the 3-file limit: {removed_files_str}"
-                                        
-                                        # Stream data completion status
-                                        complete_text = "\n[Data analysis complete]\n"
-                                        complete_chunk = {
-                                            "id": f"chatcmpl-{run_id or 'stream'}",
-                                            "object": "chat.completion.chunk",
-                                            "created": int(time.time()),
-                                            "model": "gpt-4.1-mini",
-                                            "choices": [{
-                                                "index": 0,
-                                                "delta": {
-                                                    "content": complete_text
-                                                },
-                                                "finish_reason": None
-                                            }]
-                                        }
-                                        yield f"data: {json.dumps(complete_chunk)}\n\n"
-                                        
-                                        # Add to tool outputs
-                                        tool_outputs.append({
-                                            "tool_call_id": tool_call.id,
-                                            "output": analysis_result
-                                        })
-                                        
-                                        # Save for potential fallback
-                                        tool_call_results.append(analysis_result)
-                                        
-                                    except Exception as e:
-                                        error_details = traceback.format_exc()
-                                        logging.error(f"Error executing pandas_agent: {e}\n{error_details}")
-                                        error_msg = f"Error analyzing data: {str(e)}"
-                                        
-                                        # Add error to tool outputs
-                                        tool_outputs.append({
-                                            "tool_call_id": tool_call.id,
-                                            "output": error_msg
-                                        })
-                                        
-                                        # Stream error to user
-                                        error_text = f"\n[Error: {str(e)}]\n"
-                                        error_chunk = {
-                                            "id": f"chatcmpl-{run_id or 'stream'}",
-                                            "object": "chat.completion.chunk",
-                                            "created": int(time.time()),
-                                            "model": "gpt-4.1-mini",
-                                            "choices": [{
-                                                "index": 0,
-                                                "delta": {
-                                                    "content": error_text
-                                                },
-                                                "finish_reason": None
-                                            }]
-                                        }
-                                        yield f"data: {json.dumps(error_chunk)}\n\n"
-                                        
-                                        # Save for potential fallback
-                                        tool_call_results.append(error_msg)
-                                
-                                elif tool_call.function.name == "generate_content":
-                                    try:
-                                        # Extract arguments
-                                        args = json.loads(tool_call.function.arguments)
-                                        logging.info(f"generate_content tool call with args: {args}")
-                                        
-                                        # Create a mock request object for the handler
-                                        # Check if we're on Azure
-                                        host = os.environ.get('WEBSITE_HOSTNAME', 'localhost:8080')
-                                        base_url = f"https://{host}" if 'azurewebsites.net' in host else f"http://{host}"
-                                        mock_request = type('Request', (), {
-                                            'base_url': base_url,
-                                            'headers': {'host': host}
-                                        })()
-                                        
-                                        # Call the async handler from sync context
-                                        # Since we're in a sync generator, we need to handle this carefully
-                                        import concurrent.futures
-                                        import asyncio
-                                        
-                                        # Run in a thread pool to avoid event loop issues
-                                        with concurrent.futures.ThreadPoolExecutor() as executor:
-                                            future = executor.submit(
-                                                asyncio.run,
-                                                handle_generate_content(args, session, client, mock_request)
-                                            )
-                                            result = future.result(timeout=300)  # 5 minute timeout
-                                        
-                                        # Add to tool outputs
-                                        tool_outputs.append({
-                                            "tool_call_id": tool_call.id,
-                                            "output": result
-                                        })
-                                        
-                                        # Save for potential fallback
-                                        tool_call_results.append(result)
-                                        
-                                    except Exception as e:
-                                        error_msg = f"Error generating content: {str(e)}"
-                                        logging.error(f"Error executing generate_content: {e}\n{traceback.format_exc()}")
-                                        
-                                        # Add error to tool outputs
-                                        tool_outputs.append({
-                                            "tool_call_id": tool_call.id,
-                                            "output": error_msg
-                                        })
-                                        
-                                        # Save for potential fallback
-                                        tool_call_results.append(error_msg)
-                                
-                                elif tool_call.function.name == "extract_data":
-                                    try:
-                                        # Extract arguments
-                                        args = json.loads(tool_call.function.arguments)
-                                        logging.info(f"extract_data tool call with args: {args}")
-                                        
-                                        # Create a mock request object for the handler
-                                        # Check if we're on Azure
-                                        host = os.environ.get('WEBSITE_HOSTNAME', 'localhost:8080')
-                                        base_url = f"https://{host}" if 'azurewebsites.net' in host else f"http://{host}"
-                                        mock_request = type('Request', (), {
-                                            'base_url': base_url,
-                                            'headers': {'host': host}
-                                        })()
-                                        
-                                        # Call the async handler from sync context
-                                        # Since we're in a sync generator, we need to handle this carefully
-                                        import concurrent.futures
-                                        import asyncio
-                                        
-                                        # Run in a thread pool to avoid event loop issues
-                                        with concurrent.futures.ThreadPoolExecutor() as executor:
-                                            future = executor.submit(
-                                                asyncio.run,
-                                                handle_extract_data(args, session, client, mock_request)
-                                            )
-                                            result = future.result(timeout=300)  # 5 minute timeout
-                                        
-                                        # Add to tool outputs
-                                        tool_outputs.append({
-                                            "tool_call_id": tool_call.id,
-                                            "output": result
-                                        })
-                                        
-                                        # Save for potential fallback
-                                        tool_call_results.append(result)
-                                        
-                                    except Exception as e:
-                                        error_msg = f"Error extracting data: {str(e)}"
-                                        logging.error(f"Error executing extract_data: {e}\n{traceback.format_exc()}")
-                                        
-                                        # Add error to tool outputs
-                                        tool_outputs.append({
-                                            "tool_call_id": tool_call.id,
-                                            "output": error_msg
-                                        })
-                                        
-                                        # Save for potential fallback
-                                        tool_call_results.append(error_msg)
+                                        result = future.result(timeout=300)  # 5 minute timeout
+                                    
+                                    # Add to tool outputs
+                                    tool_outputs.append({
+                                        "tool_call_id": tool_call.id,
+                                        "output": result
+                                    })
+                                    
+                                    # Save for potential fallback
+                                    tool_call_results.append(result)
+                                    
+                                except Exception as e:
+                                    error_msg = f"Error generating content: {str(e)}"
+                                    logging.error(f"Error executing generate_content: {e}\n{traceback.format_exc()}")
+                                    
+                                    # Add error to tool outputs
+                                    tool_outputs.append({
+                                        "tool_call_id": tool_call.id,
+                                        "output": error_msg
+                                    })
+                                    
+                                    # Save for potential fallback
+                                    tool_call_results.append(error_msg)
                             
-                            # Submit tool outputs
-                            if tool_outputs:
-                                retry_count = 0
-                                max_retries = 3
-                                submit_success = False
+                            elif tool_call.function.name == "extract_data":
+                                try:
+                                    # Extract arguments
+                                    args = json.loads(tool_call.function.arguments)
+                                    logging.info(f"extract_data tool call with args: {args}")
+                                    
+                                    # Create a mock request object for the handler
+                                    # Check if we're on Azure
+                                    host = os.environ.get('WEBSITE_HOSTNAME', 'localhost:8080')
+                                    base_url = f"https://{host}" if 'azurewebsites.net' in host else f"http://{host}"
+                                    mock_request = type('Request', (), {
+                                        'base_url': base_url,
+                                        'headers': {'host': host}
+                                    })()
+                                    
+                                    # Call the async handler from sync context
+                                    # Since we're in a sync generator, we need to handle this carefully
+                                    import concurrent.futures
+                                    import asyncio
+                                    
+                                    # Run in a thread pool to avoid event loop issues
+                                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                                        future = executor.submit(
+                                            asyncio.run,
+                                            handle_extract_data(args, session, client, mock_request)
+                                        )
+                                        result = future.result(timeout=300)  # 5 minute timeout
+                                    
+                                    # Add to tool outputs
+                                    tool_outputs.append({
+                                        "tool_call_id": tool_call.id,
+                                        "output": result
+                                    })
+                                    
+                                    # Save for potential fallback - FIX: save result not error_msg
+                                    tool_call_results.append(result)
+                                    
+                                except Exception as e:
+                                    error_msg = f"Error extracting data: {str(e)}"
+                                    logging.error(f"Error executing extract_data: {e}\n{traceback.format_exc()}")
+                                    
+                                    # Add error to tool outputs
+                                    tool_outputs.append({
+                                        "tool_call_id": tool_call.id,
+                                        "output": error_msg
+                                    })
+                                    
+                                    # Save for potential fallback
+                                    tool_call_results.append(error_msg)
+                        
+                        # Submit tool outputs
+                        if tool_outputs:
+                            # Show tool results to user in code blocks for transparency
+                            if tool_call_results:
+                                tool_results_text = "\n\n**Tool Results:**\n"
+                                for i, result in enumerate(tool_call_results):
+                                    # Truncate very long results for display
+                                    display_result = result[:1000] + "..." if len(result) > 1000 else result
+                                    tool_results_text += f"\n```\n{display_result}\n```\n"
                                 
-                                # Stream status indicating generation of response
-                                gen_text = "\n[Generating response based on analysis...]\n"
-                                gen_chunk = {
+                                # Stream the tool results
+                                tool_results_chunk = {
                                     "id": f"chatcmpl-{run_id or 'stream'}",
                                     "object": "chat.completion.chunk",
                                     "created": int(time.time()),
@@ -4586,30 +4590,152 @@ async def process_conversation(
                                     "choices": [{
                                         "index": 0,
                                         "delta": {
-                                            "content": gen_text
+                                            "content": tool_results_text
                                         },
                                         "finish_reason": None
                                     }]
                                 }
-                                yield f"data: {json.dumps(gen_chunk)}\n\n"
+                                yield f"data: {json.dumps(tool_results_chunk)}\n\n"
+                            
+                            # Create an inner event handler for the tool output stream
+                            buffer_inner = []
+                            
+                            # Stream status indicating generation of response
+                            gen_text = "\n[Generating response based on analysis...]\n"
+                            gen_chunk = {
+                                "id": f"chatcmpl-{run_id or 'stream'}",
+                                "object": "chat.completion.chunk",
+                                "created": int(time.time()),
+                                "model": "gpt-4.1-mini",
+                                "choices": [{
+                                    "index": 0,
+                                    "delta": {
+                                        "content": gen_text
+                                    },
+                                    "finish_reason": None
+                                }]
+                            }
+                            yield f"data: {json.dumps(gen_chunk)}\n\n"
+                            
+                            try:
+                                # Submit tool outputs and continue streaming
+                                with client.beta.threads.runs.submit_tool_outputs_stream(
+                                    thread_id=session,
+                                    run_id=event.data.id,
+                                    tool_outputs=tool_outputs
+                                ) as tool_stream:
+                                    for tool_event in tool_stream:
+                                        # Handle text deltas from the continued stream
+                                        if tool_event.event == "thread.message.delta":
+                                            delta = tool_event.data.delta
+                                            if delta.content:
+                                                for content_part in delta.content:
+                                                    if content_part.type == 'text' and content_part.text:
+                                                        text_value = content_part.text.value
+                                                        if text_value:
+                                                            buffer_inner.append(text_value)
+                                                            if len(buffer_inner) >= 2:
+                                                                joined_text = ''.join(buffer_inner)
+                                                                chunk_data = {
+                                                                    "id": f"chatcmpl-{run_id or 'stream'}",
+                                                                    "object": "chat.completion.chunk",
+                                                                    "created": int(time.time()),
+                                                                    "model": "gpt-4.1-mini",
+                                                                    "choices": [{
+                                                                        "index": 0,
+                                                                        "delta": {
+                                                                            "content": joined_text
+                                                                        },
+                                                                        "finish_reason": None
+                                                                    }]
+                                                                }
+                                                                yield f"data: {json.dumps(chunk_data)}\n\n"
+                                                                buffer_inner = []
+                                        
+                                        # Handle run completion
+                                        elif tool_event.event == "thread.run.completed":
+                                            completed = True
+                                            # Yield any remaining buffer
+                                            if buffer_inner:
+                                                joined_text = ''.join(buffer_inner)
+                                                chunk_data = {
+                                                    "id": f"chatcmpl-{run_id or 'stream'}",
+                                                    "object": "chat.completion.chunk",
+                                                    "created": int(time.time()),
+                                                    "model": "gpt-4.1-mini",
+                                                    "choices": [{
+                                                        "index": 0,
+                                                        "delta": {
+                                                            "content": joined_text
+                                                        },
+                                                        "finish_reason": None
+                                                    }]
+                                                }
+                                                yield f"data: {json.dumps(chunk_data)}\n\n"
+                                                buffer_inner = []
+                                            
+                                            # Send final chunk
+                                            final_chunk = {
+                                                "id": f"chatcmpl-{run_id or 'stream'}",
+                                                "object": "chat.completion.chunk",
+                                                "created": int(time.time()),
+                                                "model": "gpt-4.1-mini",
+                                                "choices": [{
+                                                    "index": 0,
+                                                    "delta": {},
+                                                    "finish_reason": "stop"
+                                                }]
+                                            }
+                                            yield f"data: {json.dumps(final_chunk)}\n\n"
+                                            yield "data: [DONE]\n\n"
+                                            return
+                                        
+                                        # Handle run failures
+                                        elif tool_event.event == "thread.run.failed":
+                                            logging.error(f"Tool output stream run failed: {tool_event.data}")
+                                            
+                                            # Send error notice
+                                            error_chunk = {
+                                                "id": f"chatcmpl-{run_id or 'stream'}",
+                                                "object": "chat.completion.chunk",
+                                                "created": int(time.time()),
+                                                "model": "gpt-4.1-mini",
+                                                "choices": [{
+                                                    "index": 0,
+                                                    "delta": {
+                                                        "content": "\n[Note: Response generation encountered an issue. Tool results are shown above.]"
+                                                    },
+                                                    "finish_reason": "stop"
+                                                }]
+                                            }
+                                            yield f"data: {json.dumps(error_chunk)}\n\n"
+                                            yield "data: [DONE]\n\n"
+                                            return
                                 
-                                while retry_count < max_retries and not submit_success:
-                                    try:
-                                        client.beta.threads.runs.submit_tool_outputs(
-                                            thread_id=session,
-                                            run_id=event.data.id,
-                                            tool_outputs=tool_outputs
-                                        )
-                                        submit_success = True
-                                        tool_outputs_submitted = True
-                                        logging.info(f"Successfully submitted tool outputs for run {event.data.id}")
-                                    except Exception as submit_e:
-                                        retry_count += 1
-                                        logging.error(f"Error submitting tool outputs (attempt {retry_count}): {submit_e}")
-                                        time.sleep(1)
+                                tool_outputs_submitted = True
+                                logging.info(f"Successfully submitted tool outputs for run {event.data.id} with streaming")
                                 
-                                if not submit_success:
-                                    error_text = "\n[Error: Failed to submit analysis results. Please try again.]\n"
+                            except Exception as submit_e:
+                                logging.error(f"Error submitting tool outputs with streaming: {submit_e}")
+                                
+                                # Try fallback approach - regular submission without streaming
+                                try:
+                                    client.beta.threads.runs.submit_tool_outputs(
+                                        thread_id=session,
+                                        run_id=event.data.id,
+                                        tool_outputs=tool_outputs
+                                    )
+                                    tool_outputs_submitted = True
+                                    logging.info(f"Submitted tool outputs using fallback method")
+                                    
+                                    # Continue with the original stream
+                                    continue
+                                    
+                                except Exception as fallback_e:
+                                    logging.error(f"Fallback submission also failed: {fallback_e}")
+                                    
+                                    # Send error and finish
+                                    error_text = "\n[Error: Failed to complete processing. Tool results are shown above.]\n"
                                     error_chunk = {
                                         "id": f"chatcmpl-{run_id or 'stream'}",
                                         "object": "chat.completion.chunk",
@@ -4626,205 +4752,45 @@ async def process_conversation(
                                     yield f"data: {json.dumps(error_chunk)}\n\n"
                                     yield "data: [DONE]\n\n"
                                     return
-                
-                # Yield any remaining text in the buffer before exiting the stream loop
-                if buffer:
-                    joined_text = ''.join(buffer)
-                    chunk_data = {
-                        "id": f"chatcmpl-{run_id or 'stream'}",
-                        "object": "chat.completion.chunk",
-                        "created": int(time.time()),
-                        "model": "gpt-4.1-mini",
-                        "choices": [{
-                            "index": 0,
-                            "delta": {
-                                "content": joined_text
-                            },
-                            "finish_reason": None
-                        }]
-                    }
-                    yield f"data: {json.dumps(chunk_data)}\n\n"
-                    buffer = []
             
-            # If tool outputs were submitted but we didn't receive a final response,
-            # we need to actively poll for the final response
-            if tool_outputs_submitted and not completed and run_id:
-                logging.info(f"Tool outputs submitted but run not completed. Polling for final response...")
-                
-                # Poll for run completion
-                max_poll_attempts = 30
-                poll_interval = 10    # seconds
-                
-                for attempt in range(max_poll_attempts):
-                    try:
-                        run_status = client.beta.threads.runs.retrieve(
-                            thread_id=session,
-                            run_id=run_id
-                        )
-                        
-                        logging.info(f"Run status poll {attempt+1}/{max_poll_attempts}: {run_status.status}")
-                        
-                        if run_status.status == "completed":
-                            # Wait a moment for message to be fully available
-                            time.sleep(1)
-                            
-                            # Get the latest message
-                            messages = client.beta.threads.messages.list(
-                                thread_id=session,
-                                order="desc",
-                                limit=1
-                            )
-                            
-                            if messages and messages.data:
-                                latest_message = messages.data[0]
-                                # Check if this is a new message (different from our pre-run message)
-                                if not latest_message_id or latest_message.id != latest_message_id:
-                                    response_content = ""
-                                    
-                                    for content_part in latest_message.content:
-                                        if content_part.type == 'text':
-                                            response_content += content_part.text.value
-                                    
-                                    if response_content:
-                                        # Break response into chunks for streaming
-                                        chunk_size = 20  # Adjust as needed
-                                        for i in range(0, len(response_content), chunk_size):
-                                            chunk_text = response_content[i:i + chunk_size]
-                                            chunk_data = {
-                                                "id": f"chatcmpl-{run_id}",
-                                                "object": "chat.completion.chunk",
-                                                "created": int(time.time()),
-                                                "model": "gpt-4.1-mini",
-                                                "choices": [{
-                                                    "index": 0,
-                                                    "delta": {
-                                                        "content": chunk_text
-                                                    },
-                                                    "finish_reason": None
-                                                }]
-                                            }
-                                            yield f"data: {json.dumps(chunk_data)}\n\n"
-                                        
-                                        # Send final chunk
-                                        final_chunk = {
-                                            "id": f"chatcmpl-{run_id}",
-                                            "object": "chat.completion.chunk",
-                                            "created": int(time.time()),
-                                            "model": "gpt-4.1-mini",
-                                            "choices": [{
-                                                "index": 0,
-                                                "delta": {},
-                                                "finish_reason": "stop"
-                                            }]
-                                        }
-                                        yield f"data: {json.dumps(final_chunk)}\n\n"
-                                        yield "data: [DONE]\n\n"
-                            break  # Exit the polling loop
-                            
-                        elif run_status.status in ["failed", "cancelled", "expired"]:
-                            error_code = None
-                            if run_status.status == "failed" and hasattr(run_status, 'last_error') and run_status.last_error:
-                                error_code = run_status.last_error.code if hasattr(run_status.last_error, 'code') else 'unknown'
-                                error_details = run_status.last_error.message if hasattr(run_status.last_error, 'message') else str(run_status.last_error)
-                                logging.error(f"Run failed with error code '{error_code}': {error_details}")
-                                
-                                # Retry on server errors
-                                if error_code == 'server_error' and attempt < 5:  # Retry up to 5 times
-                                    logging.info(f"Retrying due to server error (attempt {attempt + 1}/5)")
-                                    time.sleep(5)
-                                    
-                                    try:
-                                        # Create a new run
-                                        run = client.beta.threads.runs.create(
-                                            thread_id=session,
-                                            assistant_id=assistant,
-                                            truncation_strategy={
-                                                "type": "last_messages",
-                                                "last_messages": 10
-                                            }
-                                        )
-                                        run_id = run.id
-                                        logging.info(f"Created new run {run_id} after server error")
-                                        continue  # Continue polling with new run
-                                    except Exception as retry_e:
-                                        logging.error(f"Failed to create retry run: {retry_e}")
-                            
-                            logging.error(f"Run ended with status: {run_status.status}")
-                            error_chunk = {
-                                "id": f"chatcmpl-{run_id}",
-                                "object": "chat.completion.chunk",
-                                "created": int(time.time()),
-                                "model": "gpt-4.1-mini",
-                                "choices": [{
-                                    "index": 0,
-                                    "delta": {
-                                        "content": f"\n\n[Run {run_status.status}. Please try your question again.]"
-                                    },
-                                    "finish_reason": "stop"
-                                }]
-                            }
-                            yield f"data: {json.dumps(error_chunk)}\n\n"
-                            yield "data: [DONE]\n\n"
-                            break
-                            
-                        if attempt < max_poll_attempts - 1:
-                            # Send keep-alive message to prevent client timeout
-                            keep_alive_chunk = {
-                                "id": f"chatcmpl-{run_id}",
-                                "object": "chat.completion.chunk",
-                                "created": int(time.time()),
-                                "model": "gpt-4.1-mini",
-                                "choices": [{
-                                    "index": 0,
-                                    "delta": {
-                                        "content": ""  # Empty content as keep-alive
-                                    },
-                                    "finish_reason": None
-                                }]
-                            }
-                            yield f"data: {json.dumps(keep_alive_chunk)}\n\n"
-                            yield f": keep-alive {datetime.now().isoformat()}\n\n"  # SSE comment for keep-alive
-                            
-                            time.sleep(poll_interval)
-                            
-                    except Exception as poll_e:
-                        logging.error(f"Error polling run status (attempt {attempt+1}): {poll_e}")
-                        if attempt == max_poll_attempts - 1:
-                            error_chunk = {
-                                "id": f"chatcmpl-{run_id}",
-                                "object": "chat.completion.chunk",
-                                "created": int(time.time()),
-                                "model": "gpt-4.1-mini",
-                                "choices": [{
-                                    "index": 0,
-                                    "delta": {
-                                        "content": "\n\n[Could not retrieve final response. The analysis results are shown above.]"
-                                    },
-                                    "finish_reason": "stop"
-                                }]
-                            }
-                            yield f"data: {json.dumps(error_chunk)}\n\n"
-                            yield "data: [DONE]\n\n"
-                        time.sleep(poll_interval)
-            
-        except Exception as e:
-            error_details = traceback.format_exc()
-            logging.error(f"Streaming error during run for thread {session}: {e}\n{error_details}")
-            error_chunk = {
-                "id": "chatcmpl-error",
-                "object": "chat.completion.chunk",
-                "created": int(time.time()),
-                "model": "gpt-4.1-mini",
-                "choices": [{
-                    "index": 0,
-                    "delta": {
-                        "content": "\n[ERROR] An error occurred while generating the response. Please try again.\n"
-                    },
-                    "finish_reason": "stop"
-                }]
-            }
-            yield f"data: {json.dumps(error_chunk)}\n\n"
-            yield "data: [DONE]\n\n"
+            # Yield any remaining text in the buffer before exiting the stream loop
+            if buffer:
+                joined_text = ''.join(buffer)
+                chunk_data = {
+                    "id": f"chatcmpl-{run_id or 'stream'}",
+                    "object": "chat.completion.chunk",
+                    "created": int(time.time()),
+                    "model": "gpt-4.1-mini",
+                    "choices": [{
+                        "index": 0,
+                        "delta": {
+                            "content": joined_text
+                        },
+                        "finish_reason": None
+                    }]
+                }
+                yield f"data: {json.dumps(chunk_data)}\n\n"
+                buffer = []
+        
+    except Exception as e:
+        error_details = traceback.format_exc()
+        logging.error(f"Streaming error during run for thread {session}: {e}\n{error_details}")
+        error_chunk = {
+            "id": "chatcmpl-error",
+            "object": "chat.completion.chunk",
+            "created": int(time.time()),
+            "model": "gpt-4.1-mini",
+            "choices": [{
+                "index": 0,
+                "delta": {
+                    "content": "\n[ERROR] An error occurred while generating the response. Please try again.\n"
+                },
+                "finish_reason": "stop"
+            }]
+        }
+        yield f"data: {json.dumps(error_chunk)}\n\n"
+        yield "data: [DONE]\n\n"
+    ######################### END OF def stream_response() #######################################
     
     try:
         # Acquire thread lock if session exists
