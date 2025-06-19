@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse, StreamingResponse, FileResponse, Res
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from openai import AzureOpenAI
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Optional, List, Dict, Any, Tuple, AsyncGenerator
 import os, io
 from datetime import datetime
 import time
@@ -1006,6 +1006,80 @@ You combine the intelligence of general knowledge with the power of specialized 
 For general queries, be naturally helpful without overcomplicating. For file-related or command-based tasks, leverage your full analytical capabilities with appropriate tool integration. Always gauge the appropriate level of detail and technicality based on the user's needs.
 You are the ultimate AI companion - equally comfortable discussing everyday topics, analyzing complex data, generating professional documents, or creating comprehensive strategies. Your strength lies in knowing when to use which capability and seamlessly integrating multiple tools when needed.
 '''
+def sync_wait_for_run_completion(client: AzureOpenAI, thread_id: str, max_wait_time: int = 30) -> bool:
+    """
+    Synchronous version: Wait for any active runs on a thread to complete before proceeding.
+    
+    Args:
+        client: Azure OpenAI client
+        thread_id: Thread ID to check
+        max_wait_time: Maximum seconds to wait
+        
+    Returns:
+        True if thread is ready, False if timeout
+    """
+    start_time = time.time()
+    check_interval = 1  # Check every second
+    
+    while time.time() - start_time < max_wait_time:
+        try:
+            runs = client.beta.threads.runs.list(thread_id=thread_id, limit=1)
+            if not runs.data:
+                return True  # No runs, safe to proceed
+                
+            latest_run = runs.data[0]
+            if latest_run.status not in ["in_progress", "queued", "requires_action"]:
+                return True  # Run is complete
+                
+            logging.info(f"Waiting for run {latest_run.id} to complete (status: {latest_run.status})")
+            time.sleep(check_interval)
+            
+        except Exception as e:
+            logging.warning(f"Error checking run status: {e}")
+            # On error, wait a bit and return True to proceed
+            time.sleep(1)
+            return True
+    
+    logging.warning(f"Timeout waiting for run completion on thread {thread_id}")
+    return False
+
+
+async def wait_for_run_completion(client: AzureOpenAI, thread_id: str, max_wait_time: int = 30) -> bool:
+    """
+    Async version: Wait for any active runs on a thread to complete before proceeding.
+    
+    Args:
+        client: Azure OpenAI client
+        thread_id: Thread ID to check
+        max_wait_time: Maximum seconds to wait
+        
+    Returns:
+        True if thread is ready, False if timeout
+    """
+    start_time = time.time()
+    check_interval = 1  # Check every second
+    
+    while time.time() - start_time < max_wait_time:
+        try:
+            runs = client.beta.threads.runs.list(thread_id=thread_id, limit=1)
+            if not runs.data:
+                return True  # No runs, safe to proceed
+                
+            latest_run = runs.data[0]
+            if latest_run.status not in ["in_progress", "queued", "requires_action"]:
+                return True  # Run is complete
+                
+            logging.info(f"Waiting for run {latest_run.id} to complete (status: {latest_run.status})")
+            await asyncio.sleep(check_interval)
+            
+        except Exception as e:
+            logging.warning(f"Error checking run status: {e}")
+            # On error, wait a bit and return True to proceed
+            await asyncio.sleep(1)
+            return True
+    
+    logging.warning(f"Timeout waiting for run completion on thread {thread_id}")
+    return False
 def get_content_generation_tools():
     """Get tool definitions for content generation and data extraction"""
     generate_content_tool = {
@@ -1146,70 +1220,6 @@ async def enhance_prompt_with_context(prompt: str, thread_id: str, client, outpu
         enhanced_prompt += "\n\nAnalyze this request and choose the most appropriate format for the response."
     
     return enhanced_prompt
-async def summarize_and_trim_thread(client: AzureOpenAI, thread_id: str, keep_messages: int = 20):
-    """
-    Summarize old messages before trimming the thread.
-    """
-    try:
-        # Get messages to summarize
-        messages = client.beta.threads.messages.list(
-            thread_id=thread_id,
-            order="asc",
-            limit=100
-        )
-        
-        if len(messages.data) <= keep_messages:
-            return  # No need to trim
-        
-        # Extract content from messages to summarize
-        messages_to_summarize = messages.data[:-keep_messages]
-        summary_content = []
-        
-        for msg in messages_to_summarize:
-            if msg.role == "user":
-                for content in msg.content:
-                    if content.type == 'text':
-                        summary_content.append(f"User: {content.text.value}")
-            elif msg.role == "assistant":
-                for content in msg.content:
-                    if content.type == 'text':
-                        summary_content.append(f"Assistant: {content.text.value}")
-        
-        if summary_content:
-            # Create summary using AI
-            summary_prompt = f"""Summarize this conversation history concisely, keeping key topics and context:
-
-{chr(10).join(summary_content[:20])}  # Limit to prevent token overflow
-
-Provide a brief summary of key topics discussed and important context."""
-            
-            completion = client.chat.completions.create(
-                model="gpt-4.1-mini",
-                messages=[
-                    {"role": "system", "content": "You are a conversation summarizer. Create concise summaries."},
-                    {"role": "user", "content": summary_prompt}
-                ],
-                max_tokens=500,
-                temperature=0.3
-            )
-            
-            summary = completion.choices[0].message.content
-            
-            # Add summary as a system message
-            client.beta.threads.messages.create(
-                thread_id=thread_id,
-                role="assistant",
-                content=f"[Previous Conversation Summary]:\n{summary}",
-                metadata={"type": "conversation_summary"}
-            )
-            
-            logging.info(f"Added conversation summary to thread {thread_id}")
-        
-        # Now trim the thread
-        await trim_thread(client, thread_id, keep_messages)
-        
-    except Exception as e:
-        logging.error(f"Error summarizing thread {thread_id}: {e}")
 
 async def trim_thread(client: AzureOpenAI, thread_id: str, keep_messages: int = 30):
     """
@@ -3038,13 +3048,18 @@ async def pandas_agent(client: AzureOpenAI, thread_id: Optional[str], query: str
         if thread_id:
             update_operation_status(operation_id, "responding", 95, "Adding response to thread")
             try:
-                client.beta.threads.messages.create(
-                    thread_id=thread_id,
-                    role="user",
-                    content=f"[PANDAS AGENT RESPONSE]: {final_response}",
-                    metadata={"type": "pandas_agent_response", "operation_id": operation_id}
-                )
-                logging.info(f"Added pandas_agent response to thread {thread_id}")
+                # Wait for any active runs to complete (using sync version since pandas_agent is sync)
+                run_ready = sync_wait_for_run_completion(client, thread_id)
+                if not run_ready:
+                    logging.warning(f"Could not add pandas_agent response to thread {thread_id} - run still active after timeout")
+                else:
+                    client.beta.threads.messages.create(
+                        thread_id=thread_id,
+                        role="user",
+                        content=f"[PANDAS AGENT RESPONSE]: {final_response}",
+                        metadata={"type": "pandas_agent_response", "operation_id": operation_id}
+                    )
+                    logging.info(f"Added pandas_agent response to thread {thread_id}")
             except Exception as e:
                 logging.error(f"Error adding pandas_agent response to thread: {e}")
                 # Continue execution despite error with thread message
@@ -3239,14 +3254,18 @@ async def add_file_awareness(client: AzureOpenAI, thread_id: str, file_info: Dic
             awareness_message += "This file has been processed."
 
         # Send the message to the thread
-        client.beta.threads.messages.create(
-            thread_id=thread_id,
-            role="user",  # Sending as user so assistant 'sees' it as input/instruction
-            content=awareness_message,
-            metadata={"type": "file_awareness", "processed_file": file_name}
-        )
-
-        logging.info(f"Added file awareness for '{file_name}' ({processing_method}) to thread {thread_id}")
+        run_ready = await wait_for_run_completion(client, thread_id)
+        if run_ready:
+            # Send the message to the thread
+            client.beta.threads.messages.create(
+                thread_id=thread_id,
+                role="user",  # Sending as user so assistant 'sees' it as input/instruction
+                content=awareness_message,
+                metadata={"type": "file_awareness", "processed_file": file_name}
+            )
+            logging.info(f"Added file awareness for '{file_name}' ({processing_method}) to thread {thread_id}")
+        else:
+            logging.warning(f"Could not add file awareness - run still active on thread {thread_id}")
     except Exception as e:
         logging.error(f"Error adding file awareness for '{file_name}' to thread {thread_id}: {e}")
         # Continue the flow even if adding awareness fails
@@ -3470,20 +3489,26 @@ async def initiate_chat(request: Request):
     # Store csv/excel files info in a metadata message if there are any
     if session_csv_excel_files:
         try:
-            # Create a special message to store file paths for the pandas agent
-            pandas_files_info = json.dumps(session_csv_excel_files)
-            client.beta.threads.messages.create(
-                thread_id=thread.id,
-                role="user",
-                content="PANDAS_AGENT_FILES_INFO (DO NOT DISPLAY TO USER)",
-                metadata={
-                    "type": "pandas_agent_files",
-                    "files": pandas_files_info
-                }
-            )
-            logging.info(f"Stored pandas agent files info in thread {thread.id}")
+            # Wait for any active runs to complete before adding message
+            run_ready = await wait_for_run_completion(client, thread.id)
+            if run_ready:
+                # Create a special message to store file paths for the pandas agent
+                pandas_files_info = json.dumps(session_csv_excel_files)
+                client.beta.threads.messages.create(
+                    thread_id=thread.id,
+                    role="user",
+                    content="PANDAS_AGENT_FILES_INFO (DO NOT DISPLAY TO USER)",
+                    metadata={
+                        "type": "pandas_agent_files",
+                        "files": pandas_files_info
+                    }
+                )
+                logging.info(f"Stored pandas agent files info in thread {thread.id}")
+            else:
+                logging.warning(f"Could not store pandas files info - run still active on thread {thread.id}")
         except Exception as e:
             logging.error(f"Error storing pandas agent files info: {e}")
+
 
     res = {
         "message": "Chat initiated successfully.",
@@ -3719,23 +3744,27 @@ async def upload_file(
                             logging.error(f"Error deleting pandas files message: {e}")
                     
                     # Create a new message with updated files
-                    client.beta.threads.messages.create(
-                        thread_id=thread_id,
-                        role="user",
-                        content="PANDAS_AGENT_FILES_INFO (DO NOT DISPLAY TO USER)",
-                        metadata={
-                            "type": "pandas_agent_files",
-                            "files": json.dumps(pandas_files)
-                        }
-                    )
-                    client.beta.threads.messages.create(
-                        thread_id=thread_id,
-                        role="user",
-                        content=f"IMPORTANT INSTRUCTION: For ANY query about the file '{filename}', including requests to explain, summarize, or analyze the file, or any mention of the filename, you MUST use the pandas_agent tool. Never try to answer questions about this file from memory.",
-                        metadata={"type": "pandas_agent_instruction"}
-                    )
-                    
-                    logging.info(f"Updated pandas agent files info in thread {thread_id}")
+                    run_ready = await wait_for_run_completion(client, thread_id)
+                    if run_ready:
+                        # Create a new message with updated files
+                        client.beta.threads.messages.create(
+                            thread_id=thread_id,
+                            role="user",
+                            content="PANDAS_AGENT_FILES_INFO (DO NOT DISPLAY TO USER)",
+                            metadata={
+                                "type": "pandas_agent_files",
+                                "files": json.dumps(pandas_files)
+                            }
+                        )
+                        client.beta.threads.messages.create(
+                            thread_id=thread_id,
+                            role="user",
+                            content=f"IMPORTANT INSTRUCTION: For ANY query about the file '{filename}', including requests to explain, summarize, or analyze the file, or any mention of the filename, you MUST use the pandas_agent tool. Never try to answer questions about this file from memory.",
+                            metadata={"type": "pandas_agent_instruction"}
+                        )
+                        logging.info(f"Updated pandas agent files info in thread {thread_id}")
+                    else:
+                        logging.warning(f"Could not update pandas files info - run still active on thread {thread_id}")
                 except Exception as e:
                     logging.error(f"Error updating pandas agent files for thread {thread_id}: {e}")
             
