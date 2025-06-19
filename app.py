@@ -5419,13 +5419,21 @@ async def process_conversation(
                                             pandas_agent_operation_id = f"pandas_agent_{int(time.time())}_{os.urandom(2).hex()}"
                                             
                                             # Execute the pandas_agent
-                                            analysis_result = await pandas_agent(
-                                                client=client,
+                                            manager = PandasAgentManager.get_instance()
+                                            result, error, removed_files = manager.analyze(
                                                 thread_id=session,
                                                 query=query,
                                                 files=pandas_files
                                             )
                                             
+                                            # Format the analysis result (same as streaming)
+                                            analysis_result = result if result else ""
+                                            if error:
+                                                analysis_result = f"Error analyzing data: {error}"
+                                            if removed_files:
+                                                removed_files_str = ", ".join(f"'{f}'" for f in removed_files)
+                                                analysis_result += f"\n\nNote: The following file(s) were removed due to the 3-file limit: {removed_files_str}"
+                                           
                                             # Add to tool outputs
                                             tool_outputs.append({
                                                 "tool_call_id": tool_call.id,
