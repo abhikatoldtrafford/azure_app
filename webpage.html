@@ -845,47 +845,293 @@
         }
 
         .test-form-row {
-            display: flex;
-            gap: 8px;
             margin-bottom: 8px;
-            align-items: center;
         }
 
         .test-form-row label {
-            min-width: 100px;
-            font-size: 12px;
+            display: block;
+            margin-bottom: 4px;
+            font-weight: 600;
+            font-size: 13px;
             color: var(--text-secondary);
         }
 
-        .test-form-row input,
-        .test-form-row select,
-        .test-form-row textarea {
-            flex: 1;
+        .test-form-row input[type="text"],
+        .test-form-row input[type="number"],
+        .test-form-row textarea,
+        .test-form-row select {
+            width: 100%;
             padding: 6px 10px;
-            background: var(--bg-tertiary);
             border: 1px solid var(--border);
             border-radius: 4px;
+            background: var(--bg-secondary);
             color: var(--text-primary);
             font-size: 13px;
         }
 
-        .test-response {
-            background: var(--bg-secondary);
-            border: 1px solid var(--border);
-            border-radius: 4px;
-            padding: 12px;
-            margin-top: 12px;
-            font-family: 'Monaco', 'Consolas', monospace;
-            font-size: 12px;
-            max-height: 300px;
-            overflow-y: auto;
-            white-space: pre-wrap;
+        .test-form-row textarea {
+            resize: vertical;
+            min-height: 60px;
+            font-family: inherit;
         }
 
         .test-actions {
             display: flex;
             gap: 8px;
+            margin-top: 12px;
+        }
+
+        .test-response {
+            margin-top: 16px;
+            padding: 16px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
+        .test-response h4 {
+            margin-top: 0;
+            margin-bottom: 12px;
+            color: var(--accent);
+        }
+
+        .test-response h5 {
+            margin-top: 16px;
+            margin-bottom: 8px;
+            color: var(--accent);
+            font-size: 14px;
+        }
+
+        .test-response pre {
+            background: var(--bg-primary);
+            padding: 12px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+
+        .test-response .error {
+            color: var(--error);
+            font-weight: 600;
+        }
+
+        .test-response .success {
+            color: var(--success);
+            font-weight: 600;
+        }
+
+        .test-response .warning {
+            color: #ff9800;
+            font-weight: 600;
+        }
+
+        .test-response .loading {
+            color: var(--text-secondary);
+            font-style: italic;
+            padding: 20px;
+            text-align: center;
+        }
+
+        /* Test Progress Styles */
+        .test-progress {
+            margin-bottom: 20px;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background-color: var(--bg-tertiary);
+            border-radius: 10px;
+            overflow: hidden;
+            margin-bottom: 10px;
+            border: 1px solid var(--border);
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent) 0%, #0066cc 100%);
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding-right: 10px;
+            color: white;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        .progress-status {
+            text-align: center;
+            font-weight: 600;
+            color: var(--accent);
+            margin-bottom: 10px;
+        }
+        
+        .progress-details {
+            font-size: 12px;
+            color: var(--text-secondary);
+            text-align: center;
+            min-height: 20px;
+        }
+        
+        .test-description {
+            background: var(--bg-tertiary);
+            padding: 8px 12px;
+            border-radius: 4px;
+            margin: 8px 0;
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+        
+        /* Test Result Cards */
+        .test-card {
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 16px;
+            margin-bottom: 12px;
+        }
+        
+        .test-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .test-card-title {
+            font-weight: 600;
+            color: var(--accent);
+            font-size: 16px;
+        }
+        
+        .test-status-badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .status-passed {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .status-warning {
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        .status-failed {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .status-running {
+            background: #cce5ff;
+            color: #004085;
+        }
+        
+        .test-metric {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            font-size: 14px;
+        }
+        
+        .test-metric-label {
+            color: var(--text-secondary);
+        }
+        
+        .test-metric-value {
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        
+        .test-errors {
+            margin-top: 12px;
+            padding: 12px;
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            border-radius: 4px;
+        }
+        
+        .test-errors-title {
+            font-weight: 600;
+            color: #721c24;
+            margin-bottom: 8px;
+        }
+        
+        .test-error-item {
+            color: #721c24;
+            font-size: 13px;
+            margin-bottom: 4px;
+        }
+        
+        /* Test Result Specific Styles */
+        .result-item {
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .result-item:last-child {
+            border-bottom: none;
+        }
+        
+        .result-item .success {
+            color: var(--success);
+            font-weight: 600;
+        }
+        
+        .result-item .error {
+            color: var(--error);
+            font-weight: 600;
+        }
+        
+        .result-item .warning {
+            color: #ff9800;
+            font-weight: 600;
+        }
+        
+        .result-item strong {
+            color: var(--accent);
+        }
+        
+        details {
             margin-top: 8px;
+        }
+        
+        details summary {
+            cursor: pointer;
+            color: var(--accent);
+            font-weight: 600;
+            padding: 4px 0;
+        }
+        
+        details pre {
+            margin-top: 8px;
+            background: var(--bg-primary);
+            padding: 12px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+        
+        /* Animations */
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        .pulsing {
+            animation: pulse 1.5s infinite;
         }
 
         /* Status Messages */
@@ -1964,60 +2210,7 @@
                                 </tr>
                             </tbody>
                         </table>
-                        <div class="doc-endpoint">
-                        <div class="endpoint-header">
-                            <span class="method-badge method-get">GET</span>
-                            <span class="endpoint-path">/test</span>
-                        </div>
-                        <p class="endpoint-description">
-                            Run comprehensive system tests including thread management, concurrency, tool calling, and edge cases. Returns detailed test results with pass/fail status.
-                        </p>
                         
-                        <table class="params-table">
-                            <thead>
-                                <tr>
-                                    <th>Parameter</th>
-                                    <th>Type</th>
-                                    <th>Required</th>
-                                    <th>Description</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td>verbose</td>
-                                    <td>boolean</td>
-                                    <td><span class="param-optional">No</span></td>
-                                    <td>Include detailed logs in response (default: false)</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                        
-                        <!-- Live Testing Section -->
-                        <div class="api-test-section">
-                            <h4 style="margin-bottom: 12px; color: var(--accent);">🧪 Live Test</h4>
-                            <div class="test-form">
-                                <div class="test-form-row">
-                                    <label>
-                                        <input type="checkbox" id="test-verbose" /> Include verbose logs
-                                    </label>
-                                </div>
-                                <div class="test-actions">
-                                    <button class="btn btn-small" onclick="testSystemTest()">Run System Test</button>
-                                    <button class="btn btn-secondary btn-small" onclick="copyAsCode('system-test')">Copy as cURL</button>
-                                </div>
-                            </div>
-                            <div id="test-system-response" class="test-response" style="display: none;"></div>
-                        </div>
-
-                        <div class="code-block">
-                            <div class="code-header">
-                                <span class="code-title">cURL Example</span>
-                                <button class="btn copy-btn" onclick="copyCode('system-test')">Copy</button>
-                            </div>
-                            <pre id="system-test">curl "<span class="base-url-placeholder">${window.location.origin}</span>/test?verbose=true"</pre>
-                        </div>
-                    </div>
-
                     <!-- Basic Health Endpoint -->
                     <div class="doc-endpoint">
                         <div class="endpoint-header">
@@ -2121,7 +2314,6 @@
                         </div>
                     </div>
 
-                    <!-- Comprehensive Test Endpoint -->
                     <div class="doc-endpoint">
                         <div class="endpoint-header">
                             <span class="method-badge method-post">POST</span>
@@ -2180,15 +2372,18 @@
                             <div class="test-form">
                                 <div class="test-form-row">
                                     <label>Test Mode:</label>
-                                    <select id="test-comprehensive-mode">
+                                    <select id="test-comprehensive-mode" onchange="updateTestDescription()">
                                         <option value="all">All Tests</option>
-                                        <option value="long_thread">Long Thread</option>
+                                        <option value="long_thread">Long Thread (Message Handling)</option>
                                         <option value="concurrent">Concurrent Users</option>
-                                        <option value="same_thread">Same Thread</option>
-                                        <option value="run_consistency">Run Consistency</option>
-                                        <option value="scaling">Scaling</option>
-                                        <option value="tools">Tools</option>
+                                        <option value="same_thread">Same Thread Concurrency</option>
+                                        <option value="run_consistency">Run Consistency & Cleanup</option>
+                                        <option value="scaling">Scaling Test</option>
+                                        <option value="tools">Tool Calling Test</option>
                                     </select>
+                                </div>
+                                <div id="test-mode-description" class="test-description">
+                                    <strong>All Tests:</strong> Runs all available tests comprehensively
                                 </div>
                                 <div class="test-form-row">
                                     <label>Test Duration (seconds):</label>
@@ -2208,11 +2403,20 @@
                                     </label>
                                 </div>
                                 <div class="test-actions">
-                                    <button class="btn btn-small" onclick="testComprehensive()">Run Comprehensive Test</button>
+                                    <button id="comprehensive-test-btn" class="btn btn-small" onclick="testComprehensive()">Run Comprehensive Test</button>
                                     <button class="btn btn-secondary btn-small" onclick="copyAsCode('comprehensive-test')">Copy as cURL</button>
                                 </div>
                             </div>
-                            <div id="test-comprehensive-response" class="test-response" style="display: none;"></div>
+                            <div id="test-comprehensive-response" class="test-response" style="display: none;">
+                                <div id="test-progress" class="test-progress" style="display: none;">
+                                    <div class="progress-bar">
+                                        <div id="progress-fill" class="progress-fill" style="width: 0%"></div>
+                                    </div>
+                                    <div id="progress-status" class="progress-status">Initializing tests...</div>
+                                    <div id="progress-details" class="progress-details"></div>
+                                </div>
+                                <div id="test-results" style="display: none;"></div>
+                            </div>
                         </div>
 
                         <div class="code-block">
@@ -2221,11 +2425,11 @@
                                 <button class="btn copy-btn" onclick="copyCode('comprehensive-test')">Copy</button>
                             </div>
                             <pre id="comprehensive-test">curl -X POST "<span class="base-url-placeholder">${window.location.origin}</span>/test-comprehensive" \
-                          -F "test_mode=all" \
-                          -F "test_duration=60" \
-                          -F "concurrent_users=5" \
-                          -F "messages_per_thread=60" \
-                          -F "verbose=true"</pre>
+  -F "test_mode=all" \
+  -F "test_duration=60" \
+  -F "concurrent_users=5" \
+  -F "messages_per_thread=60" \
+  -F "verbose=true"</pre>
                         </div>
                     </div>
                         <h4 style="margin: 20px 0 12px;">Best Practices</h4>
@@ -3454,6 +3658,23 @@
             }
         }
 
+        function updateTestDescription() {
+            const mode = document.getElementById('test-comprehensive-mode').value;
+            const descDiv = document.getElementById('test-mode-description');
+            
+            const descriptions = {
+                'all': '<strong>All Tests:</strong> Runs all available tests comprehensively',
+                'long_thread': '<strong>Long Thread:</strong> Tests thread message handling, trimming behavior, and response consistency with 60+ messages',
+                'concurrent': '<strong>Concurrent Users:</strong> Simulates multiple users interacting with different assistants simultaneously',
+                'same_thread': '<strong>Same Thread Concurrency:</strong> Tests multiple concurrent requests to the same thread',
+                'run_consistency': '<strong>Run Consistency:</strong> Tests run handling, cleanup, cancellation, and error recovery',
+                'scaling': '<strong>Scaling Test:</strong> Creates many threads and assistants to test system limits',
+                'tools': '<strong>Tool Calling:</strong> Tests pandas agent, file processing, and concurrent tool usage'
+            };
+            
+            descDiv.innerHTML = descriptions[mode] || descriptions['all'];
+        }
+
         async function testComprehensive() {
             const mode = document.getElementById('test-comprehensive-mode').value;
             const duration = document.getElementById('test-comprehensive-duration').value;
@@ -3461,9 +3682,49 @@
             const messages = document.getElementById('test-comprehensive-messages').value;
             const verbose = document.getElementById('test-comprehensive-verbose').checked;
             const responseDiv = document.getElementById('test-comprehensive-response');
+            const progressDiv = document.getElementById('test-progress');
+            const resultsDiv = document.getElementById('test-results');
+            const progressFill = document.getElementById('progress-fill');
+            const progressStatus = document.getElementById('progress-status');
+            const progressDetails = document.getElementById('progress-details');
+            const testBtn = document.getElementById('comprehensive-test-btn');
             
+            // Reset UI
             responseDiv.style.display = 'block';
-            responseDiv.innerHTML = '<div class="loading">Running comprehensive tests... This may take a while.</div>';
+            progressDiv.style.display = 'block';
+            resultsDiv.style.display = 'none';
+            resultsDiv.innerHTML = '';
+            testBtn.disabled = true;
+            testBtn.textContent = 'Running...';
+            
+            // Progress simulation
+            let progress = 0;
+            const progressInterval = setInterval(() => {
+                if (progress < 90) {
+                    progress += Math.random() * 5;
+                    progress = Math.min(progress, 90);
+                    progressFill.style.width = progress + '%';
+                    progressFill.textContent = Math.round(progress) + '%';
+                    
+                    // Update status messages
+                    if (progress < 20) {
+                        progressStatus.textContent = 'Initializing test environment...';
+                        progressDetails.textContent = 'Setting up assistants and threads';
+                    } else if (progress < 40) {
+                        progressStatus.textContent = 'Running test scenarios...';
+                        progressDetails.textContent = `Test mode: ${mode}`;
+                    } else if (progress < 60) {
+                        progressStatus.textContent = 'Processing concurrent operations...';
+                        progressDetails.textContent = `Simulating ${users} concurrent users`;
+                    } else if (progress < 80) {
+                        progressStatus.textContent = 'Analyzing results...';
+                        progressDetails.textContent = 'Collecting metrics and performance data';
+                    } else {
+                        progressStatus.textContent = 'Finalizing tests...';
+                        progressDetails.textContent = 'Cleaning up resources';
+                    }
+                }
+            }, 500);
             
             try {
                 const formData = new FormData();
@@ -3478,66 +3739,146 @@
                     body: formData
                 });
                 
+                clearInterval(progressInterval);
+                progress = 100;
+                progressFill.style.width = '100%';
+                progressFill.textContent = '100%';
+                progressStatus.textContent = 'Tests completed!';
+                progressDetails.textContent = 'Processing results...';
+                
                 if (response.status === 403) {
-                    responseDiv.innerHTML = '<div class="error">This endpoint requires authentication in production environment.</div>';
-                    return;
+                    throw new Error('This endpoint requires authentication in production environment.');
                 }
                 
                 const data = await response.json();
                 
-                let html = '<h4>Comprehensive Test Results</h4>';
-                html += `<div class="result-item"><strong>Test Mode:</strong> ${data.test_mode}</div>`;
-                html += `<div class="result-item"><strong>Timestamp:</strong> ${new Date(data.timestamp).toLocaleString()}</div>`;
+                // Hide progress, show results
+                setTimeout(() => {
+                    progressDiv.style.display = 'none';
+                    resultsDiv.style.display = 'block';
+                    displayComprehensiveResults(data, resultsDiv);
+                }, 500);
                 
-                // Display parameters
-                if (data.parameters) {
-                    html += '<h5>Test Parameters:</h5>';
-                    for (const [key, value] of Object.entries(data.parameters)) {
-                        html += `<div class="result-item"><strong>${key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}:</strong> ${value}</div>`;
+            } catch (error) {
+                clearInterval(progressInterval);
+                progressDiv.style.display = 'none';
+                resultsDiv.style.display = 'block';
+                resultsDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            } finally {
+                testBtn.disabled = false;
+                testBtn.textContent = 'Run Comprehensive Test';
+            }
+        }
+        
+        function displayComprehensiveResults(data, container) {
+            let html = '<h4>Comprehensive Test Results</h4>';
+            
+            // Overall summary card
+            html += '<div class="test-card">';
+            html += '<div class="test-card-header">';
+            html += '<span class="test-card-title">Overall Summary</span>';
+            html += `<span class="test-status-badge status-${data.overall_status === 'healthy' ? 'passed' : data.overall_status === 'degraded' ? 'warning' : 'failed'}">${data.overall_status || 'unknown'}</span>`;
+            html += '</div>';
+            
+            html += `<div class="test-metric"><span class="test-metric-label">Test Mode:</span><span class="test-metric-value">${data.test_mode}</span></div>`;
+            html += `<div class="test-metric"><span class="test-metric-label">Execution Time:</span><span class="test-metric-value">${data.execution_time || 'N/A'}</span></div>`;
+            html += `<div class="test-metric"><span class="test-metric-label">Timestamp:</span><span class="test-metric-value">${new Date(data.timestamp).toLocaleString()}</span></div>`;
+            
+            if (data.parameters) {
+                html += '<hr style="margin: 12px 0; border-color: var(--border);">';
+                for (const [key, value] of Object.entries(data.parameters)) {
+                    const label = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                    html += `<div class="test-metric"><span class="test-metric-label">${label}:</span><span class="test-metric-value">${value}</span></div>`;
+                }
+            }
+            
+            if (data.summary) {
+                html += '<hr style="margin: 12px 0; border-color: var(--border);">';
+                html += `<div class="test-metric"><span class="test-metric-label">Total Tests:</span><span class="test-metric-value">${data.summary.total_tests || 0}</span></div>`;
+                html += `<div class="test-metric"><span class="test-metric-label">Passed:</span><span class="test-metric-value" style="color: var(--success);">${data.summary.passed || 0}</span></div>`;
+                html += `<div class="test-metric"><span class="test-metric-label">Failed:</span><span class="test-metric-value" style="color: var(--error);">${data.summary.failed || 0}</span></div>`;
+                html += `<div class="test-metric"><span class="test-metric-label">Warnings:</span><span class="test-metric-value" style="color: #ff9800;">${data.summary.warnings || 0}</span></div>`;
+            }
+            html += '</div>';
+            
+            // Individual test results
+            if (data.tests) {
+                html += '<h5 style="margin-top: 20px;">Detailed Test Results</h5>';
+                
+                for (const [testName, testResult] of Object.entries(data.tests)) {
+                    const testStatus = testResult.status || 'unknown';
+                    const statusClass = testStatus === 'passed' ? 'passed' : 
+                                      testStatus === 'warning' ? 'warning' : 
+                                      testStatus === 'failed' ? 'failed' : 'running';
+                    
+                    html += '<div class="test-card">';
+                    html += '<div class="test-card-header">';
+                    html += `<span class="test-card-title">${testName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</span>`;
+                    html += `<span class="test-status-badge status-${statusClass}">${testStatus}</span>`;
+                    html += '</div>';
+                    
+                    // Test summary
+                    if (testResult.summary) {
+                        html += `<div style="margin-bottom: 12px; color: var(--text-secondary);">${testResult.summary}</div>`;
                     }
-                }
-                
-                // Display summary
-                if (data.summary) {
-                    html += '<h5>Summary:</h5>';
-                    html += `<div class="result-item"><strong>Total Tests:</strong> ${data.summary.total_tests || 0}</div>`;
-                    html += `<div class="result-item"><strong>Passed:</strong> <span class="success">${data.summary.passed || 0}</span></div>`;
-                    html += `<div class="result-item"><strong>Failed:</strong> <span class="error">${data.summary.failed || 0}</span></div>`;
-                    html += `<div class="result-item"><strong>Warnings:</strong> <span class="warning">${data.summary.warnings || 0}</span></div>`;
-                }
-                
-                // Display individual test results
-                if (data.tests) {
-                    html += '<h5>Test Results:</h5>';
-                    for (const [testName, testResult] of Object.entries(data.tests)) {
-                        html += `<div class="result-item"><strong>${testName}:</strong></div>`;
-                        html += '<div style="margin-left: 20px;">';
-                        html += `<div class="result-item"><strong>Status:</strong> <span class="${testResult.status === 'passed' ? 'success' : testResult.status === 'warning' ? 'warning' : 'error'}">${testResult.status || 'unknown'}</span></div>`;
-                        if (testResult.errors && testResult.errors.length > 0) {
-                            html += '<div class="result-item"><strong>Errors:</strong></div>';
-                            testResult.errors.forEach(error => {
-                                html += `<div class="result-item error" style="margin-left: 20px;">• ${error}</div>`;
-                            });
+                    
+                    // Test metrics
+                    const metricsToShow = ['messages_created', 'successful_conversations', 'failed_conversations', 
+                                         'avg_response_time', 'threads_created', 'assistants_created', 
+                                         'successful_requests', 'failed_requests', 'files_processed'];
+                    
+                    for (const metric of metricsToShow) {
+                        if (testResult[metric] !== undefined) {
+                            const label = metric.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                            let value = testResult[metric];
+                            if (metric.includes('time') && typeof value === 'number') {
+                                value = value.toFixed(2) + 's';
+                            }
+                            html += `<div class="test-metric"><span class="test-metric-label">${label}:</span><span class="test-metric-value">${value}</span></div>`;
                         }
+                    }
+                    
+                    // Response times
+                    if (testResult.response_times && Array.isArray(testResult.response_times) && testResult.response_times.length > 0) {
+                        const avgTime = testResult.response_times.reduce((a, b) => a + b, 0) / testResult.response_times.length;
+                        const minTime = Math.min(...testResult.response_times);
+                        const maxTime = Math.max(...testResult.response_times);
+                        html += '<div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);">';
+                        html += '<strong>Response Time Analysis:</strong>';
+                        html += `<div class="test-metric"><span class="test-metric-label">Average:</span><span class="test-metric-value">${avgTime.toFixed(2)}s</span></div>`;
+                        html += `<div class="test-metric"><span class="test-metric-label">Min/Max:</span><span class="test-metric-value">${minTime.toFixed(2)}s / ${maxTime.toFixed(2)}s</span></div>`;
                         html += '</div>';
                     }
+                    
+                    // Errors
+                    if (testResult.errors && Array.isArray(testResult.errors) && testResult.errors.length > 0) {
+                        html += '<div class="test-errors">';
+                        html += '<div class="test-errors-title">Errors:</div>';
+                        testResult.errors.forEach(error => {
+                            html += `<div class="test-error-item">• ${error}</div>`;
+                        });
+                        html += '</div>';
+                    }
+                    
+                    html += '</div>';
                 }
-                
-                // Display logs if verbose
-                if (verbose && data.logs && data.logs.length > 0) {
-                    html += '<h5>Detailed Logs:</h5>';
-                    html += '<pre style="max-height: 400px; overflow-y: auto; background: var(--bg-primary); padding: 8px; border-radius: 4px;">';
-                    data.logs.forEach(log => {
-                        const levelClass = log.level === 'error' ? 'error' : log.level === 'warning' ? 'warning' : '';
-                        html += `<span class="${levelClass}">[${log.time}] ${log.level.toUpperCase()}: ${log.message}</span>\n`;
-                    });
-                    html += '</pre>';
-                }
-                
-                responseDiv.innerHTML = html;
-            } catch (error) {
-                responseDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
             }
+            
+            // Logs section
+            if (data.logs && Array.isArray(data.logs) && data.logs.length > 0) {
+                html += '<h5 style="margin-top: 20px;">Detailed Logs</h5>';
+                html += '<div class="test-card">';
+                html += '<pre style="max-height: 400px; overflow-y: auto; background: var(--bg-primary); padding: 12px; font-size: 12px; line-height: 1.5;">';
+                data.logs.forEach(log => {
+                    const levelClass = log.level === 'error' ? 'error' : log.level === 'warning' ? 'warning' : '';
+                    const timestamp = new Date(log.time).toLocaleTimeString();
+                    html += `<span class="${levelClass}">[${timestamp}] ${log.level.toUpperCase()}: ${log.message}</span>\n`;
+                });
+                html += '</pre>';
+                html += '</div>';
+            }
+            
+            container.innerHTML = html;
         }
         function copyAsCode(endpoint) {
             let code = '';
