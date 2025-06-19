@@ -5424,13 +5424,22 @@ async def process_conversation(
                                             # Save for potential fallback
                                             tool_call_results.append(error_msg)
                                     
-                                    elif tool_call.function.name == "generate_content":
+                                    elif tool_call.function.name == "extract_data":
                                         try:
                                             # Extract arguments
                                             args = json.loads(tool_call.function.arguments)
+                                            logging.info(f"extract_data tool call with args: {args}")
                                             
-                                            # Call the handler
-                                            result = await handle_generate_content(args, session, client, request)
+                                            # Create a mock request object for the handler
+                                            host = os.environ.get('WEBSITE_HOSTNAME', 'localhost:8080')
+                                            base_url = f"https://{host}" if 'azurewebsites.net' in host else f"http://{host}"
+                                            mock_request = type('Request', (), {
+                                                'base_url': base_url,
+                                                'headers': {'host': host}
+                                            })()
+                                            
+                                            # Call the handler with mock request
+                                            result = await handle_extract_data(args, session, client, mock_request)
                                             
                                             # Add to tool outputs
                                             tool_outputs.append({
@@ -5442,8 +5451,8 @@ async def process_conversation(
                                             tool_call_results.append(result)
                                             
                                         except Exception as e:
-                                            error_msg = f"Error generating content: {str(e)}"
-                                            logging.error(f"Error executing generate_content: {e}")
+                                            error_msg = f"Error extracting data: {str(e)}"
+                                            logging.error(f"Error executing extract_data: {e}")
                                             
                                             # Add error to tool outputs
                                             tool_outputs.append({
@@ -5453,14 +5462,23 @@ async def process_conversation(
                                             
                                             # Save for potential fallback
                                             tool_call_results.append(error_msg)
-                                    
+                                                                        
                                     elif tool_call.function.name == "extract_data":
                                         try:
                                             # Extract arguments
                                             args = json.loads(tool_call.function.arguments)
+                                            logging.info(f"extract_data tool call with args: {args}")
                                             
-                                            # Call the handler
-                                            result = await handle_extract_data(args, session, client, request)
+                                            # Create a mock request object for the handler
+                                            host = os.environ.get('WEBSITE_HOSTNAME', 'localhost:8080')
+                                            base_url = f"https://{host}" if 'azurewebsites.net' in host else f"http://{host}"
+                                            mock_request = type('Request', (), {
+                                                'base_url': base_url,
+                                                'headers': {'host': host}
+                                            })()
+                                            
+                                            # Call the handler with mock request
+                                            result = await handle_extract_data(args, session, client, mock_request)
                                             
                                             # Add to tool outputs
                                             tool_outputs.append({
