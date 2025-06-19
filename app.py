@@ -1211,14 +1211,10 @@ Provide a brief summary of key topics discussed and important context."""
     except Exception as e:
         logging.error(f"Error summarizing thread {thread_id}: {e}")
 
-async def trim_thread(client: AzureOpenAI, thread_id: str, keep_messages: int = 20):
+async def trim_thread(client: AzureOpenAI, thread_id: str, keep_messages: int = 30):
     """
     Trim thread to keep only the most recent messages.
-    
-    Args:
-        client: Azure OpenAI client
-        thread_id: Thread ID to trim
-        keep_messages: Number of recent messages to keep
+    Returns True if trimming was performed, False otherwise.
     """
     try:
         # Get all messages
@@ -1240,29 +1236,35 @@ async def trim_thread(client: AzureOpenAI, thread_id: str, keep_messages: int = 
         
         # Skip if thread is small
         if len(all_messages) <= keep_messages:
-            return
+            return False
         
         # Delete old messages (keep the most recent ones)
         messages_to_delete = all_messages[keep_messages:]
+        deleted_count = 0
         
         for msg in messages_to_delete:
             try:
                 # Skip system messages
                 if hasattr(msg, 'metadata') and msg.metadata:
                     msg_type = msg.metadata.get('type', '')
-                    if msg_type in ['user_persona_context', 'file_awareness', 'pandas_agent_files']:
+                    if msg_type in ['user_persona_context', 'file_awareness', 'pandas_agent_files', 'pandas_agent_instruction']:
                         continue
                         
                 client.beta.threads.messages.delete(
                     thread_id=thread_id,
                     message_id=msg.id
                 )
+                deleted_count += 1
                 logging.info(f"Deleted old message {msg.id} from thread {thread_id}")
             except Exception as e:
                 logging.warning(f"Could not delete message {msg.id}: {e}")
+        
+        logging.info(f"Trimmed thread {thread_id}: deleted {deleted_count} messages")
+        return deleted_count > 0
                 
     except Exception as e:
         logging.error(f"Error trimming thread {thread_id}: {e}")
+        return False
 
 async def handle_generate_content(tool_args: dict, thread_id: str, client, request) -> str:
     """
@@ -3984,6 +3986,7 @@ async def upload_file(
 def sync_trim_thread(client: AzureOpenAI, thread_id: str, keep_messages: int = 30):
     """
     Synchronous version of trim_thread for use in sync contexts.
+    Returns True if trimming was performed, False otherwise.
     """
     try:
         # Get all messages
@@ -3997,29 +4000,35 @@ def sync_trim_thread(client: AzureOpenAI, thread_id: str, keep_messages: int = 3
         
         # Skip if thread is small
         if len(all_messages) <= keep_messages:
-            return
+            return False
         
         # Delete old messages (keep the most recent ones)
         messages_to_delete = all_messages[keep_messages:]
+        deleted_count = 0
         
         for msg in messages_to_delete:
             try:
                 # Skip system messages
                 if hasattr(msg, 'metadata') and msg.metadata:
                     msg_type = msg.metadata.get('type', '')
-                    if msg_type in ['user_persona_context', 'file_awareness', 'pandas_agent_files']:
+                    if msg_type in ['user_persona_context', 'file_awareness', 'pandas_agent_files', 'pandas_agent_instruction']:
                         continue
                         
                 client.beta.threads.messages.delete(
                     thread_id=thread_id,
                     message_id=msg.id
                 )
+                deleted_count += 1
                 logging.info(f"Deleted old message {msg.id} from thread {thread_id}")
             except Exception as e:
                 logging.warning(f"Could not delete message {msg.id}: {e}")
+        
+        logging.info(f"Trimmed thread {thread_id}: deleted {deleted_count} messages")
+        return deleted_count > 0
                 
     except Exception as e:
         logging.error(f"Error trimming thread {thread_id}: {e}")
+        return False
 async def process_conversation(
     session: Optional[str] = None,
     prompt: Optional[str] = None,
@@ -4321,15 +4330,7 @@ async def process_conversation(
             except Exception as e:
                 logging.warning(f"Could not get latest message before run: {e}")
             
-            # Check message count and trim if needed (sync version for streaming)
-            try:
-                messages_response = client.beta.threads.messages.list(thread_id=session, limit=100)
-                message_count = len(messages_response.data)
-                if message_count > 50:  # Trim when thread gets long
-                    sync_trim_thread(client, session, keep_messages=30)
-                    logging.info(f"Trimmed thread {session} from {message_count} messages")
-            except Exception as e:
-                logging.warning(f"Could not check/trim thread: {e}")
+            
             
             # Create run and stream the response
             with client.beta.threads.runs.stream(
@@ -5042,7 +5043,28 @@ async def process_conversation(
         except Exception as e:
             logging.warning(f"Error checking for active runs: {e}")
             # Continue anyway - we'll handle failure when adding messages
-
+    
+        # Check and trim thread BEFORE adding new message
+        if session and prompt:  # Only trim if we're about to add a message
+            try:
+                messages_response = client.beta.threads.messages.list(thread_id=session, limit=100)
+                message_count = len(messages_response.data)
+                if message_count > 40:  # Trim at 48 to leave room for new message
+                    logging.info(f"Thread {session} has {message_count} messages, trimming before adding new message")
+                    
+                    # Trim now for both streaming and non-streaming
+                    if stream_output:
+                        trimmed = sync_trim_thread(client, session, keep_messages=30)
+                    else:
+                        trimmed = await trim_thread(client, session, keep_messages=30)
+                    
+                    if trimmed:
+                        logging.info(f"Trimmed thread {session} from {message_count} messages")
+                        # Add a small delay to ensure OpenAI processes the deletions
+                        await asyncio.sleep(0.5)
+            except Exception as e:
+                logging.warning(f"Could not check/trim thread: {e}")
+        
         # Add user message to the thread if prompt is given
         if prompt:
             max_retries = 3
@@ -5211,18 +5233,6 @@ async def process_conversation(
                     # Use fallback
                     return await fallback_to_completions(f"Failed to create new thread: {str(new_thread_e)}")
         
-        # Check message count and trim if needed
-        try:
-            messages_response = client.beta.threads.messages.list(thread_id=session, limit=100)
-            message_count = len(messages_response.data)
-            if message_count > 50:  # Trim when thread gets long
-                if stream_output:
-                    sync_trim_thread(client, session, keep_messages=30)
-                else:
-                    await trim_thread(client, session, keep_messages=30)
-                logging.info(f"Trimmed thread {session} from {message_count} messages")
-        except Exception as e:
-            logging.warning(f"Could not check/trim thread: {e}")
         
         # Handle non-streaming mode (/chat endpoint)
         if not stream_output:
