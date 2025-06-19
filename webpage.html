@@ -1964,7 +1964,270 @@
                                 </tr>
                             </tbody>
                         </table>
+                        <div class="doc-endpoint">
+                        <div class="endpoint-header">
+                            <span class="method-badge method-get">GET</span>
+                            <span class="endpoint-path">/test</span>
+                        </div>
+                        <p class="endpoint-description">
+                            Run comprehensive system tests including thread management, concurrency, tool calling, and edge cases. Returns detailed test results with pass/fail status.
+                        </p>
+                        
+                        <table class="params-table">
+                            <thead>
+                                <tr>
+                                    <th>Parameter</th>
+                                    <th>Type</th>
+                                    <th>Required</th>
+                                    <th>Description</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>verbose</td>
+                                    <td>boolean</td>
+                                    <td><span class="param-optional">No</span></td>
+                                    <td>Include detailed logs in response (default: false)</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        
+                        <!-- Live Testing Section -->
+                        <div class="api-test-section">
+                            <h4 style="margin-bottom: 12px; color: var(--accent);">🧪 Live Test</h4>
+                            <div class="test-form">
+                                <div class="test-form-row">
+                                    <label>
+                                        <input type="checkbox" id="test-verbose" /> Include verbose logs
+                                    </label>
+                                </div>
+                                <div class="test-actions">
+                                    <button class="btn btn-small" onclick="testSystemTest()">Run System Test</button>
+                                    <button class="btn btn-secondary btn-small" onclick="copyAsCode('system-test')">Copy as cURL</button>
+                                </div>
+                            </div>
+                            <div id="test-system-response" class="test-response" style="display: none;"></div>
+                        </div>
 
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">cURL Example</span>
+                                <button class="btn copy-btn" onclick="copyCode('system-test')">Copy</button>
+                            </div>
+                            <pre id="system-test">curl "<span class="base-url-placeholder">${window.location.origin}</span>/test?verbose=true"</pre>
+                        </div>
+                    </div>
+
+                    <!-- Basic Health Endpoint -->
+                    <div class="doc-endpoint">
+                        <div class="endpoint-header">
+                            <span class="method-badge method-get">GET</span>
+                            <span class="endpoint-path">/health</span>
+                        </div>
+                        <p class="endpoint-description">
+                            Basic health check endpoint for load balancers and monitoring. Returns quickly with minimal checks.
+                        </p>
+                        
+                        <!-- Live Testing Section -->
+                        <div class="api-test-section">
+                            <h4 style="margin-bottom: 12px; color: var(--accent);">🧪 Live Test</h4>
+                            <div class="test-form">
+                                <div class="test-actions">
+                                    <button class="btn btn-small" onclick="testBasicHealth()">Test Basic Health</button>
+                                    <button class="btn btn-secondary btn-small" onclick="copyAsCode('basic-health')">Copy as cURL</button>
+                                </div>
+                            </div>
+                            <div id="test-basic-health-response" class="test-response" style="display: none;"></div>
+                        </div>
+
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">cURL Example</span>
+                                <button class="btn copy-btn" onclick="copyCode('basic-health')">Copy</button>
+                            </div>
+                            <pre id="basic-health">curl "<span class="base-url-placeholder">${window.location.origin}</span>/health"</pre>
+                        </div>
+                    </div>
+
+                    <!-- Test Endpoint (Debug) -->
+                    <div class="doc-endpoint">
+                        <div class="endpoint-header">
+                            <span class="method-badge method-post">POST</span>
+                            <span class="endpoint-path">/test-endpoint</span>
+                        </div>
+                        <div class="result-container" style="background: #fff3cd; border: 1px solid #ffeaa7; padding: 12px; margin-top: 12px;">
+                            <strong style="color: #856404;">⚠️ Production Note:</strong> This endpoint is disabled in production environments for security reasons. Set ENVIRONMENT variable to "development" or "staging" to enable.
+                        </div>
+                        <p class="endpoint-description">
+                            Test a specific endpoint with mock data for debugging. <strong>Note: Only available in non-production environments.</strong>
+                        </p>
+                        
+                        <table class="params-table">
+                            <thead>
+                                <tr>
+                                    <th>Parameter</th>
+                                    <th>Type</th>
+                                    <th>Required</th>
+                                    <th>Description</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>endpoint</td>
+                                    <td>string</td>
+                                    <td><span class="param-required">Yes</span></td>
+                                    <td>Endpoint to test (e.g., "/completion", "/extract-reviews")</td>
+                                </tr>
+                                <tr>
+                                    <td>test_data</td>
+                                    <td>string</td>
+                                    <td><span class="param-optional">No</span></td>
+                                    <td>Mock data to use for testing</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        
+                        <!-- Live Testing Section -->
+                        <div class="api-test-section">
+                            <h4 style="margin-bottom: 12px; color: var(--accent);">🧪 Live Test</h4>
+                            <div class="test-form">
+                                <div class="test-form-row">
+                                    <label>Endpoint:</label>
+                                    <select id="test-endpoint-name">
+                                        <option value="/completion">/completion</option>
+                                        <option value="/extract-reviews">/extract-reviews</option>
+                                    </select>
+                                </div>
+                                <div class="test-form-row">
+                                    <label>Test Data:</label>
+                                    <textarea id="test-endpoint-data" placeholder="Optional mock data" rows="3"></textarea>
+                                </div>
+                                <div class="test-actions">
+                                    <button class="btn btn-small" onclick="testSpecificEndpoint()">Test Endpoint</button>
+                                    <button class="btn btn-secondary btn-small" onclick="copyAsCode('test-endpoint')">Copy as cURL</button>
+                                </div>
+                            </div>
+                            <div id="test-endpoint-response" class="test-response" style="display: none;"></div>
+                        </div>
+
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">cURL Example</span>
+                                <button class="btn copy-btn" onclick="copyCode('test-endpoint')">Copy</button>
+                            </div>
+                            <pre id="test-endpoint">curl -X POST "<span class="base-url-placeholder">${window.location.origin}</span>/test-endpoint" \
+  -F "endpoint=/completion" \
+  -F "test_data=Test prompt data"</pre>
+                        </div>
+                    </div>
+
+                    <!-- Comprehensive Test Endpoint -->
+                    <div class="doc-endpoint">
+                        <div class="endpoint-header">
+                            <span class="method-badge method-post">POST</span>
+                            <span class="endpoint-path">/test-comprehensive</span>
+                        </div>
+                        <p class="endpoint-description">
+                            Run comprehensive system tests for scaling, concurrency, tool calling, and edge cases with configurable parameters.
+                        </p>
+                        
+                        <table class="params-table">
+                            <thead>
+                                <tr>
+                                    <th>Parameter</th>
+                                    <th>Type</th>
+                                    <th>Required</th>
+                                    <th>Description</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>test_mode</td>
+                                    <td>string</td>
+                                    <td><span class="param-optional">No</span></td>
+                                    <td>Test mode: "all", "long_thread", "concurrent", "same_thread", "run_consistency", "scaling", "tools" (default: "all")</td>
+                                </tr>
+                                <tr>
+                                    <td>test_duration</td>
+                                    <td>integer</td>
+                                    <td><span class="param-optional">No</span></td>
+                                    <td>Test duration in seconds (default: 60)</td>
+                                </tr>
+                                <tr>
+                                    <td>concurrent_users</td>
+                                    <td>integer</td>
+                                    <td><span class="param-optional">No</span></td>
+                                    <td>Number of concurrent users to simulate (default: 5)</td>
+                                </tr>
+                                <tr>
+                                    <td>messages_per_thread</td>
+                                    <td>integer</td>
+                                    <td><span class="param-optional">No</span></td>
+                                    <td>Messages per thread for long thread test (default: 60)</td>
+                                </tr>
+                                <tr>
+                                    <td>verbose</td>
+                                    <td>boolean</td>
+                                    <td><span class="param-optional">No</span></td>
+                                    <td>Include detailed logs (default: true)</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        
+                        <!-- Live Testing Section -->
+                        <div class="api-test-section">
+                            <h4 style="margin-bottom: 12px; color: var(--accent);">🧪 Live Test</h4>
+                            <div class="test-form">
+                                <div class="test-form-row">
+                                    <label>Test Mode:</label>
+                                    <select id="test-comprehensive-mode">
+                                        <option value="all">All Tests</option>
+                                        <option value="long_thread">Long Thread</option>
+                                        <option value="concurrent">Concurrent Users</option>
+                                        <option value="same_thread">Same Thread</option>
+                                        <option value="run_consistency">Run Consistency</option>
+                                        <option value="scaling">Scaling</option>
+                                        <option value="tools">Tools</option>
+                                    </select>
+                                </div>
+                                <div class="test-form-row">
+                                    <label>Test Duration (seconds):</label>
+                                    <input type="number" id="test-comprehensive-duration" value="60" min="10" max="300">
+                                </div>
+                                <div class="test-form-row">
+                                    <label>Concurrent Users:</label>
+                                    <input type="number" id="test-comprehensive-users" value="5" min="1" max="20">
+                                </div>
+                                <div class="test-form-row">
+                                    <label>Messages per Thread:</label>
+                                    <input type="number" id="test-comprehensive-messages" value="60" min="10" max="200">
+                                </div>
+                                <div class="test-form-row">
+                                    <label>
+                                        <input type="checkbox" id="test-comprehensive-verbose" checked /> Include verbose logs
+                                    </label>
+                                </div>
+                                <div class="test-actions">
+                                    <button class="btn btn-small" onclick="testComprehensive()">Run Comprehensive Test</button>
+                                    <button class="btn btn-secondary btn-small" onclick="copyAsCode('comprehensive-test')">Copy as cURL</button>
+                                </div>
+                            </div>
+                            <div id="test-comprehensive-response" class="test-response" style="display: none;"></div>
+                        </div>
+
+                        <div class="code-block">
+                            <div class="code-header">
+                                <span class="code-title">cURL Example</span>
+                                <button class="btn copy-btn" onclick="copyCode('comprehensive-test')">Copy</button>
+                            </div>
+                            <pre id="comprehensive-test">curl -X POST "<span class="base-url-placeholder">${window.location.origin}</span>/test-comprehensive" \
+                          -F "test_mode=all" \
+                          -F "test_duration=60" \
+                          -F "concurrent_users=5" \
+                          -F "messages_per_thread=60" \
+                          -F "verbose=true"</pre>
+                        </div>
+                    </div>
                         <h4 style="margin: 20px 0 12px;">Best Practices</h4>
                         <ul style="line-height: 1.6; color: var(--text-secondary);">
                             <li>Always handle errors gracefully in your application</li>
@@ -3056,7 +3319,226 @@
                 showToast('Health check failed', 'error');
             }
         }
+        
+        async function testSystemTest() {
+            const verbose = document.getElementById('test-verbose').checked;
+            const responseDiv = document.getElementById('test-system-response');
+            
+            responseDiv.style.display = 'block';
+            responseDiv.innerHTML = '<div class="loading">Running system tests...</div>';
+            
+            try {
+                const url = new URL(`${API_BASE_URL}/test`);
+                if (verbose) url.searchParams.append('verbose', 'true');
+                
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                let html = '<h4>System Test Results</h4>';
+                html += `<div class="result-item"><strong>Overall Status:</strong> <span class="${data.overall_status === 'healthy' ? 'success' : data.overall_status === 'degraded' ? 'warning' : 'error'}">${data.overall_status}</span></div>`;
+                html += `<div class="result-item"><strong>Summary:</strong> ${data.overall_summary}</div>`;
+                html += `<div class="result-item"><strong>Execution Time:</strong> ${data.execution_time}</div>`;
+                
+                // Display summary counts
+                if (data.summary) {
+                    html += '<h5>Test Summary:</h5>';
+                    html += `<div class="result-item"><strong>Total Tests:</strong> ${data.summary.total || 0}</div>`;
+                    html += `<div class="result-item"><strong>Passed:</strong> <span class="success">${data.summary.passed || 0}</span></div>`;
+                    html += `<div class="result-item"><strong>Failed:</strong> <span class="error">${data.summary.failed || 0}</span></div>`;
+                    html += `<div class="result-item"><strong>Warnings:</strong> <span class="warning">${data.summary.warnings || 0}</span></div>`;
+                }
+                
+                // Display individual test results
+                if (data.tests) {
+                    html += '<h5>Test Details:</h5>';
+                    for (const [testName, testResult] of Object.entries(data.tests)) {
+                        const statusClass = testResult.status === 'passed' ? 'success' : 
+                                          testResult.status === 'warning' ? 'warning' : 'error';
+                        html += `<div class="result-item">
+                            <strong>${testName}:</strong> 
+                            <span class="${statusClass}">${testResult.status}</span>
+                            ${testResult.message ? ` - ${testResult.message}` : ''}
+                            ${testResult.error ? ` - Error: ${testResult.error}` : ''}
+                        </div>`;
+                    }
+                }
+                
+                // Display logs if verbose
+                if (verbose && data.logs && data.logs.length > 0) {
+                    html += '<h5>Detailed Logs:</h5>';
+                    html += '<pre style="max-height: 300px; overflow-y: auto; background: var(--bg-primary); padding: 8px; border-radius: 4px;">';
+                    data.logs.forEach(log => {
+                        html += `[${log.time}] ${log.level.toUpperCase()}: ${log.message}\n`;
+                    });
+                    html += '</pre>';
+                }
+                
+                responseDiv.innerHTML = html;
+            } catch (error) {
+                responseDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
 
+        async function testBasicHealth() {
+            const responseDiv = document.getElementById('test-basic-health-response');
+            
+            responseDiv.style.display = 'block';
+            responseDiv.innerHTML = '<div class="loading">Checking health...</div>';
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/health`);
+                const data = await response.json();
+                
+                let html = '<h4>Basic Health Check</h4>';
+                html += `<div class="result-item"><strong>Status:</strong> <span class="${data.status === 'healthy' ? 'success' : 'error'}">${data.status}</span></div>`;
+                html += `<div class="result-item"><strong>Timestamp:</strong> ${new Date(data.timestamp).toLocaleString()}</div>`;
+                
+                if (data.error) {
+                    html += `<div class="result-item error"><strong>Error:</strong> ${data.error}</div>`;
+                }
+                
+                responseDiv.innerHTML = html;
+            } catch (error) {
+                responseDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
+
+        async function testSpecificEndpoint() {
+            const endpoint = document.getElementById('test-endpoint-name').value;
+            const testData = document.getElementById('test-endpoint-data').value;
+            const responseDiv = document.getElementById('test-endpoint-response');
+            
+            responseDiv.style.display = 'block';
+            responseDiv.innerHTML = '<div class="loading">Testing endpoint...</div>';
+            
+            try {
+                const formData = new FormData();
+                formData.append('endpoint', endpoint);
+                if (testData) formData.append('test_data', testData);
+                
+                const response = await fetch(`${API_BASE_URL}/test-endpoint`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (response.status === 403) {
+                    responseDiv.innerHTML = '<div class="error">This endpoint is not available in production environment.</div>';
+                    return;
+                }
+                
+                const data = await response.json();
+                
+                let html = '<h4>Endpoint Test Results</h4>';
+                html += `<div class="result-item"><strong>Endpoint:</strong> ${data.endpoint}</div>`;
+                html += `<div class="result-item"><strong>Timestamp:</strong> ${new Date(data.timestamp).toLocaleString()}</div>`;
+                
+                if (data.test_data) {
+                    html += `<div class="result-item"><strong>Test Data:</strong> ${data.test_data}</div>`;
+                }
+                
+                if (data.result) {
+                    html += '<h5>Result:</h5>';
+                    html += '<pre style="max-height: 300px; overflow-y: auto; background: var(--bg-primary); padding: 8px; border-radius: 4px;">' + JSON.stringify(data.result, null, 2) + '</pre>';
+                }
+                
+                if (data.error) {
+                    html += `<div class="result-item error"><strong>Error:</strong> ${data.error}</div>`;
+                    if (data.traceback) {
+                        html += '<details><summary>View Traceback</summary><pre style="background: var(--bg-primary); padding: 8px; border-radius: 4px;">' + data.traceback + '</pre></details>';
+                    }
+                }
+                
+                responseDiv.innerHTML = html;
+            } catch (error) {
+                responseDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
+
+        async function testComprehensive() {
+            const mode = document.getElementById('test-comprehensive-mode').value;
+            const duration = document.getElementById('test-comprehensive-duration').value;
+            const users = document.getElementById('test-comprehensive-users').value;
+            const messages = document.getElementById('test-comprehensive-messages').value;
+            const verbose = document.getElementById('test-comprehensive-verbose').checked;
+            const responseDiv = document.getElementById('test-comprehensive-response');
+            
+            responseDiv.style.display = 'block';
+            responseDiv.innerHTML = '<div class="loading">Running comprehensive tests... This may take a while.</div>';
+            
+            try {
+                const formData = new FormData();
+                formData.append('test_mode', mode);
+                formData.append('test_duration', duration);
+                formData.append('concurrent_users', users);
+                formData.append('messages_per_thread', messages);
+                formData.append('verbose', verbose);
+                
+                const response = await fetch(`${API_BASE_URL}/test-comprehensive`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (response.status === 403) {
+                    responseDiv.innerHTML = '<div class="error">This endpoint requires authentication in production environment.</div>';
+                    return;
+                }
+                
+                const data = await response.json();
+                
+                let html = '<h4>Comprehensive Test Results</h4>';
+                html += `<div class="result-item"><strong>Test Mode:</strong> ${data.test_mode}</div>`;
+                html += `<div class="result-item"><strong>Timestamp:</strong> ${new Date(data.timestamp).toLocaleString()}</div>`;
+                
+                // Display parameters
+                if (data.parameters) {
+                    html += '<h5>Test Parameters:</h5>';
+                    for (const [key, value] of Object.entries(data.parameters)) {
+                        html += `<div class="result-item"><strong>${key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}:</strong> ${value}</div>`;
+                    }
+                }
+                
+                // Display summary
+                if (data.summary) {
+                    html += '<h5>Summary:</h5>';
+                    html += `<div class="result-item"><strong>Total Tests:</strong> ${data.summary.total_tests || 0}</div>`;
+                    html += `<div class="result-item"><strong>Passed:</strong> <span class="success">${data.summary.passed || 0}</span></div>`;
+                    html += `<div class="result-item"><strong>Failed:</strong> <span class="error">${data.summary.failed || 0}</span></div>`;
+                    html += `<div class="result-item"><strong>Warnings:</strong> <span class="warning">${data.summary.warnings || 0}</span></div>`;
+                }
+                
+                // Display individual test results
+                if (data.tests) {
+                    html += '<h5>Test Results:</h5>';
+                    for (const [testName, testResult] of Object.entries(data.tests)) {
+                        html += `<div class="result-item"><strong>${testName}:</strong></div>`;
+                        html += '<div style="margin-left: 20px;">';
+                        html += `<div class="result-item"><strong>Status:</strong> <span class="${testResult.status === 'passed' ? 'success' : testResult.status === 'warning' ? 'warning' : 'error'}">${testResult.status || 'unknown'}</span></div>`;
+                        if (testResult.errors && testResult.errors.length > 0) {
+                            html += '<div class="result-item"><strong>Errors:</strong></div>';
+                            testResult.errors.forEach(error => {
+                                html += `<div class="result-item error" style="margin-left: 20px;">• ${error}</div>`;
+                            });
+                        }
+                        html += '</div>';
+                    }
+                }
+                
+                // Display logs if verbose
+                if (verbose && data.logs && data.logs.length > 0) {
+                    html += '<h5>Detailed Logs:</h5>';
+                    html += '<pre style="max-height: 400px; overflow-y: auto; background: var(--bg-primary); padding: 8px; border-radius: 4px;">';
+                    data.logs.forEach(log => {
+                        const levelClass = log.level === 'error' ? 'error' : log.level === 'warning' ? 'warning' : '';
+                        html += `<span class="${levelClass}">[${log.time}] ${log.level.toUpperCase()}: ${log.message}</span>\n`;
+                    });
+                    html += '</pre>';
+                }
+                
+                responseDiv.innerHTML = html;
+            } catch (error) {
+                responseDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+            }
+        }
         function copyAsCode(endpoint) {
             let code = '';
             
@@ -3094,6 +3576,27 @@
                     break;
                 case 'health-check':
                     code = `curl "${API_BASE_URL}/health-check"`;
+                    break;
+                case 'system-test':
+                    const verbose = document.getElementById('test-verbose').checked;
+                    code = `curl "${API_BASE_URL}/test${verbose ? '?verbose=true' : ''}"`;
+                    break;
+                case 'basic-health':
+                    code = `curl "${API_BASE_URL}/health"`;
+                    break;
+                case 'test-endpoint':
+                    const endpointName = document.getElementById('test-endpoint-name').value;
+                    const endpointData = document.getElementById('test-endpoint-data').value;
+                    code = `curl -X POST "${API_BASE_URL}/test-endpoint" \\\n  -F "endpoint=${endpointName}"`;
+                    if (endpointData) code += ` \\\n  -F "test_data=${endpointData}"`;
+                    break;
+                case 'comprehensive-test':
+                    const compMode = document.getElementById('test-comprehensive-mode').value;
+                    const compDuration = document.getElementById('test-comprehensive-duration').value;
+                    const compUsers = document.getElementById('test-comprehensive-users').value;
+                    const compMessages = document.getElementById('test-comprehensive-messages').value;
+                    const compVerbose = document.getElementById('test-comprehensive-verbose').checked;
+                    code = `curl -X POST "${API_BASE_URL}/test-comprehensive" \\\n  -F "test_mode=${compMode}" \\\n  -F "test_duration=${compDuration}" \\\n  -F "concurrent_users=${compUsers}" \\\n  -F "messages_per_thread=${compMessages}" \\\n  -F "verbose=${compVerbose}"`;
                     break;
             }
             
