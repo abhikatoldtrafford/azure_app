@@ -378,6 +378,18 @@ You are a specialist in handling, analyzing, and retrieving information from var
 - NEVER use pandas_agent if no CSV/Excel file in FILE INFORMATION
 - For ANY data question about CSV/Excel files (except /generate or /extract), you MUST use the pandas_agent tool
 
+## CRITICAL PANDAS AGENT RULES:
+
+NEVER call pandas_agent unless:
+1. You've found "FILE INFORMATION:" messages showing CSV/Excel files
+2. The file shows processing_method as "pandas_agent"
+3. The question is about analyzing that data
+4. It's NOT a /generate or /extract command
+
+**IF NO VALID CSV/EXCEL FILE EXISTS:**
+- DO NOT call pandas_agent
+- Respond: "I don't see any data files uploaded. Please upload a CSV or Excel file for me to analyze."
+
 #### **Documents (PDF, DOC, TXT, etc.)** - When users ask about documents AND you have these files:
 - **FIRST**: Check FILE INFORMATION messages for files with appropriate types
 - **VERIFY**: File must be listed with processing_method "file_search" or "vector_store"
@@ -994,6 +1006,20 @@ Return appropriate responses
 Work within token limits
 Integrate with file_search for document-based operations
 
+## Tool Response Handling:
+
+When tools return responses:
+- They include BOTH download links AND content previews
+- Display the full response including previews
+- Format download links properly
+- Show data summaries and samples when available
+
+## Error Handling:
+
+- Never show technical errors
+- Provide helpful suggestions
+- Always try to help even if tools fail
+
 Remember:
 You are a versatile AI assistant who excels at both everyday conversations and specialized tasks. When working with commands:
 
@@ -1509,16 +1535,16 @@ async def handle_extract_data(tool_args: dict, thread_id: str, client, request) 
                         
                         # Show sample data
                         if data:
-                            message += "**Sample data (first 3 rows):**\n```\n"
+                            message += "**Sample data (first 10 rows):**\n```\n"
                             # Create simple table view
                             message += " | ".join(columns) + "\n"
                             message += "-" * (len(" | ".join(columns))) + "\n"
-                            for row in data[:3]:
+                            for row in data[:10]:
                                 message += " | ".join(str(cell)[:20] for cell in row) + "\n"
                             message += "```\n"
                             
                             if len(data) > 3:
-                                message += f"\n*Showing 3 of {len(data)} total rows*"
+                                message += f"\n*Showing 10 of {len(data)} total rows*"
                         
                         message += "\n\n💾 **To save:** Use the download button or try the command again with `/extract` for Excel format."
                         return message
