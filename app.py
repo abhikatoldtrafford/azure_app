@@ -4814,11 +4814,35 @@ async def process_conversation(
                             if tool_outputs:
                                 # Show tool results to user in code blocks for transparency
                                 if tool_call_results:
-                                    tool_results_text = "\n\n**Tool Results:**\n"
-                                    for i, result in enumerate(tool_call_results):
-                                        # Truncate very long results for display
-                                        display_result = result[:1000] + "..." if len(result) > 1000 else result
-                                        tool_results_text += f"\n```\n{display_result}\n```\n"
+                                    try:
+                                        result_data = json.loads(result)
+                                        
+                                        # Build display with key information
+                                        display_parts = []
+                                        
+                                        # Add main content if available
+                                        if 'response' in result_data:
+                                            content = result_data['response']
+                                            if len(content) > 5000:
+                                                display_parts.append(content[:5000] + f"\n\n[... Truncated. Full: {len(content)} chars]")
+                                            else:
+                                                display_parts.append(content)
+                                        
+                                        # Add download info if available
+                                        if 'download_url' in result_data and 'filename' in result_data:
+                                            display_parts.append(f"\n\n📄 Download: {result_data['filename']}")
+                                        
+                                        # Add summary if available
+                                        if 'message' in result_data:
+                                            display_parts.append(f"\n{result_data['message']}")
+                                        
+                                        display_result = "\n".join(display_parts) if display_parts else json.dumps(result_data, indent=2)
+                                        
+                                    except json.JSONDecodeError:
+                                        # Not JSON, show as-is (with reasonable limit)
+                                        display_result = result[:10000] + "..." if len(result) > 10000 else result
+                                    
+                                    tool_results_text += f"\n```\n{display_result}\n```\n"
                                     
                                     # Stream the tool results
                                     tool_results_chunk = {
