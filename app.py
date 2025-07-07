@@ -4815,10 +4815,36 @@ async def process_conversation(
                                 # Show tool results to user in code blocks for transparency
                                 if tool_call_results:
                                     tool_results_text = "\n\n**Tool Results:**\n"
-                                    for i, result in enumerate(tool_call_results):
-                                        # Truncate very long results for display
-                                        display_result = result[:1000] + "..." if len(result) > 1000 else result
+                                    # Show tool results to user in code blocks for transparency
+                                    try:
+                                        for i, result in enumerate(tool_call_results):
+                                            try:
+                                                # Parse JSON string to dictionary
+                                                parsed_result = json.loads(result)
+                                                
+                                                # Get the content to display
+                                                if 'response' in parsed_result:
+                                                    display_result = parsed_result['response']
+                                                    if len(display_result) > 5000:
+                                                        display_result = display_result[:5000] + "..."
+                                                else:
+                                                    # No 'response' field, show the whole thing
+                                                    display_result = result
+                                                    if len(display_result) > 5000:
+                                                        display_result = display_result[:5000] + "..."
+                                                        
+                                            except:
+                                                # If JSON parsing fails, just show the raw result
+                                                display_result = result[:5000] + "..." if len(result) > 5000 else result
+                                        except:
+                                            display_result = result
+                                            
                                         tool_results_text += f"\n```\n{display_result}\n```\n"
+                                    
+                                    # for i, result in enumerate(tool_call_results):
+                                    #     # Truncate very long results for display
+                                    #     display_result = result[:1000] + "..." if len(result) > 1000 else result
+                                    #     tool_results_text += f"\n```\n{display_result}\n```\n"
                                     
                                     # Stream the tool results
                                     tool_results_chunk = {
