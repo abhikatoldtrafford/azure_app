@@ -2451,77 +2451,107 @@ class PandasAgentManager:
                 df_names = list(dfs.keys())
                 logging.info(f"Creating pandas agent for thread {thread_id} with dataframes: {df_names}")
                 
-                # Based on the documentation example, use ZERO_SHOT_REACT_DESCRIPTION agent type
+                # IMPORTANT: Create a prefix that explains how to access dataframes
                 if len(dfs) == 1:
-                    # For a single dataframe, use a simpler approach
+                    # Single dataframe case
                     df_name = list(dfs.keys())[0]
                     df = dfs[df_name]
                     
-                    # Log dataframe info for debugging
-                    logging.info(f"Creating single dataframe agent for '{df_name}', shape: {df.shape}")
+                    # Create agent with clear instructions
+                    prefix = f"""You are working with a pandas dataframe.
+    The dataframe is available as 'df' and represents the file: '{df_name}'
+    Shape: {df.shape}
+    Columns: {list(df.columns)}
+    
+    Important: The dataframe is ALREADY LOADED as 'df'. DO NOT try to read the file from disk.
+    """
                     
-                    try:
-                        # First try safe approach - no variable renaming
-                        self.agents_cache[thread_id] = create_pandas_dataframe_agent(
-                            llm,
-                            df,  # Pass the dataframe directly
-                            verbose=True,
-                            agent_type="tool-calling",  # Use standard agent type
-                            handle_parsing_errors=True, allow_dangerous_code=True, max_iterations=30, max_execution_time=120
-                        )
-                        logging.info(f"Successfully created pandas agent for thread {thread_id} using standard approach")
-                    except Exception as e1:
-                        logging.warning(f"Error creating agent with standard approach: {e1}, trying alternative approach")
-                        # Try alternative approach with tool-calling agent type
-                        try:
-                            self.agents_cache[thread_id] = create_pandas_dataframe_agent(
-                                llm,
-                                df,  # Pass the dataframe directly
-                                verbose=True,
-                                agent_type=AgentType.ZERO_SHOT_REACT_DESCRIPTION,  # Try alternative agent type
-                                handle_parsing_errors=True, allow_dangerous_code=True, max_iterations=30, max_execution_time=120
-                            )
-                            logging.info(f"Successfully created pandas agent for thread {thread_id} using tool-calling approach")
-                        except Exception as e2:
-                            logging.error(f"Both agent creation approaches failed. Second error: {e2}")
-                            raise Exception(f"Failed to create agent: {e1}; Alternative approach also failed: {e2}")
-                
+                    self.agents_cache[thread_id] = create_pandas_dataframe_agent(
+                        llm,
+                        df,
+                        prefix=prefix,
+                        verbose=True,
+                        agent_type="tool-calling",
+                        handle_parsing_errors=True,
+                        allow_dangerous_code=True,
+                        max_iterations=30,
+                        max_execution_time=120
+                    )
+                    
                 else:
-                    # For multiple dataframes
+                    # Multiple dataframes case
                     df_list = list(dfs.values())
                     
-                    logging.info(f"Creating multi-dataframe agent with {len(df_list)} dataframes")
+                    # Create a mapping explanation
+                    df_mapping = []
+                    for i, (name, df) in enumerate(dfs.items()):
+                        df_mapping.append(f"  dfs[{i}]: '{name}' - Shape: {df.shape}, Columns: {list(df.columns)[:5]}...")
                     
-                    try:
-                        # First try standard approach
-                        self.agents_cache[thread_id] = create_pandas_dataframe_agent(
-                            llm,
-                            df_list,  # Pass list of dataframes 
-                            verbose=True,
-                            agent_type="tool-calling",  # Use standard agent type
-                            handle_parsing_errors=True, allow_dangerous_code=True, max_iterations=30, max_execution_time=120 
-                        )
-                        logging.info(f"Successfully created multi-df pandas agent using standard approach")
-                    except Exception as e1:
-                        logging.warning(f"Error creating multi-df agent with standard approach: {e1}, trying alternative")
-                        # Try alternative approach
-                        try:
-                            self.agents_cache[thread_id] = create_pandas_dataframe_agent(
-                                llm,
-                                df_list,  # Pass list of dataframes
-                                verbose=True,
-                                agent_type=AgentType.ZERO_SHOT_REACT_DESCRIPTION,  # Try alternative agent type
-                                handle_parsing_errors=True, allow_dangerous_code=True, max_iterations=30, max_execution_time=120
-                            )
-                            logging.info(f"Successfully created multi-df pandas agent using tool-calling approach")
-                        except Exception as e2:
-                            logging.error(f"Both agent creation approaches failed. Second error: {e2}")
-                            raise Exception(f"Failed to create agent: {e1}; Alternative approach also failed: {e2}")
+                    mapping_text = "\n".join(df_mapping)
+                    
+                    # Create prefix with clear instructions
+                    prefix = f"""You are working with multiple pandas dataframes in a list called 'dfs'.
+    
+    Available dataframes:
+    {mapping_text}
+    
+    To access a specific dataframe:
+    - Use dfs[0] for the first file, dfs[1] for the second, etc.
+    - The dataframes are ALREADY LOADED. DO NOT try to read files from disk.
+    
+    Example: To analyze the first dataframe, use: dfs[0].describe()
+    """
+                    
+                    self.agents_cache[thread_id] = create_pandas_dataframe_agent(
+                        llm,
+                        df_list,
+                        prefix=prefix,
+                        verbose=True,
+                        agent_type="tool-calling",
+                        handle_parsing_errors=True,
+                        allow_dangerous_code=True,
+                        max_iterations=30,
+                        max_execution_time=120
+                    )
+                    
+                logging.info(f"Successfully created pandas agent for thread {thread_id}")
                 
             except Exception as e:
-                error_msg = f"Failed to create pandas agent: {str(e)}"
-                logging.error(f"{error_msg}\n{traceback.format_exc()}")
-                return None, self.dataframes_cache[thread_id], [error_msg]
+                # If the prefix parameter is not supported, try without it
+                try:
+                    logging.warning(f"Creating agent without prefix parameter")
+                    
+                    if len(dfs) == 1:
+                        df = list(dfs.values())[0]
+                        self.agents_cache[thread_id] = create_pandas_dataframe_agent(
+                            llm,
+                            df,
+                            verbose=True,
+                            agent_type="tool-calling",
+                            handle_parsing_errors=True,
+                            allow_dangerous_code=True,
+                            max_iterations=30,
+                            max_execution_time=120
+                        )
+                    else:
+                        df_list = list(dfs.values())
+                        self.agents_cache[thread_id] = create_pandas_dataframe_agent(
+                            llm,
+                            df_list,
+                            verbose=True,
+                            agent_type="tool-calling",
+                            handle_parsing_errors=True,
+                            allow_dangerous_code=True,
+                            max_iterations=30,
+                            max_execution_time=120
+                        )
+                        
+                    logging.info(f"Successfully created pandas agent without prefix")
+                    
+                except Exception as e2:
+                    error_msg = f"Failed to create pandas agent: {str(e2)}"
+                    logging.error(f"{error_msg}\n{traceback.format_exc()}")
+                    return None, self.dataframes_cache[thread_id], [error_msg]
         
         return self.agents_cache[thread_id], self.dataframes_cache[thread_id], []
     
@@ -2577,48 +2607,29 @@ class PandasAgentManager:
         
         Args:
             thread_id (str): Thread ID
-            query (str): The query string
-            files (list): List of file info dictionaries
+            query (str): Analysis query
+            files (List[Dict]): List of file information
             
         Returns:
             tuple: (result, error, removed_files)
         """
-        # Initialize thread storage if needed
+        # Initialize thread if needed
         self.initialize_thread(thread_id)
         
-        # Log analysis request details
-        logging.info(f"Analyzing data for thread {thread_id} with query: {query}")
-        logging.info(f"Files to process: {len(files)}")
-        for i, file_info in enumerate(files):
-            file_name = file_info.get("name", "unnamed_file")
-            file_path = file_info.get("path", "unknown_path")
-            file_type = file_info.get("type", "unknown_type")
-            logging.info(f"  File {i+1}: {file_name} ({file_type}) at {file_path}")
-            
-            # Check file existence and readability
-            if file_path and os.path.exists(file_path):
-                try:
-                    with open(file_path, 'rb') as f:
-                        first_bytes = f.read(10)
-                    logging.info(f"  File {file_name} is readable (first few bytes: {first_bytes})")
-                except Exception as e:
-                    logging.warning(f"  File {file_name} exists but might not be readable: {str(e)}")
-            else:
-                logging.warning(f"  File {file_name} path does not exist: {file_path}")
-        
-        # Process any new files
+        # List to track any files that were removed
         removed_files = []
-        for file_info in files:
-            _, error, removed_file = self.add_file(thread_id, file_info)
-            if error:
-                logging.warning(f"Error adding file {file_info.get('name', 'unnamed')}: {error}")
-            if removed_file and removed_file not in removed_files:
-                removed_files.append(removed_file)
-                
-        # Check if files mentioned in the query are available
-        files_available, missing_file = self.check_file_availability(thread_id, query)
-        if not files_available and missing_file:
-            return None, f"The file '{missing_file}' was mentioned in your query but is no longer available. Please re-upload the file as it may have been removed due to the 3-file limit per conversation.", removed_files
+        
+        # Load all files first
+        if files:
+            for file_info in files:
+                _, _, removed_file = self.add_file(thread_id, file_info)
+                if removed_file:
+                    removed_files.append(removed_file)
+        
+        # Check if a file is mentioned but not available
+        file_available, missing_file = self.check_file_availability(thread_id, query)
+        if not file_available and missing_file:
+            return None, f"The file '{missing_file}' is not currently available. Please re-upload the file as it may have been removed due to the 3-file limit per conversation.", removed_files
         
         # Get or create the agent
         agent, dataframes, agent_errors = self.get_or_create_agent(thread_id)
@@ -2637,42 +2648,44 @@ class PandasAgentManager:
             if base_name.lower() in query.lower():
                 mentioned_files.append(df_name)
                 
-        # Process the query - FIX THE FILE LOADING ISSUE
-        if "csv" in query.lower() or "excel" in query.lower() or ".xlsx" in query.lower() or ".xls" in query.lower():
-            # If the query mentions a specific file, create a clear instruction to use the loaded dataframe
-            if mentioned_files:
-                mentioned_file = mentioned_files[0]
-                # Create informative query that prevents file reloading
-                enhanced_query = f"""
-    The dataframe for '{mentioned_file}' is ALREADY LOADED. DO NOT try to load the file from disk.
-    Instead, use the dataframe that is already available to you.
-
+        # Process the query - ENHANCED FOR BETTER CLARITY
+        if len(dataframes) == 1:
+            # Single dataframe case
+            df_name = list(dataframes.keys())[0]
+            df = list(dataframes.values())[0]
+            
+            enhanced_query = f"""
+    The dataframe for '{df_name}' is ALREADY LOADED as the variable 'df'.
+    DO NOT try to load the file from disk. Use 'df' directly to access the data.
+    
+    Dataframe info:
+    - Shape: {df.shape}
+    - Columns: {list(df.columns)}
+    
     Analyze this dataframe to answer: {query}
-                """
-            else:
-                # Generic instruction for any CSV/Excel mention without specific match
-                enhanced_query = f"""
+    """
+        else:
+            # Multiple dataframes case
+            enhanced_query = f"""
     The dataframes are ALREADY LOADED. DO NOT try to load any files from disk.
     Use the dataframes that are already available to you.
-
+    
+    Available dataframes: {', '.join(f"'{name}'" for name in dataframes.keys())}
+    
     Analyze these dataframes to answer: {query}
-                """
-        else:
-            # If no specific file type is mentioned, use original query
-            enhanced_query = query
-            
-            # If no specific file is mentioned but we have multiple files, provide minimal guidance
-            if len(dataframes) > 1 and not mentioned_files:
-                # Create a concise list of available files
-                file_list = ", ".join(f"'{name}'" for name in dataframes.keys())
-                
-                # Add a gentle hint about available files
-                query_prefix = f"""
-    Available dataframes: {file_list}
-    DO NOT try to load any files from disk - the data is already loaded.
-
     """
-                enhanced_query = query_prefix + query
+            
+            if mentioned_files:
+                # Add specific guidance for mentioned files
+                mentioned_file = mentioned_files[0]
+                enhanced_query = f"""
+    The dataframe for '{mentioned_file}' is ALREADY LOADED. DO NOT try to load the file from disk.
+    Use the dataframe that is already available to you.
+    
+    Available dataframes: {', '.join(f"'{name}'" for name in dataframes.keys())}
+    
+    Analyze this dataframe to answer: {query}
+    """
                 
         logging.info(f"Final query to process: {enhanced_query}")
         
@@ -2711,38 +2724,8 @@ class PandasAgentManager:
                         agent_output = agent_result.get("output", "")
                         logging.info(f"Agent completed successfully with invoke() method: {agent_output[:100]}...")
                     except Exception as invoke_error:
-                        # Try one last approach - if we see a file not found error, generate a summary directly
-                        error_msg = str(run_error) + " " + str(invoke_error)
-                        if "FileNotFoundError" in error_msg or "No such file" in error_msg:
-                            # Generate a direct summary from the dataframes
-                            summary = []
-                            for name, df in dataframes.items():
-                                summary.append(f"## Summary of {name}")
-                                summary.append(f"* Shape: {df.shape[0]} rows, {df.shape[1]} columns")
-                                summary.append(f"* Columns: {', '.join(df.columns.tolist())}")
-                                
-                                # Add basic statistics for numeric columns
-                                try:
-                                    num_cols = df.select_dtypes(include=['number']).columns
-                                    if len(num_cols) > 0:
-                                        summary.append("\n### Basic Statistics for Numeric Columns:")
-                                        summary.append(df[num_cols].describe().to_string())
-                                except Exception as stats_err:
-                                    summary.append(f"Error calculating statistics: {str(stats_err)}")
-                                
-                                # Add sample data
-                                try:
-                                    summary.append("\n### Sample Data (First 5 rows):")
-                                    summary.append(df.head(5).to_string())
-                                except Exception as sample_err:
-                                    summary.append(f"Error showing sample: {str(sample_err)}")
-                                    
-                                summary.append("\n")
-                                
-                            return "\n".join(summary), None, removed_files
-                        else:
-                            # Both methods failed with a different error
-                            raise Exception(f"Agent run() failed: {str(run_error)}; invoke() also failed: {str(invoke_error)}")
+                        # Try one last approach - if we see a file not found error
+                        raise Exception(f"Agent run() failed: {str(run_error)}; invoke() also failed: {str(invoke_error)}")
                 
                 # Get the captured verbose output
                 verbose_output = captured_output.getvalue()
@@ -2752,8 +2735,11 @@ class PandasAgentManager:
                 if not agent_output or "I don't have access to" in agent_output or "not find" in agent_output.lower():
                     logging.warning(f"Agent response appears problematic: {agent_output}")
                     
-                    # Check if there was a file not found error in the verbose output
-                    if "FileNotFoundError" in verbose_output or "No such file" in verbose_output:
+                    # Check if there was a file not found error or variable name confusion in the verbose output
+                    if ("FileNotFoundError" in verbose_output or 
+                        "No such file" in verbose_output or
+                        "NameError" in verbose_output or
+                        "not defined" in verbose_output):
                         # Generate a direct summary from the dataframes
                         summary = []
                         for name, df in dataframes.items():
@@ -2798,8 +2784,12 @@ class PandasAgentManager:
                 verbose_output = captured_output.getvalue()
                 logging.info(f"Agent debugging output before error:\n{verbose_output}")
                 
-                # Check if there was a file not found error
-                if "FileNotFoundError" in verbose_output or "No such file" in verbose_output or "FileNotFoundError" in error_detail:
+                # Check if there was a file not found error or variable name issue
+                if ("FileNotFoundError" in verbose_output or 
+                    "No such file" in verbose_output or 
+                    "FileNotFoundError" in error_detail or
+                    "NameError" in error_detail or
+                    "not defined" in error_detail):
                     # Generate a direct summary from the dataframes
                     summary = []
                     for name, df in dataframes.items():
@@ -2826,21 +2816,34 @@ class PandasAgentManager:
                         summary.append("\n")
                         
                     return "\n".join(summary), None, removed_files
+                else:
+                    # Re-raise other errors
+                    raise e
+                    
+        except Exception as final_error:
+            error_msg = f"Failed to analyze data: {str(final_error)}"
+            logging.error(f"{error_msg}\n{traceback.format_exc()}")
+            
+            # Last resort - if all else fails, provide basic dataframe info
+            try:
+                basic_info = []
+                for name, df in dataframes.items():
+                    basic_info.append(f"File: {name}")
+                    basic_info.append(f"  Rows: {df.shape[0]}")
+                    basic_info.append(f"  Columns: {df.shape[1]}")
+                    basic_info.append(f"  Column names: {', '.join(df.columns.tolist())}")
+                    basic_info.append("")
                 
-                # Provide a more helpful error message with basic file info
-                error_msg = f"Error analyzing data: {error_detail}"
+                if basic_info:
+                    return "I encountered an error but here's what I found about your data:\n\n" + "\n".join(basic_info), None, removed_files
+            except:
+                pass
                 
-                # Include dataframe details in error message for better diagnosis
-                return None, f"{error_msg}\n\nDataFrame Information:\n" + "\n".join(df_details[:8]), removed_files
-                
-            finally:
-                # Restore stdout
-                sys.stdout = original_stdout
-                
-        except Exception as e:
-            error_details = traceback.format_exc()
-            logging.error(f"Critical error in analyze method: {str(e)}\n{error_details}")
-            return None, f"Critical error in analysis: {str(e)}", removed_files
+            return None, error_msg, removed_files
+            
+        finally:
+            # Restore stdout
+            sys.stdout = original_stdout
 async def validate_resources(client: AzureOpenAI, thread_id: Optional[str], assistant_id: Optional[str]) -> Dict[str, bool]:
     """
     Validates that the given thread_id and assistant_id exist and are accessible.
