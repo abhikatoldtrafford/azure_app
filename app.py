@@ -1330,7 +1330,7 @@ async def trim_thread(client: AzureOpenAI, thread_id: str, keep_messages: int = 
 async def handle_generate_content(tool_args: dict, thread_id: str, client, request) -> str:
     """
     Handle generate_content tool calls by calling the /completion endpoint.
-    Implements comprehensive fallback strategy.
+    Implements comprehensive fallback strategy and returns JSON with formatted message.
     
     Args:
         tool_args: Parsed tool arguments containing prompt and output_format
@@ -1339,7 +1339,7 @@ async def handle_generate_content(tool_args: dict, thread_id: str, client, reque
         request: FastAPI request object for URL construction
         
     Returns:
-        Formatted response string for the assistant
+        JSON string containing full response data with formatted message
     """
     try:
         prompt = tool_args.get("prompt", "")
@@ -1384,7 +1384,7 @@ async def handle_generate_content(tool_args: dict, thread_id: str, client, reque
                 response_data = json.loads(result.body.decode())
                 
                 if response_data.get("status") == "success":
-                    # Format successful response
+                    # Build formatted message based on response type
                     if response_data.get("download_url"):
                         # File was generated
                         message = "✅ Generated successfully!"
@@ -1413,7 +1413,8 @@ async def handle_generate_content(tool_args: dict, thread_id: str, client, reque
                                 if rows and cols:
                                     message += f"\n\nGenerated {rows} rows with {len(cols)} columns"
                         
-                        return message
+                        # Add formatted message to response
+                        response_data["formatted_message"] = message
                         
                     else:
                         # Text response
@@ -1421,7 +1422,7 @@ async def handle_generate_content(tool_args: dict, thread_id: str, client, reque
                         if content:
                             message = "Here's your generated content:\n\n"
                             
-                            # Truncate if very long
+                            # Truncate if very long for display
                             if len(content) > 20000:
                                 message += content[:20000] + "..."
                                 message += "\n\n*Showing first 20000 characters. Click download to see full content.*"
@@ -1429,29 +1430,47 @@ async def handle_generate_content(tool_args: dict, thread_id: str, client, reque
                                 message += content
                             
                             message += "\n\n💾 **Save option:** Use the download button to save this response."
-                            return message
+                            response_data["formatted_message"] = message
+                        else:
+                            # No content in response
+                            response_data["formatted_message"] = "✅ Generated successfully!"
+                    
+                    # Return full response as JSON
+                    return json.dumps(response_data)
                 
             except Exception as e:
                 last_error = str(e)
                 logging.error(f"Generation failed with format {attempt_format}: {e}")
                 continue
         
-        # All attempts failed - provide helpful fallback
-        return (
-            f"I understand you want me to generate content based on: '{prompt[:100]}{'...' if len(prompt) > 100 else ''}' "
-            f"but I'm having technical difficulties. Please try again in a moment, "
-            f"or try a simpler request."
-        )
+        # All attempts failed - return error with helpful message
+        error_response = {
+            "status": "error",
+            "message": "Unable to generate content after trying all formats",
+            "error": str(last_error) if last_error else "Unknown error",
+            "formatted_message": (
+                f"I understand you want me to generate content based on: '{prompt[:100]}{'...' if len(prompt) > 100 else ''}' "
+                f"but I'm having technical difficulties. Please try again in a moment, "
+                f"or try a simpler request."
+            )
+        }
+        return json.dumps(error_response)
         
     except Exception as e:
         logging.error(f"Critical error in handle_generate_content: {e}\n{traceback.format_exc()}")
-        # Return empty string to let assistant continue naturally
-        return ""
-
+        # Return error as JSON
+        error_response = {
+            "status": "error",
+            "message": "An error occurred while generating content",
+            "error": str(e),
+            "formatted_message": "An error occurred while generating content. Please try again or contact support if the issue persists."
+        }
+        return json.dumps(error_response)
 
 async def handle_extract_data(tool_args: dict, thread_id: str, client, request) -> str:
     """
     Handle extract_data tool calls by calling the /extract-reviews endpoint.
+    Returns JSON with formatted message for proper display.
     
     Args:
         tool_args: Parsed tool arguments
@@ -1460,7 +1479,7 @@ async def handle_extract_data(tool_args: dict, thread_id: str, client, request) 
         request: FastAPI request object
         
     Returns:
-        Formatted response string
+        JSON string containing full response data with formatted message
     """
     try:
         prompt = tool_args.get("prompt", "")
@@ -1483,46 +1502,67 @@ async def handle_extract_data(tool_args: dict, thread_id: str, client, request) 
         elif mode == "extract" and raw_text:
             enhanced_prompt = f"{prompt}\n\nExtract structured data from the provided text."
         
-        # Define fallback chain
-        format_chain = []
+        # Define format fallback chain
+        format_attempts = []
         if output_format == "excel":
-            format_chain = ["excel", "csv", "json"]
+            format_attempts = ["excel", "csv", "json"]
         elif output_format == "csv":
-            format_chain = ["csv", "json"]
+            format_attempts = ["csv", "json"]
         else:
-            format_chain = [output_format, "json"]
+            format_attempts = [output_format, "json"]
         
         last_error = None
         
-        # Try each format in the chain
-        for attempt_format in format_chain:
+        # Try each format
+        for attempt_format in format_attempts:
             try:
+                # Prepare form data
+                form_data = {
+                    "prompt": enhanced_prompt,
+                    "mode": mode,
+                    "output_format": attempt_format,
+                    "temperature": 0.3,
+                    "max_retries": 3,
+                    "fallback_to_json": True
+                }
+                
+                if raw_text:
+                    form_data["raw_text"] = raw_text
+                
                 # Call extract-reviews endpoint
-                result = await extract_reviews(
+                from fastapi import UploadFile
+                import io
+                
+                # Create mock file if we have raw text
+                file = None
+                if raw_text and not tool_args.get("skip_file_creation"):
+                    file_content = raw_text.encode('utf-8')
+                    file = UploadFile(
+                        filename="extracted_data.txt",
+                        file=io.BytesIO(file_content)
+                    )
+                
+                # Call the endpoint
+                response = await extract_reviews(
                     request=request,
-                    file=None,  # No file upload
+                    file=file,
                     columns="auto",
                     prompt=enhanced_prompt,
                     model="gpt-4.1-mini",
-                    temperature=0.1,
+                    temperature=0.3,
                     output_format=attempt_format,
-                    max_text_length=100000,
-                    max_retries=3,
-                    fallback_to_json=True,
                     mode=mode,
-                    rows_to_generate=100,  # Override default
-                    raw_text=raw_text if raw_text else None
+                    raw_text=raw_text if not file else None
                 )
                 
                 # Parse response
-                response_data = json.loads(result.body.decode())
+                response_data = json.loads(response.body.decode())
                 
                 if response_data.get("status") == "success":
-                    # Format successful response
+                    # Build formatted message based on response type
                     if response_data.get("download_url"):
                         # File was generated
-                        operation = "extracted" if mode == "extract" else "generated"
-                        message = f"✅ Successfully {operation} data!"
+                        message = f"✅ Successfully {'extracted' if mode != 'generate' else 'generated'} data!"
                         
                         # Note format change if applicable
                         if attempt_format != output_format:
@@ -1531,6 +1571,8 @@ async def handle_extract_data(tool_args: dict, thread_id: str, client, request) 
                         # Add download link
                         filename = response_data.get("filename", "data_file")
                         download_url = response_data.get("download_url")
+                        if download_url and not download_url.startswith(('http://', 'https://')):
+                            download_url = f"/{download_url}" if not download_url.startswith('/') else download_url
                         message += f"\n\n📄 **Download:** [{filename}]({download_url})"
                         
                         # Add data summary
@@ -1548,7 +1590,12 @@ async def handle_extract_data(tool_args: dict, thread_id: str, client, request) 
                         if metadata.get("extraction_confidence"):
                             message += f"\n- Confidence: {metadata['extraction_confidence']}"
                         
-                        return message
+                        # Add any additional message
+                        if response_data.get("message") and "Successfully" not in response_data["message"]:
+                            message += f"\n\n{response_data['message']}"
+                        
+                        # Add formatted message to response
+                        response_data["formatted_message"] = message
                         
                     elif response_data.get("data"):
                         # JSON response with data
@@ -1560,42 +1607,59 @@ async def handle_extract_data(tool_args: dict, thread_id: str, client, request) 
                         
                         # Show sample data
                         if data:
-                            message += "**Sample data (first 10 rows):**\n```\n"
+                            message += "**Sample data (first 3 rows):**\n```\n"
                             # Create simple table view
                             message += " | ".join(columns) + "\n"
                             message += "-" * (len(" | ".join(columns))) + "\n"
-                            for row in data[:10]:
+                            for row in data[:3]:
                                 message += " | ".join(str(cell)[:20] for cell in row) + "\n"
                             message += "```\n"
                             
                             if len(data) > 3:
-                                message += f"\n*Showing 10 of {len(data)} total rows*"
+                                message += f"\n*Showing 3 of {len(data)} total rows*"
                         
                         message += "\n\n💾 **To save:** Use the download button or try the command again with `/extract` for Excel format."
-                        return message
+                        
+                        # Add formatted message
+                        response_data["formatted_message"] = message
+                    
+                    else:
+                        # Text response or other format
+                        content = response_data.get("response", "")
+                        if content:
+                            message = f"✅ Extracted data:\n\n{content[:5000]}"
+                            if len(content) > 5000:
+                                message += f"\n\n... [Showing first 5000 of {len(content)} characters]"
+                            response_data["formatted_message"] = message
+                        else:
+                            response_data["formatted_message"] = "✅ Data processed successfully!"
+                    
+                    # Return full response as JSON
+                    return json.dumps(response_data)
                 
             except Exception as e:
                 last_error = str(e)
-                logging.error(f"Extraction failed with format {attempt_format}: {e}")
+                logging.error(f"Extract attempt failed with format {attempt_format}: {e}")
                 continue
         
         # All attempts failed
-        if mode == "extract" and not raw_text:
-            return (
-                "I couldn't find any data to extract from our conversation. "
-                "Please share the data you'd like me to extract, or use "
-                "`/analyze create [description]` to generate synthetic data instead."
-            )
-        else:
-            return (
-                "I encountered an issue processing your data request. "
-                "Please try rephrasing your request or using a simpler format."
-            )
+        error_response = {
+            "status": "error", 
+            "message": "Unable to process the data extraction request",
+            "error": str(last_error) if last_error else "Unknown error",
+            "formatted_message": f"Unable to process the request: {str(last_error) if last_error else 'Please try again with different parameters.'}"
+        }
+        return json.dumps(error_response)
         
     except Exception as e:
         logging.error(f"Critical error in handle_extract_data: {e}\n{traceback.format_exc()}")
-        return ""
-
+        error_response = {
+            "status": "error",
+            "message": "An error occurred during data extraction",
+            "error": str(e),
+            "formatted_message": "An error occurred while extracting data. Please try again or simplify your request."
+        }
+        return json.dumps(error_response)
 # Mount static files directory for serving downloads
 #app.mount("/download-files", StaticFiles(directory=DOWNLOADS_DIR), name="download-files")
 def get_downloads_directory():
@@ -4820,22 +4884,74 @@ async def process_conversation(
                                             # Parse JSON string to dictionary
                                             parsed_result = json.loads(result)
                                             
-                                            # Get the content to display
-                                            if 'response' in parsed_result:
-                                                display_result = parsed_result['response']
-                                                if len(display_result) > 5000:
-                                                    display_result = display_result[:5000] + "..."
+                                            # Check if there's a pre-formatted message
+                                            if parsed_result.get("formatted_message"):
+                                                # Use the pre-formatted message
+                                                display_result = parsed_result["formatted_message"]
+                                                
+                                                # If there's also raw content and it's long, show a preview
+                                                if parsed_result.get("response") and len(parsed_result["response"]) > 100:
+                                                    content = parsed_result["response"]
+                                                    if len(content) > 5000:
+                                                        display_result += f"\n\n**Content Preview:**\n{content[:5000]}\n... [Full content: {len(content)} characters]"
+                                                    else:
+                                                        display_result += f"\n\n**Content:**\n{content}"
                                             else:
-                                                # No 'response' field, show the whole thing
+                                                # No formatted message, build display from components
+                                                display_parts = []
+                                                
+                                                # Check status
+                                                status = parsed_result.get("status", "unknown")
+                                                if status == "success":
+                                                    display_parts.append("✅ Generated successfully!")
+                                                elif status == "error":
+                                                    display_parts.append(f"❌ Error: {parsed_result.get('message', 'Unknown error')}")
+                                                    display_result = "\n".join(display_parts)
+                                                    tool_results_text += f"\n```\n{display_result}\n```\n"
+                                                    continue
+                                                
+                                                # Add download info if available
+                                                if parsed_result.get("download_url") and parsed_result.get("filename"):
+                                                    filename = parsed_result["filename"]
+                                                    download_url = parsed_result["download_url"]
+                                                    display_parts.append(f"\n📄 **Download:** [{filename}]({download_url})")
+                                                
+                                                # Show content if available
+                                                if parsed_result.get("response"):
+                                                    content = parsed_result["response"]
+                                                    if len(content) > 5000:
+                                                        display_parts.append(f"\n**Content Preview:**\n{content[:5000]}")
+                                                        display_parts.append(f"\n... [Content truncated - full document: {len(content)} characters]")
+                                                    else:
+                                                        display_parts.append(f"\n**Content:**\n{content}")
+                                                
+                                                # Show data summary for structured formats
+                                                if parsed_result.get("summary"):
+                                                    summary = parsed_result["summary"]
+                                                    if isinstance(summary, dict):
+                                                        rows = summary.get("rows", 0)
+                                                        cols = summary.get("columns", [])
+                                                        if rows and cols:
+                                                            display_parts.append(f"\n**Data Summary:** {rows} rows × {len(cols)} columns")
+                                                
+                                                # Show any additional message
+                                                if parsed_result.get("message"):
+                                                    display_parts.append(f"\n{parsed_result['message']}")
+                                                
+                                                display_result = "\n".join(display_parts)
+                                            
+                                        except json.JSONDecodeError:
+                                            # Not JSON - show raw result with reasonable limit
+                                            if len(result) > 10000:
+                                                display_result = result[:10000] + f"\n\n... [Truncated - showing first 10,000 of {len(result):,} characters]"
+                                            else:
                                                 display_result = result
-                                                if len(display_result) > 5000:
-                                                    display_result = display_result[:5000] + "..."
-                                                    
-                                        except:
-                                            # If JSON parsing fails, just show the raw result
-                                            display_result = result[:5000] + "..." if len(result) > 5000 else result
+                                        except Exception as e:
+                                            # Any other error - show what we can
+                                            logging.error(f"Error formatting tool result: {e}")
+                                            display_result = f"Result preview: {result[:1000]}..." if len(result) > 1000 else result
                                         
-                                        # THIS LINE MUST BE INSIDE THE LOOP!
+                                        # Add to output
                                         tool_results_text += f"\n```\n{display_result}\n```\n"
                                     
                                     # Stream the tool results
@@ -4853,26 +4969,6 @@ async def process_conversation(
                                         }]
                                     }
                                     yield f"data: {json.dumps(tool_results_chunk)}\n\n"
-                                
-                                # Create an inner event handler for the tool output stream
-                                buffer_inner = []
-                                
-                                # Stream status indicating generation of response
-                                gen_text = "\n[Generating response based on analysis...]\n"
-                                gen_chunk = {
-                                    "id": f"chatcmpl-{run_id or 'stream'}",
-                                    "object": "chat.completion.chunk",
-                                    "created": int(time.time()),
-                                    "model": "gpt-4.1-mini",
-                                    "choices": [{
-                                        "index": 0,
-                                        "delta": {
-                                            "content": gen_text
-                                        },
-                                        "finish_reason": None
-                                    }]
-                                }
-                                yield f"data: {json.dumps(gen_chunk)}\n\n"
                                 
                                 try:
                                     # Submit tool outputs and continue streaming
