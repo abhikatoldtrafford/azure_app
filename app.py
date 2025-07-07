@@ -1422,9 +1422,9 @@ async def handle_generate_content(tool_args: dict, thread_id: str, client, reque
                             message = "Here's your generated content:\n\n"
                             
                             # Truncate if very long
-                            if len(content) > 2000:
-                                message += content[:2000] + "..."
-                                message += "\n\n*Showing first 2000 characters. Click download to see full content.*"
+                            if len(content) > 20000:
+                                message += content[:20000] + "..."
+                                message += "\n\n*Showing first 20000 characters. Click download to see full content.*"
                             else:
                                 message += content
                             
@@ -6512,8 +6512,13 @@ Remember: Output ONLY the JSON structure with ALL {rows_to_generate} rows."""
             }
         else:
             # For documents or when showing full response
-            if len(response_content) > 5000:
-                response_data["response"] = f"Generated {output_format or 'content'}. Download to view full content."
+            if len(response_content) > 20000:
+                words = response_content.split()
+                first_5000_words = words[:5000]
+                truncated_content = ' '.join(first_5000_words)
+                if len(words) > 5000:
+                    truncated_content += f"\n\n... [Content truncated - full document contains {len(words)} words. Download to view complete content.]"
+                response_data["response"] = truncated_content
             else:
                 response_data["response"] = response_content
         
