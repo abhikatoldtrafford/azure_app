@@ -1057,6 +1057,47 @@ You combine the intelligence of general knowledge with the power of specialized 
 For general queries, be naturally helpful without overcomplicating. For file-related or command-based tasks, leverage your full analytical capabilities with appropriate tool integration. Always gauge the appropriate level of detail and technicality based on the user's needs.
 You are the ultimate AI companion - equally comfortable discussing everyday topics, analyzing complex data, generating professional documents, or creating comprehensive strategies. Your strength lies in knowing when to use which capability and seamlessly integrating multiple tools when needed.
 '''
+
+def is_dataset_metadata(columns: list, data: list) -> bool:
+    """
+    Detect if extracted data is actually metadata about datasets rather than actual data.
+    Returns True if this appears to be dataset metadata.
+    """
+    # Common metadata column indicators
+    metadata_indicators = [
+        'dataset name', 'date of analysis', 'number of records', 'columns description',
+        'missing data', 'outliers detected', 'mean', 'distribution', 'data consistency',
+        'insights', 'extraction confidence', 'source type', 'notes', 'metadata',
+        'summary', 'analysis', 'report', 'statistics', 'overview'
+    ]
+    
+    # Check if columns match metadata patterns
+    if columns:
+        columns_lower = [col.lower() for col in columns]
+        metadata_count = sum(1 for indicator in metadata_indicators 
+                           if any(indicator in col for col in columns_lower))
+        
+        # If more than 40% of columns are metadata-like
+        if metadata_count >= len(columns) * 0.4:
+            return True
+    
+    # Check if data contains file references or analysis descriptions
+    if data and len(data) > 0:
+        first_row_str = ' '.join(str(item) for item in data[0] if item)
+        file_patterns = ['.csv', '.xlsx', '.json', '.txt', 'generated_data_', 
+                        'extracted_data_', 'rows with', 'columns']
+        
+        if any(pattern in first_row_str.lower() for pattern in file_patterns):
+            return True
+    
+    # Check for single row with many analytical columns
+    if data and len(data) == 1 and columns and len(columns) > 8:
+        return True
+        
+    return False
+
+
+
 def sync_wait_for_run_completion(client: AzureOpenAI, thread_id: str, max_wait_time: int = 30) -> bool:
     """
     Synchronous version: Wait for any active runs on a thread to complete before proceeding.
@@ -1499,7 +1540,15 @@ async def handle_extract_data(tool_args: dict, thread_id: str, client, request) 
         if mode == "generate":
             enhanced_prompt = f"{prompt}\n\nGenerate 100 rows of synthetic data with appropriate columns."
         elif mode == "extract" and raw_text:
-            enhanced_prompt = f"{prompt}\n\nExtract structured data from the provided text."
+            enhanced_prompt = f"{prompt}\n\nCRITICAL INSTRUCTIONS:
+1. Extract the ACTUAL DATA RECORDS, not summaries or metadata about data
+2. If you see descriptions like "Dataset contains 50 records", find those 50 actual records
+3. Look for patterns like:
+   - Individual reviews with names, ratings, and comments
+   - Line items with specific values
+   - Repeated structured entries
+   - NOT analytical summaries or statistical descriptions
+4. If only metadata/analysis is present without actual data, clearly indicate this."
         
         # Define fallback chain
         format_chain = []
@@ -6925,12 +6974,22 @@ Remember: Output ONLY the JSON structure. Generate ALL {rows_to_generate} rows."
         else:  # Extract mode
             system_message = '''You are an advanced data extraction specialist with expertise in converting any type of content into structured data.
 
+CRITICAL INSTRUCTION: You must extract the ACTUAL DATA from the content, not metadata ABOUT the data.
+
+IMPORTANT DISTINCTIONS:
+- If you see metadata describing a dataset (like "Dataset Name: X, Records: 50, Columns: Y"), you must look for the ACTUAL DATA that this metadata describes
+- Dataset analysis summaries are NOT the data - they are descriptions OF data
+- File information or statistics are NOT the data - they describe properties of data
+- You need to find and extract the raw records, not summaries about those records
+
 EXTRACTION INSTRUCTIONS:
-1. Analyze the provided content and extract ALL structured or semi-structured data
-2. Output ONLY valid JSON in this format:
+1. First, identify if the content contains actual data records vs just metadata/descriptions
+2. If you only see metadata, state that no actual data records were found
+3. If you find actual data, extract ALL of it into structured format
+4. Output ONLY valid JSON in this format:
 {
   "success": true,
-  "data_type": "reviews" | "table" | "list" | "records" | "mixed" | "generated",
+  "data_type": "reviews" | "table" | "list" | "records" | "mixed" | "metadata_only",
   "columns": ["column1", "column2", ...],
   "data": [
     ["value1", "value2", ...],
@@ -6940,19 +6999,24 @@ EXTRACTION INSTRUCTIONS:
     "total_rows": <number>,
     "extraction_confidence": "high" | "medium" | "low",
     "source_type": "<type of source>",
-    "notes": "<any important notes>"
+    "notes": "<any important notes>",
+    "actual_data_found": true | false
   }
 }
 
-3. If the content is already structured (JSON, CSV), preserve its structure
-4. If no structured data exists, create structure from the content
-5. For unstructured text, look for patterns like:
-   - Lists or bullet points → convert to rows
-   - Paragraphs about items → extract key information
-   - Repeated patterns → identify as columns
-   - Key-value pairs → convert to columns
+5. Common data patterns to extract:
+   - Reviews: customer name, rating, review text, date, etc.
+   - Products: name, price, description, category, etc.
+   - People: name, role, contact info, etc.
+   - Transactions: date, amount, description, parties, etc.
+   - Any repeated structured information
 
-Be creative in finding structure. Even from prose, extract entities, facts, or concepts.'''
+6. If you only find metadata ABOUT data (not the data itself):
+   - Set data_type to "metadata_only"
+   - Set actual_data_found to false
+   - Include a note explaining what was found
+
+Remember: Extract the DATA itself, not descriptions or analysis of the data.'''
 
         # Build the prompt
         if mode == "generate":
