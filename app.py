@@ -1058,45 +1058,6 @@ For general queries, be naturally helpful without overcomplicating. For file-rel
 You are the ultimate AI companion - equally comfortable discussing everyday topics, analyzing complex data, generating professional documents, or creating comprehensive strategies. Your strength lies in knowing when to use which capability and seamlessly integrating multiple tools when needed.
 '''
 
-def is_dataset_metadata(columns: list, data: list) -> bool:
-    """
-    Detect if extracted data is actually metadata about datasets rather than actual data.
-    Returns True if this appears to be dataset metadata.
-    """
-    # Common metadata column indicators
-    metadata_indicators = [
-        'dataset name', 'date of analysis', 'number of records', 'columns description',
-        'missing data', 'outliers detected', 'mean', 'distribution', 'data consistency',
-        'insights', 'extraction confidence', 'source type', 'notes', 'metadata',
-        'summary', 'analysis', 'report', 'statistics', 'overview'
-    ]
-    
-    # Check if columns match metadata patterns
-    if columns:
-        columns_lower = [col.lower() for col in columns]
-        metadata_count = sum(1 for indicator in metadata_indicators 
-                           if any(indicator in col for col in columns_lower))
-        
-        # If more than 40% of columns are metadata-like
-        if metadata_count >= len(columns) * 0.4:
-            return True
-    
-    # Check if data contains file references or analysis descriptions
-    if data and len(data) > 0:
-        first_row_str = ' '.join(str(item) for item in data[0] if item)
-        file_patterns = ['.csv', '.xlsx', '.json', '.txt', 'generated_data_', 
-                        'extracted_data_', 'rows with', 'columns']
-        
-        if any(pattern in first_row_str.lower() for pattern in file_patterns):
-            return True
-    
-    # Check for single row with many analytical columns
-    if data and len(data) == 1 and columns and len(columns) > 8:
-        return True
-        
-    return False
-
-
 
 def sync_wait_for_run_completion(client: AzureOpenAI, thread_id: str, max_wait_time: int = 30) -> bool:
     """
@@ -1540,7 +1501,8 @@ async def handle_extract_data(tool_args: dict, thread_id: str, client, request) 
         if mode == "generate":
             enhanced_prompt = f"{prompt}\n\nGenerate 100 rows of synthetic data with appropriate columns."
         elif mode == "extract" and raw_text:
-            enhanced_prompt = f"{prompt}\n\nCRITICAL INSTRUCTIONS:
+            enhanced_prompt = f"""{prompt}\n\n
+CRITICAL INSTRUCTIONS:
 1. Extract the ACTUAL DATA RECORDS, not summaries or metadata about data
 2. If you see descriptions like "Dataset contains 50 records", find those 50 actual records
 3. Look for patterns like:
@@ -1548,7 +1510,7 @@ async def handle_extract_data(tool_args: dict, thread_id: str, client, request) 
    - Line items with specific values
    - Repeated structured entries
    - NOT analytical summaries or statistical descriptions
-4. If only metadata/analysis is present without actual data, clearly indicate this."
+4. If only metadata/analysis is present without actual data, clearly indicate this."""
         
         # Define fallback chain
         format_chain = []
@@ -6941,6 +6903,13 @@ async def extract_reviews(
         if mode == "generate":
             system_message = f"""You are a synthetic data generator specializing in creating realistic, diverse datasets.
 
+CRITICAL RULES:
+1. Generate the actual data records directly
+2. Do NOT create a dataset file and then describe it
+3. Do NOT analyze what you generate
+4. Do NOT reference any filenames
+5. ONLY output the generated records in JSON format
+
 GENERATION INSTRUCTIONS:
 1. Generate EXACTLY {rows_to_generate} rows of synthetic data based on the user's requirements
 2. Output ONLY valid JSON in this format:
@@ -7052,18 +7021,24 @@ Remember: Output ONLY the JSON structure with ALL {rows_to_generate} rows."""
             
             if prompt:
                 user_prompt = f"""{prompt}
-{columns_instruction}{context_info}
+                Extract the actual data records from the content below.
+                DO NOT analyze or summarize the data.
+                DO NOT create metadata about the extraction process.
+                ONLY return the raw extracted records.
+                {columns_instruction}{context_info}
 
-Remember: Output ONLY the JSON structure."""
+Remember: Output ONLY the JSON with the actual data records."""
             else:
                 default_prompt = '''Extract all structured data from the provided content. This could be:
 - Reviews, feedback, or testimonials
 - Tabular data or records  
 - Lists or enumerations
 - Any repeated patterns or structured information
-
+Return ONLY the actual records found, not analysis or summaries.
+Each record should be a separate row in the output.
 If the content is already structured (JSON/CSV), preserve its structure.
-If unstructured, find patterns and create appropriate structure.'''
+If unstructured, find patterns and create appropriate structure.
+'''
                 
                 user_prompt = f"""{default_prompt}
 {columns_instruction}{context_info}
