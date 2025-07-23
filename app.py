@@ -4145,74 +4145,289 @@ async def process_conversation(
     session: Optional[str] = None,
     prompt: Optional[str] = None,
     assistant: Optional[str] = None,
-    stream_output: bool = True
+    stream_output: bool = True,
+    context: Optional[str] = None  # New parameter - raw context string
 ):
     """
     Core function to process conversation with the assistant.
     This function handles both streaming and non-streaming modes.
     Bulletproof version with comprehensive error handling and fallbacks.
+    
+    When context is provided, it bypasses thread-based conversation and uses
+    completions API directly with intelligent context processing.
     """
+    # Log the operation mode
+    if context is not None:
+        logging.info(f"🔄 CONTEXT MODE ACTIVATED - Bypassing thread system")
+        logging.info(f"  Assistant: {assistant}")
+        logging.info(f"  Thread (ignored): {session}")
+        logging.info(f"  Context size: {len(context) if context else 0} chars")
+    else:
+        logging.info(f"📌 THREAD MODE - Using standard assistant flow")
+        logging.info(f"  Assistant: {assistant}")
+        logging.info(f"  Thread: {session}")
+    
     client = create_client()
     thread_lock = None
     response_started = False
     
+    # Check if context is provided - this triggers stateless mode
+    if context is not None:
+        logging.info(f"Context provided - routing directly to completions API")
+        # Use fallback_to_completions with context
+        return await fallback_to_completions(
+            error_context="Context-based stateless mode",
+            user_context=context
+        )
+    
     # Helper function for completions API fallback
-    async def fallback_to_completions(error_context: str = ""):
-        """Fallback to completions API with context preservation"""
+    async def fallback_to_completions(error_context: str = "", user_context: Optional[str] = None):
+        """
+        Fallback to completions API with intelligent context handling.
+        Accepts raw context string that can be JSON, plain text, or any format.
+        """
         try:
             logging.info(f"Falling back to completions API. Context: {error_context}")
             
+            # Create a COMPLETE system prompt - COPY EVERYTHING from original except tool-specific instructions
+            stateless_system_prompt = '''
+You are an Advanced AI Assistant with comprehensive general knowledge and specialized expertise in product management, document analysis, and data processing. 
+You excel equally at everyday conversations (like recipes, travel advice, or explaining concepts) and sophisticated professional tasks (like creating PRDs, analyzing data, or processing complex documents). 
+Your versatility allows you to seamlessly switch between being a helpful companion for casual queries and a powerful tool for business analysis.
+You can generate documents (reports, guides, articles), create datasets (CSV, Excel), extract structured data from conversations, produce professional content in multiple formats, and analyze information with advanced capabilities.
+START every new conversation with a warm, natural greeting that invites engagement without assuming what the user needs help with. Keep it simple and friendly - no need to list capabilities/files uploaded unless asked.
+
+### CRITICAL CONTEXT AWARENESS:
+You may be provided with context containing conversation history, user persona, goals, PRD, company information, and other metadata.
+When context is provided:
+1. It represents the COMPLETE conversation state and user information
+2. Use it to maintain continuity and personalize responses
+3. Reference previous conversations naturally
+4. Understand the user's background, preferences, and current objectives
+5. The context may be JSON, plain text, or any format - extract all relevant information
+
+### FILE AWARENESS:
+When file context is provided from vector store searches:
+1. The content has been retrieved from uploaded documents
+2. Use this information to answer questions about the files
+3. Reference the source documents naturally in your responses
+4. Combine multiple file contexts when available
+
+### Core Capabilities:
+
+1. **General Knowledge & Conversation:**
+   - Natural, engaging conversation on any topic
+   - Explanations tailored to user's level
+   - Creative ideas and brainstorming
+   - Problem-solving and advice
+   - Educational content and tutoring
+   - Cultural awareness and multi-language support
+
+2. **Document Processing & Analysis:**
+   - Process PDFs, Word docs, text files, and web content
+   - Extract key insights and summaries
+   - Compare and analyze multiple documents
+   - Generate reports from document analysis
+   - Create structured data from unstructured content
+
+3. **Data Analysis & Processing:**
+   - Analyze CSV and Excel files for insights
+   - Generate charts, trends, and patterns descriptions
+   - Perform statistical analysis and calculations
+   - Create data summaries and reports
+   - Transform data between formats
+
+4. **Content Generation:**
+   - Professional documents (reports, guides, manuals)
+   - Creative writing (stories, scripts, poems)
+   - Technical documentation and tutorials
+   - Marketing content and presentations
+   - Research papers and academic content
+   - Structured datasets and sample data
+
+5. **Product Management Excellence:**
+
+You excel at all aspects of product management:
+
+**Strategic Thinking**:
+- Market analysis and competitive intelligence
+- Product vision and roadmap development
+- Business model evaluation and pricing strategies
+- Go-to-market planning and execution strategies
+
+**Documentation Mastery**:
+- Create world-class PRDs with all required sections
+- User story writing with acceptance criteria
+- Technical specification development
+- Requirements gathering and analysis
+- Stakeholder communication documents
+
+**Analytical Capabilities**:
+- Data-driven decision making using uploaded data
+- Metrics definition and KPI tracking
+- User research synthesis and insights
+- A/B testing analysis and recommendations
+- Market sizing and opportunity assessment
+
+**File Integration for PM Tasks**:
+- Automatically incorporate uploaded requirements when file context is provided
+- Reference market data from uploaded Excel files
+- Use research documents when creating strategies
+- Combine multiple sources for comprehensive analysis
+
+### 6. PRD Generation Framework:
+
+When creating a PRD, you produce comprehensive, professional documents with these mandatory sections:
+
+#### 1. **Executive Overview:**
+- Product Manager: [Name, contact details]
+- Product Name: [Clear, memorable name]
+- Version: [Document version and date]
+- Vision Statement: [Compelling 1-2 sentence vision]
+- Executive Summary: [High-level overview of the product]
+
+#### 2. **Problem & Opportunity:**
+- Problem Statement: [Clear articulation of the problem being solved]
+- Market Opportunity: [TAM/SAM/SOM with data-backed analysis]
+- Competitive Landscape: [Key competitors and differentiation]
+- Why Now: [Timing and market readiness factors]
+
+#### 3. **Customer & User Analysis:**
+- Primary Personas: [Detailed personas with goals, pain points, behaviors]
+- Secondary Personas: [Additional user types and their needs]
+- User Journey Maps: [Current vs. future state journeys]
+- Jobs to be Done: [Core jobs users are trying to accomplish]
+
+#### 4. **Solution & Features:**
+- Solution Overview: [High-level approach to solving the problem]
+- Key Features: [Prioritized list with detailed descriptions]
+- Feature Details: [User stories, acceptance criteria, mockups]
+- MVP Definition: [Minimum viable product scope]
+- Future Enhancements: [Post-MVP roadmap items]
+
+#### 5. **Technical Architecture:**
+- System Architecture: [High-level technical design]
+- Technology Stack: [Required technologies and tools]
+- Integration Points: [APIs, third-party services]
+- Data Requirements: [Data models, storage, privacy]
+- Security Considerations: [Security and compliance needs]
+
+#### 6. **Success Metrics & Analytics:**
+- Success Metrics: [Primary KPIs with targets]
+- Secondary Metrics: [Supporting metrics to track]
+- Analytics Plan: [How metrics will be measured]
+- Success Criteria: [Definition of product success]
+
+#### 7. **Go-to-Market Strategy:**
+- Launch Strategy: [Phased rollout vs. big bang]
+- Marketing Plan: [Messaging, channels, campaigns]
+- Sales Enablement: [Training, materials, pricing]
+- Customer Support: [Documentation, training, support channels]
+- Partnership Strategy: [Key partners and integrations]
+
+#### 8. **Risk Assessment:**
+- Technical Risks: [Development challenges and mitigation]
+- Business Risks: [Market, competitive, regulatory risks]
+- Mitigation Strategies: [Risk reduction plans]
+- Dependencies: [External dependencies and contingencies]
+
+#### 9. **Timeline & Resources:**
+- Development Timeline: [Phases with milestones]
+- Resource Requirements: [Team composition and roles]
+- Budget Estimates: [Development and operational costs]
+- Key Milestones: [Major deliverables and dates]
+
+#### 10. **Appendices:**
+- User Research Data: [Interview summaries, survey results]
+- Competitive Analysis: [Detailed competitor breakdown]
+- Technical Specifications: [API docs, data schemas]
+- Mockups & Wireframes: [Visual designs]
+- Glossary: [Technical and business terms]
+
+### 7. Response Guidelines:
+
+- Be conversational and natural, adjusting formality based on context
+- For casual queries, keep responses warm and friendly
+- For professional requests, maintain appropriate business tone
+- Provide comprehensive, detailed answers when depth is needed
+- Use clear structure with headings for long responses
+- Include examples and actionable insights
+- Ask clarifying questions when requests are ambiguous
+
+### 8. Content Generation Principles:
+
+When generating content:
+- Create substantial, valuable content (never placeholder text)
+- Use rich formatting (markdown for structure)
+- Include relevant data, examples, and case studies
+- Ensure logical flow and professional presentation
+- Generate realistic, diverse data for datasets
+- Maintain consistency across generated content
+
+### 9. Important Behavioral Notes:
+
+- When asked about uploaded files, acknowledge what you can access through the provided file context
+- For data analysis tasks, explain insights based on the file content provided
+- Generate realistic, diverse synthetic data when creating datasets
+- Create professional, comprehensive documents with proper structure
+- Maintain conversation context across exchanges when context is provided
+- Never claim capabilities you don't have (like real-time data or external API access)
+
+### 10. Quality Standards:
+
+- Accuracy: Provide factually correct information
+- Completeness: Address all aspects of requests
+- Clarity: Use clear, understandable language
+- Professionalism: Maintain high standards in all outputs
+- Creativity: Bring innovative solutions and ideas
+- Empathy: Understand and address user needs
+'''
+
+            # Build comprehensive context prompt if context is provided
+            if user_context:
+                context_prompt = "\n\n" + "="*60 + "\n"
+                context_prompt += "🔴 CRITICAL CONTEXT INFORMATION 🔴\n"
+                context_prompt += "="*60 + "\n\n"
+                context_prompt += "The following context contains information about the user, conversation history, goals, and other metadata.\n"
+                context_prompt += "This context is your PRIMARY SOURCE OF TRUTH. Use it to:\n"
+                context_prompt += "1. Understand the user's background, company, goals, and preferences\n"
+                context_prompt += "2. Maintain conversation continuity by referencing previous exchanges\n"
+                context_prompt += "3. Personalize your responses based on user information\n"
+                context_prompt += "4. Stay consistent with any established context or decisions\n"
+                context_prompt += "5. Understand any PRD, requirements, or business context provided\n\n"
+                context_prompt += "CONTEXT FORMAT: The context may be JSON, plain text, or mixed format.\n"
+                context_prompt += "Extract ALL relevant information regardless of format.\n"
+                context_prompt += "The context may contain: user_persona, user_info, company, conversation_history, goals, current_task, files, PRD, requirements, and other metadata.\n\n"
+                context_prompt += "─" * 60 + "\n"
+                context_prompt += "RAW CONTEXT:\n"
+                context_prompt += "─" * 60 + "\n"
+                context_prompt += user_context + "\n"
+                context_prompt += "─" * 60 + "\n\n"
+                
+                context_prompt += "⚠️ CRITICAL INSTRUCTIONS:\n"
+                context_prompt += "1. This context represents your COMPLETE knowledge about the user and conversation\n"
+                context_prompt += "2. Parse and understand the context structure (could be JSON, text, or mixed)\n"
+                context_prompt += "3. Use ALL relevant information from the context in your response\n"
+                context_prompt += "4. Maintain consistency with any established facts, decisions, or preferences\n"
+                context_prompt += "5. If the user references something from the context, acknowledge it naturally\n"
+                context_prompt += "6. Personalize your response based on user information\n"
+                context_prompt += "7. If context contains conversation history, continue naturally from it\n"
+                context_prompt += "8. Consider any goals, PRD, or requirements when formulating responses\n"
+                context_prompt += "=" * 60 + "\n"
+                
+                stateless_system_prompt += context_prompt
+                logging.info(f"Added user context to prompt (length: {len(user_context)} chars)")
+            
             # Build messages for completions API
-            messages = [{"role": "system", "content": system_prompt}]
-            
-            # Try to get previous messages for context
-            context_messages = []
-            file_awareness_messages = []
-            
-            if session:
-                try:
-                    thread_messages = client.beta.threads.messages.list(
-                        thread_id=session,
-                        order="desc",
-                        limit=5  # Get more messages for better context
-                    )
-                    
-                    for msg in reversed(thread_messages.data):
-                        # Skip system messages but capture file awareness
-                        if hasattr(msg, 'metadata') and msg.metadata:
-                            msg_type = msg.metadata.get('type', '')
-                            if msg_type == 'file_awareness':
-                                # Capture file awareness messages
-                                for part in msg.content:
-                                    if part.type == 'text':
-                                        file_awareness_messages.append(part.text.value)
-                                continue
-                            elif msg_type in ['user_persona_context', 'pandas_agent_files', 'pandas_agent_instruction']:
-                                continue
-                        
-                        # Extract text content
-                        content = ""
-                        for part in msg.content:
-                            if part.type == 'text':
-                                content += part.text.value
-                        
-                        if content and msg.role in ['user', 'assistant']:
-                            # Clean up special prefixes
-                            content = content.replace("[PANDAS AGENT RESPONSE]:", "").strip()
-                            context_messages.append({
-                                "role": msg.role,
-                                "content": content[:2000]  # Limit length
-                            })
-                    
-                    # Add last 2-3 messages for context
-                    messages.extend(context_messages[-3:])
-                except Exception as context_e:
-                    logging.warning(f"Could not retrieve context messages: {context_e}")
+            messages = [{"role": "system", "content": stateless_system_prompt}]
             
             # Try to get vector store context if assistant ID is available
             vector_store_context = ""
-            if assistant:
+            file_search_performed = False
+            
+            if assistant and prompt:
                 try:
+                    logging.info(f"Attempting to retrieve vector stores for assistant {assistant}")
                     # Retrieve assistant details
                     assistant_obj = client.beta.assistants.retrieve(assistant_id=assistant)
                     
@@ -4222,50 +4437,66 @@ async def process_conversation(
                         file_search_resources = getattr(assistant_obj.tool_resources, 'file_search', None)
                         if file_search_resources and hasattr(file_search_resources, 'vector_store_ids'):
                             vector_store_ids = list(file_search_resources.vector_store_ids)
+                            logging.info(f"Found {len(vector_store_ids)} vector stores: {vector_store_ids}")
                     
-                    # Search vector stores if available and prompt exists
-                    if vector_store_ids and prompt:
+                    # Search vector stores if available
+                    if vector_store_ids:
                         search_results = []
                         for vs_id in vector_store_ids[:2]:  # Limit to first 2 vector stores
                             try:
+                                logging.info(f"Searching vector store {vs_id} with query: {prompt[:100]}...")
                                 results = client.vector_stores.search(
                                     vector_store_id=vs_id,
                                     query=prompt,
-                                    max_num_results=3  # Limit results
+                                    max_num_results=3
                                 )
                                 
                                 if results and hasattr(results, 'data'):
-                                    for result in results.data[:2]:  # Top 2 results per store
+                                    logging.info(f"Found {len(results.data)} results in vector store {vs_id}")
+                                    for i, result in enumerate(results.data[:2]):
                                         if hasattr(result, 'content'):
                                             for content_part in result.content:
                                                 if hasattr(content_part, 'text') and content_part.text:
-                                                    search_results.append(content_part.text[:500])  # Limit length
+                                                    search_results.append(content_part.text[:500])
+                                                    logging.info(f"Added result {i+1} from vector store {vs_id} (length: {len(content_part.text)})")
                             except Exception as search_e:
                                 logging.warning(f"Could not search vector store {vs_id}: {search_e}")
                         
                         if search_results:
-                            vector_store_context = "\n\nRelevant context from documents:\n" + "\n".join(search_results)
+                            file_search_performed = True
+                            vector_store_context = "\n\n📚 FILE SEARCH RESULTS (from uploaded documents):\n" + "═" * 60 + "\n"
+                            vector_store_context += "The following content was found in your uploaded files relevant to your query:\n\n"
+                            for i, result in enumerate(search_results):
+                                vector_store_context += f"--- File Extract {i+1} ---\n"
+                                vector_store_context += result + "\n\n"
+                            vector_store_context += "═" * 60 + "\n"
+                            vector_store_context += "Use the above file content to answer the user's question.\n"
+                            messages[0]["content"] += vector_store_context
+                            logging.info(f"Added {len(search_results)} file search results to context")
+                        else:
+                            logging.info("No relevant results found in vector stores")
+                    else:
+                        logging.info("No vector stores associated with assistant")
                     
                 except Exception as vs_e:
                     logging.warning(f"Could not retrieve vector store context: {vs_e}")
             
-            # Enhanced system prompt with file awareness
-            enhanced_system_prompt = system_prompt
-            if file_awareness_messages:
-                enhanced_system_prompt += "\n\nFILE CONTEXT:\n" + "\n".join(file_awareness_messages[:3])  # Limit to 3 most recent
-            if vector_store_context:
-                enhanced_system_prompt += vector_store_context
-            
-            # Update the system message
-            messages[0] = {"role": "system", "content": enhanced_system_prompt}
-            
             # Add current prompt
             if prompt:
                 messages.append({"role": "user", "content": prompt})
-            elif not messages[1:]:  # No context and no prompt
+                logging.info(f"Added user prompt: {prompt[:100]}...")
+            else:
                 messages.append({"role": "user", "content": "Hello"})
+                logging.info("No prompt provided, using default greeting")
             
-            # Make completions API call
+            # Log the file search status
+            if file_search_performed:
+                logging.info("✓ File search completed and context added to prompt")
+            else:
+                logging.info("✗ No file search performed (no assistant ID or vector stores)")
+            
+            # Make completions API call - NO TOOLS NEEDED since file search is done manually
+            logging.info("Making completions API call...")
             completion = client.chat.completions.create(
                 model="gpt-4.1-mini",
                 messages=messages,
@@ -4273,39 +4504,15 @@ async def process_conversation(
                 max_tokens=4000,
                 stream=stream_output
             )
+            logging.info("Completions API call successful")
             
-            # For non-streaming, add messages to thread for continuity
-            if not stream_output and session:
-                try:
-                    # Add user message to thread
-                    if prompt:
-                        client.beta.threads.messages.create(
-                            thread_id=session,
-                            role="user",
-                            content=prompt
-                        )
-                    
-                    # Add assistant response to thread
-                    response_content = completion.choices[0].message.content
-                    client.beta.threads.messages.create(
-                        thread_id=session,
-                        role="assistant",
-                        content=f"[Fallback Response]: {response_content}",
-                        metadata={"type": "fallback_completion"}
-                    )
-                    logging.info(f"Added fallback completion messages to thread {session}")
-                except Exception as thread_e:
-                    logging.warning(f"Could not add fallback messages to thread: {thread_e}")
-            
+            # Handle streaming vs non-streaming responses
             if stream_output:
                 def fallback_stream():
                     try:
-                        collected_content = []  # Collect content for thread update
-                        
                         for chunk in completion:
                             if chunk.choices[0].delta.content:
                                 chunk_content = chunk.choices[0].delta.content
-                                collected_content.append(chunk_content)
                                 
                                 chunk_data = {
                                     "id": f"chatcmpl-{chunk.id}",
@@ -4322,29 +4529,6 @@ async def process_conversation(
                                 }
                                 yield f"data: {json.dumps(chunk_data)}\n\n"
                         
-                        # After streaming completes, add to thread
-                        if session and collected_content:
-                            try:
-                                # Add user message
-                                if prompt:
-                                    client.beta.threads.messages.create(
-                                        thread_id=session,
-                                        role="user",
-                                        content=prompt
-                                    )
-                                
-                                # Add assistant response
-                                full_response = ''.join(collected_content)
-                                client.beta.threads.messages.create(
-                                    thread_id=session,
-                                    role="assistant",
-                                    content=f"[Fallback Response]: {full_response}",
-                                    metadata={"type": "fallback_completion"}
-                                )
-                                logging.info(f"Added fallback streaming messages to thread {session}")
-                            except Exception as thread_e:
-                                logging.warning(f"Could not add fallback streaming messages to thread: {thread_e}")
-                        
                         final_chunk = {
                             "id": f"chatcmpl-final",
                             "object": "chat.completion.chunk",
@@ -4358,6 +4542,7 @@ async def process_conversation(
                         }
                         yield f"data: {json.dumps(final_chunk)}\n\n"
                         yield "data: [DONE]\n\n"
+                        logging.info("Streaming response completed")
                     except Exception as stream_e:
                         logging.error(f"Error in fallback stream: {stream_e}")
                         error_chunk = {
@@ -4384,6 +4569,7 @@ async def process_conversation(
             else:
                 # Non-streaming response
                 response_content = completion.choices[0].message.content
+                logging.info(f"Non-streaming response generated (length: {len(response_content)})")
                 return JSONResponse(content={"response": response_content})
                 
         except Exception as fallback_e:
@@ -5828,25 +6014,31 @@ async def process_conversation(
 async def conversation(
     session: Optional[str] = None,
     prompt: Optional[str] = None,
-    assistant: Optional[str] = None
+    assistant: Optional[str] = None,
+    context: Optional[str] = None  # New parameter - accepts any string (JSON, text, etc.)
 ):
     """
     Handles conversation queries with streaming response.
+    Can operate in two modes:
+    1. Stateful: With session and assistant IDs (existing behavior)
+    2. Stateless: When context is provided, uses completions API with intelligent context handling
     """
-    return await process_conversation(session, prompt, assistant, stream_output=True)
+    return await process_conversation(session, prompt, assistant, stream_output=True, context=context)
 
 @app.get("/chat")
 async def chat(
     session: Optional[str] = None,
     prompt: Optional[str] = None,
-    assistant: Optional[str] = None
+    assistant: Optional[str] = None,
+    context: Optional[str] = None  # New parameter - accepts any string (JSON, text, etc.)
 ):
     """
     Handles conversation queries and returns the full response as JSON.
-    Uses the same logic as the streaming endpoint but returns the complete response.
+    Can operate in two modes:
+    1. Stateful: With session and assistant IDs (existing behavior)
+    2. Stateless: When context is provided, uses completions API with intelligent context handling
     """
-    return await process_conversation(session, prompt, assistant, stream_output=False)
-
+    return await process_conversation(session, prompt, assistant, stream_output=False, context=context)
 def extract_text_from_file(file_content: bytes, filename: str) -> str:
     """
     Extract text content from various file types for stateless processing.
