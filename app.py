@@ -4172,12 +4172,17 @@ async def process_conversation(
     response_started = False
     
     # Check if context is provided - this triggers stateless mode
-    if context is not None:
-        logging.info(f"Context provided - routing directly to completions API")
-        # Use fallback_to_completions with context
+    if not assistant or not session:
+        missing_params = []
+        if not assistant:
+            missing_params.append("assistant_id")
+        if not session:
+            missing_params.append("thread_id")
+        
+        logging.info(f"Missing required parameters: {', '.join(missing_params)}. Falling back to completions API.")
         return await fallback_to_completions(
-            error_context="Context-based stateless mode",
-            user_context=context
+            error_context=f"Missing required parameters: {', '.join(missing_params)}",
+            user_context=None
         )
     
     # Helper function for completions API fallback
@@ -5269,74 +5274,39 @@ When generating content:
     
     try:
         # Acquire thread lock if session exists
-        if session:
-            try:
-                thread_lock = await thread_lock_manager.get_lock(session)
-                await asyncio.wait_for(thread_lock.acquire(), timeout=30.0)  # 30 second timeout
-                logging.info(f"Acquired thread lock for session {session}")
-            except asyncio.TimeoutError:
-                logging.warning(f"Timeout acquiring thread lock for session {session}")
-                return await fallback_to_completions("Thread lock timeout")
-            except Exception as lock_e:
-                logging.error(f"Error acquiring thread lock: {lock_e}")
-                return await fallback_to_completions(f"Thread lock error: {str(lock_e)}")
+        try:
+            thread_lock = await thread_lock_manager.get_lock(session)
+            await asyncio.wait_for(thread_lock.acquire(), timeout=30.0)  # 30 second timeout
+            logging.info(f"Acquired thread lock for session {session}")
+        except asyncio.TimeoutError:
+            logging.warning(f"Timeout acquiring thread lock for session {session}")
+            return await fallback_to_completions("Thread lock timeout")
+        except Exception as lock_e:
+            logging.error(f"Error acquiring thread lock: {lock_e}")
+            return await fallback_to_completions(f"Thread lock error: {str(lock_e)}")
         
         # Validate resources if provided 
-        if session or assistant:
+        try:
             validation = await validate_resources(client, session, assistant)
             
-            # Create new thread if invalid
-            if session and not validation["thread_valid"]:
-                logging.warning(f"Invalid thread ID: {session}, creating a new one")
-                try:
-                    thread = client.beta.threads.create()
-                    session = thread.id
-                    logging.info(f"Created recovery thread: {session}")
-                except Exception as e:
-                    logging.error(f"Failed to create recovery thread: {e}")
-                    return await fallback_to_completions(f"Thread creation error: {str(e)}")
-            
-            # Create new assistant if invalid
-            if assistant and not validation["assistant_valid"]:
-                logging.warning(f"Invalid assistant ID: {assistant}, creating a new one")
-                try:
-                    assistant_tools = [{"type": "file_search"}] + get_content_generation_tools()
-                    assistant_obj = client.beta.assistants.create(
-                        name=f"recovery_assistant_{int(time.time())}",
-                        model="gpt-4.1-mini",
-                        instructions=system_prompt,
-                        tools=assistant_tools
-                    )
-                    assistant = assistant_obj.id
-                    logging.info(f"Created recovery assistant: {assistant}")
-                except Exception as e:
-                    logging.error(f"Failed to create recovery assistant: {e}")
-                    return await fallback_to_completions(f"Assistant creation error: {str(e)}")
-        
-        # Create defaults if not provided
-        if not assistant:
-            logging.warning(f"No assistant ID provided for /{('conversation' if stream_output else 'chat')}, creating a default one.")
-            try:
-                assistant_tools = [{"type": "file_search"}] + get_content_generation_tools()
-                assistant_obj = client.beta.assistants.create(
-                    name="default_conversation_assistant",
-                    model="gpt-4.1-mini",
-                    instructions=system_prompt,
-                    tools=assistant_tools
+            # If either resource is invalid, fallback to completions
+            if not validation["thread_valid"] or not validation["assistant_valid"]:
+                invalid_resources = []
+                if not validation["thread_valid"]:
+                    invalid_resources.append(f"thread_id '{session}'")
+                if not validation["assistant_valid"]:
+                    invalid_resources.append(f"assistant_id '{assistant}'")
+                
+                logging.warning(f"Invalid resources: {', '.join(invalid_resources)}. Falling back to completions API.")
+                return await fallback_to_completions(
+                    error_context=f"Invalid resources: {', '.join(invalid_resources)}",
+                    user_context=None
                 )
-                assistant = assistant_obj.id
-            except Exception as e:
-                logging.error(f"Failed to create default assistant: {e}")
-                return await fallback_to_completions(f"Default assistant creation error: {str(e)}")
-
-        if not session:
-            logging.warning(f"No session (thread) ID provided for /{('conversation' if stream_output else 'chat')}, creating a new one.")
-            try:
-                thread = client.beta.threads.create()
-                session = thread.id
-            except Exception as e:
-                logging.error(f"Failed to create default thread: {e}")
-                return await fallback_to_completions(f"Default thread creation error: {str(e)}")
+        except Exception as validation_e:
+            logging.error(f"Error during resource validation: {validation_e}")
+            return await fallback_to_completions(f"Resource validation error: {str(validation_e)}")
+        
+        
 
         # Check if there's an active run before adding a message
         active_run = False
@@ -5361,6 +5331,7 @@ When generating content:
             # Continue anyway - we'll handle failure when adding messages
     
         # Check and trim thread BEFORE adding new message
+        # Check and trim thread BEFORE adding new message
         if session and prompt:  # Only trim if we're about to add a message
             try:
                 messages_response = client.beta.threads.messages.list(thread_id=session, limit=100)
@@ -5369,17 +5340,24 @@ When generating content:
                     logging.info(f"Thread {session} has {message_count} messages, trimming before adding new message")
                     
                     # Trim now for both streaming and non-streaming
-                    if stream_output:
-                        trimmed = sync_trim_thread(client, session, keep_messages=30)
-                    else:
-                        trimmed = await trim_thread(client, session, keep_messages=30)
-                    
-                    if trimmed:
-                        logging.info(f"Trimmed thread {session} from {message_count} messages")
-                        # Add a small delay to ensure OpenAI processes the deletions
-                        await asyncio.sleep(0.5)
-            except Exception as e:
-                logging.warning(f"Could not check/trim thread: {e}")
+                    try:
+                        if stream_output:
+                            trimmed = sync_trim_thread(client, session, keep_messages=30)
+                        else:
+                            trimmed = await trim_thread(client, session, keep_messages=30)
+                        
+                        if trimmed:
+                            logging.info(f"Trimmed thread {session} from {message_count} messages")
+                            # Add a small delay to ensure OpenAI processes the deletions
+                            await asyncio.sleep(0.5)
+                    except Exception as trim_e:
+                        logging.error(f"Error trimming thread: {trim_e}")
+                        # Fallback to completions on trim error
+                        return await fallback_to_completions(f"Thread trimming error: {str(trim_e)}")
+            except Exception as list_e:
+                logging.error(f"Error listing messages for trimming: {list_e}")
+                # Fallback on any error
+                return await fallback_to_completions(f"Message listing error: {str(list_e)}")
         
         # Add user message to the thread if prompt is given
         if prompt:
@@ -5519,31 +5497,12 @@ When generating content:
                             return await fallback_to_completions(f"Failed to add message: {str(e)}")
             
             if not success:
-                # Final fallback - try to create a new thread and continue
-                logging.warning(f"Failed to add message to thread {session} after all retries. Creating new thread.")
-                try:
-                    # Create a new thread
-                    new_thread = client.beta.threads.create()
-                    new_session = new_thread.id
-                    logging.info(f"Created fallback thread: {new_session}")
-                    
-                    # Add the message to the new thread
-                    try:
-                        client.beta.threads.messages.create(
-                            thread_id=new_session,
-                            role="user",
-                            content=prompt
-                        )
-                        session = new_session  # Use the new thread
-                        logging.info(f"Successfully added message to new thread {new_session}")
-                    except Exception as new_msg_e:
-                        logging.error(f"Failed to add message to new thread: {new_msg_e}")
-                        # Use fallback even if this fails
-                        return await fallback_to_completions(f"Failed to add message to new thread: {str(new_msg_e)}")
-                except Exception as new_thread_e:
-                    logging.error(f"Failed to create new thread: {new_thread_e}")
-                    # Use fallback
-                    return await fallback_to_completions(f"Failed to create new thread: {str(new_thread_e)}")
+                # Fallback to completions instead of creating new thread
+                logging.warning(f"Failed to add message to thread {session} after all retries. Falling back to completions API.")
+                return await fallback_to_completions(
+                    error_context=f"Failed to add message to thread after {max_retries} attempts",
+                    user_context=None
+                )
         
         
         # Handle non-streaming mode (/chat endpoint)
