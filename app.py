@@ -4182,11 +4182,11 @@ async def process_conversation(
         logging.info(f"Missing required parameters: {', '.join(missing_params)}. Falling back to completions API.")
         return await fallback_to_completions(
             error_context=f"Missing required parameters: {', '.join(missing_params)}",
-            user_context=None
+            user_context=context
         )
     
     # Helper function for completions API fallback
-    async def fallback_to_completions(error_context: str = "", user_context: Optional[str] = None):
+    async def fallback_to_completions(error_context: Optional[str] = "", user_context: Optional[str] = None):
         """
         Fallback to completions API with intelligent context handling.
         Accepts raw context string that can be JSON, plain text, or any format.
@@ -4516,26 +4516,32 @@ When generating content:
                 def fallback_stream():
                     try:
                         for chunk in completion:
-                            if chunk.choices[0].delta.content:
-                                chunk_content = chunk.choices[0].delta.content
-                                
-                                chunk_data = {
-                                    "id": f"chatcmpl-{chunk.id}",
-                                    "object": "chat.completion.chunk",
-                                    "created": chunk.created,
-                                    "model": chunk.model,
-                                    "choices": [{
-                                        "index": 0,
-                                        "delta": {
-                                            "content": chunk_content
-                                        },
-                                        "finish_reason": chunk.choices[0].finish_reason
-                                    }]
-                                }
-                                yield f"data: {json.dumps(chunk_data)}\n\n"
+                            # Validate chunk structure before accessing
+                            logging.debug(f"Chunk structure: {chunk}") 
+                            if hasattr(chunk, 'choices') and chunk.choices and len(chunk.choices) > 0:
+                                choice = chunk.choices[0]
+                                # Check if delta and content exist
+                                if hasattr(choice, 'delta') and hasattr(choice.delta, 'content') and choice.delta.content:
+                                    chunk_content = choice.delta.content
+                                    
+                                    chunk_data = {
+                                        "id": chunk.id if hasattr(chunk, 'id') else "chatcmpl-fallback",
+                                        "object": "chat.completion.chunk",
+                                        "created": chunk.created if hasattr(chunk, 'created') else int(time.time()),
+                                        "model": chunk.model if hasattr(chunk, 'model') else "gpt-4.1-mini",
+                                        "choices": [{
+                                            "index": 0,
+                                            "delta": {
+                                                "content": chunk_content
+                                            },
+                                            "finish_reason": choice.finish_reason if hasattr(choice, 'finish_reason') else None
+                                        }]
+                                    }
+                                    yield f"data: {json.dumps(chunk_data)}\n\n"
                         
+                        # Send final chunk
                         final_chunk = {
-                            "id": f"chatcmpl-final",
+                            "id": "chatcmpl-final",
                             "object": "chat.completion.chunk",
                             "created": int(time.time()),
                             "model": "gpt-4.1-mini",
@@ -4550,6 +4556,7 @@ When generating content:
                         logging.info("Streaming response completed")
                     except Exception as stream_e:
                         logging.error(f"Error in fallback stream: {stream_e}")
+                        # Return error in stream format
                         error_chunk = {
                             "id": "chatcmpl-error",
                             "object": "chat.completion.chunk",
@@ -5280,10 +5287,10 @@ When generating content:
             logging.info(f"Acquired thread lock for session {session}")
         except asyncio.TimeoutError:
             logging.warning(f"Timeout acquiring thread lock for session {session}")
-            return await fallback_to_completions("Thread lock timeout")
+            return await fallback_to_completions(error_context=f"Thread lock timeout",user_context=context)
         except Exception as lock_e:
             logging.error(f"Error acquiring thread lock: {lock_e}")
-            return await fallback_to_completions(f"Thread lock error: {str(lock_e)}")
+            return await fallback_to_completions(error_context=f"Thread lock error: {str(lock_e)}",user_context=context)
         
         # Validate resources if provided 
         try:
@@ -5300,11 +5307,11 @@ When generating content:
                 logging.warning(f"Invalid resources: {', '.join(invalid_resources)}. Falling back to completions API.")
                 return await fallback_to_completions(
                     error_context=f"Invalid resources: {', '.join(invalid_resources)}",
-                    user_context=None
+                    user_context=context
                 )
         except Exception as validation_e:
             logging.error(f"Error during resource validation: {validation_e}")
-            return await fallback_to_completions(f"Resource validation error: {str(validation_e)}")
+            return await fallback_to_completions(error_context=f"Resource validation error: {str(validation_e)}",user_context=context)
         
         
 
@@ -5353,11 +5360,11 @@ When generating content:
                     except Exception as trim_e:
                         logging.error(f"Error trimming thread: {trim_e}")
                         # Fallback to completions on trim error
-                        return await fallback_to_completions(f"Thread trimming error: {str(trim_e)}")
+                        return await fallback_to_completions(error_context=f"Thread trimming error: {str(trim_e)}", user_context=context)
             except Exception as list_e:
                 logging.error(f"Error listing messages for trimming: {list_e}")
                 # Fallback on any error
-                return await fallback_to_completions(f"Message listing error: {str(list_e)}")
+                return await fallback_to_completions(error_context=f"Message listing error: {str(list_e)}", user_context=context)
         
         # Add user message to the thread if prompt is given
         if prompt:
@@ -5494,14 +5501,14 @@ When generating content:
                         logging.error(f"Failed to add message to thread {session}: {e}")
                         if attempt == max_retries - 1:
                             # Use fallback instead of raising exception
-                            return await fallback_to_completions(f"Failed to add message: {str(e)}")
+                            return await fallback_to_completions(error_context=f"Failed to add message: {str(e)}", user_context=context)
             
             if not success:
                 # Fallback to completions instead of creating new thread
                 logging.warning(f"Failed to add message to thread {session} after all retries. Falling back to completions API.")
                 return await fallback_to_completions(
                     error_context=f"Failed to add message to thread after {max_retries} attempts",
-                    user_context=None
+                    user_context=context
                 )
         
         
@@ -5699,7 +5706,7 @@ When generating content:
                                 return JSONResponse(content={"response": "The conversation has become too long. Please start a new conversation."})
                             else:
                                 # Use fallback
-                                return await fallback_to_completions(f"Run {run_status.status}: {error_details}")
+                                return await fallback_to_completions(error_context= f"Run {run_status.status}: {error_details}", user_context=context)
                         
                         # Handle tool calls
                         elif run_status.status == "requires_action":
@@ -5888,7 +5895,7 @@ When generating content:
                                     
                                     if not submit_success:
                                         # Use fallback
-                                        return await fallback_to_completions(f"Failed to submit tool outputs: {submit_e}")
+                                        return await fallback_to_completions(error_context= f"Failed to submit tool outputs: {submit_e}", user_context=context)
                         
                         # Continue polling if still in progress
                         if attempt < max_poll_attempts - 1:
@@ -5929,14 +5936,14 @@ When generating content:
                 # Final fallback if we still don't have a response
                 if not full_response:
                     # Use completions API fallback
-                    return await fallback_to_completions("No response received from assistant")
+                    return await fallback_to_completions(error_context= "No response received from assistant", user_context=context)
 
                 return JSONResponse(content={"response": full_response})
                 
             except Exception as e:
                 logging.error(f"Error in non-streaming response generation: {e}")
                 # Use fallback
-                return await fallback_to_completions(f"Non-streaming error: {str(e)}")
+                return await fallback_to_completions(error_context=f"Non-streaming error: {str(e)}", user_context=context)
         
         # Return the streaming response for streaming mode
         try:
@@ -5948,7 +5955,7 @@ When generating content:
             return response
         except Exception as stream_setup_e:
             logging.error(f"Error setting up streaming response: {stream_setup_e}")
-            return await fallback_to_completions(f"Stream setup error: {str(stream_setup_e)}")
+            return await fallback_to_completions(error_context= f"Stream setup error: {str(stream_setup_e)}", user_context=context)
 
     except Exception as e:
         endpoint_type = "conversation" if stream_output else "chat"
@@ -5956,7 +5963,7 @@ When generating content:
         
         # Use fallback if response hasn't started
         if not response_started:
-            return await fallback_to_completions(f"Unexpected error: {str(e)}")
+            return await fallback_to_completions(error_context= f"Unexpected error: {str(e)}", user_context=context)
         else:
             # If streaming already started, we can't change response type
             raise HTTPException(status_code=500, detail="An error occurred during response streaming")
