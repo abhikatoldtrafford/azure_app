@@ -5570,7 +5570,7 @@ Based on training through January 2025. For latest developments, consult current
                 model="gpt-4.1-mini",
                 messages=messages,
                 temperature=0.8,
-                max_tokens=4000,
+                max_tokens=50000,
                 stream=stream_output
             )
             logging.info("Completions API call successful")
