@@ -4172,20 +4172,6 @@ async def process_conversation(
     thread_lock = None
     response_started = False
     
-    # Check if context is provided - this triggers stateless mode
-    if not assistant or not session:
-        missing_params = []
-        if not assistant:
-            missing_params.append("assistant_id")
-        if not session:
-            missing_params.append("thread_id")
-        
-        logging.info(f"Missing required parameters: {', '.join(missing_params)}. Falling back to completions API.")
-        return await fallback_to_completions(
-            error_context=f"Missing required parameters: {', '.join(missing_params)}",
-            user_context=context
-        )
-    
     # Helper function for completions API fallback
     async def fallback_to_completions(error_context: str = "", user_context: Optional[str] = None):
         """
@@ -5513,6 +5499,18 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
         
         # Validate resources if provided 
         try:
+            if not assistant or not session:
+                missing_params = []
+                if not assistant:
+                    missing_params.append("assistant_id")
+                if not session:
+                    missing_params.append("thread_id")
+                
+                logging.info(f"Missing required parameters: {', '.join(missing_params)}. Falling back to completions API.")
+                return await fallback_to_completions(
+                    error_context=f"Missing required parameters: {', '.join(missing_params)}",
+                    user_context=context
+                )
             validation = await validate_resources(client, session, assistant)
             
             # If either resource is invalid, fallback to completions
@@ -5533,7 +5531,6 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
             return await fallback_to_completions(error_context=f"Resource validation error: {str(validation_e)}",user_context=context)
         
         
-
         # Check if there's an active run before adding a message
         active_run = False
         run_id = None
@@ -5555,8 +5552,6 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
         except Exception as e:
             logging.warning(f"Error checking for active runs: {e}")
             # Continue anyway - we'll handle failure when adding messages
-    
-        # Check and trim thread BEFORE adding new message
         # Check and trim thread BEFORE adding new message
         if session and prompt:  # Only trim if we're about to add a message
             try:
