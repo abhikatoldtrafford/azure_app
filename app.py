@@ -56,6 +56,123 @@ except ImportError:
     logging.warning("Chart libraries not available. Chart generation disabled.")
 import asyncio
 from datetime import timedelta
+
+
+import chardet
+import pdfplumber
+# Try importing Unstructured components
+try:
+    from unstructured.partition.auto import partition
+    UNSTRUCTURED_AVAILABLE = True
+except ImportError:
+    UNSTRUCTURED_AVAILABLE = False
+    partition = None
+# Import specific partitioners for fallback
+try:
+    from unstructured.partition.csv import partition_csv
+except ImportError:
+    partition_csv = None
+try:
+    from unstructured.partition.docx import partition_docx
+except ImportError:
+    partition_docx = None
+try:
+    from unstructured.partition.pdf import partition_pdf
+except ImportError:
+    partition_pdf = None
+try:
+    from unstructured.partition.html import partition_html
+except ImportError:
+    partition_html = None
+try:
+    from unstructured.partition.text import partition_text
+except ImportError:
+    partition_text = None
+try:
+    from unstructured.partition.email import partition_email
+except ImportError:
+    partition_email = None
+try:
+    from unstructured.partition.xlsx import partition_xlsx
+except ImportError:
+    partition_xlsx = None
+try:
+    from unstructured.partition.image import partition_image
+except ImportError:
+    partition_image = None
+try:
+    from unstructured.partition.json import partition_json
+except ImportError:
+    partition_json = None
+try:
+    from unstructured.partition.xml import partition_xml
+except ImportError:
+    partition_xml = None
+try:
+    from unstructured.partition.md import partition_md
+except ImportError:
+    partition_md = None
+try:
+    from unstructured.partition.pptx import partition_pptx
+except ImportError:
+    partition_pptx = None
+try:
+    from unstructured.partition.msg import partition_msg
+except ImportError:
+    partition_msg = None
+try:
+    from unstructured.partition.rtf import partition_rtf
+except ImportError:
+    partition_rtf = None
+try:
+    from unstructured.partition.epub import partition_epub
+except ImportError:
+    partition_epub = None
+try:
+    from unstructured.partition.odt import partition_odt
+except ImportError:
+    partition_odt = None
+try:
+    from unstructured.partition.doc import partition_doc
+except ImportError:
+    partition_doc = None
+try:
+    from unstructured.partition.ppt import partition_ppt
+except ImportError:
+    partition_ppt = None
+try:
+    from unstructured.partition.tsv import partition_tsv
+except ImportError:
+    partition_tsv = None
+try:
+    from unstructured.partition.rst import partition_rst
+except ImportError:
+    partition_rst = None
+try:
+    from unstructured.partition.org import partition_org
+except ImportError:
+    partition_org = None
+# Fallback imports for when Unstructured isn't available
+try:
+    from docx import Document as DocxDocument
+except ImportError:
+    DocxDocument = None
+try:
+    import PyPDF2
+except ImportError:
+    PyPDF2 = None
+try:
+    from pptx import Presentation
+except ImportError:
+    Presentation = None
+try:
+    import html2text
+except ImportError:
+    html2text = None
+try:
+    import markdown
+except ImportError:
+    markdown = None
 # Pydantic models for request/response documentation
 # Azure OpenAI client configuration
 AZURE_ENDPOINT = "https://kb-stellar.openai.azure.com/" # Replace with your endpoint if different
@@ -1810,7 +1927,693 @@ You combine the intelligence of general knowledge with the power of specialized 
 For general queries, be naturally helpful without overcomplicating. For file-related or command-based tasks, leverage your full analytical capabilities with appropriate tool integration. Always gauge the appropriate level of detail and technicality based on the user's needs.
 You are the ultimate AI companion - equally comfortable discussing everyday topics, analyzing complex data, generating professional documents, or creating comprehensive strategies. Your strength lies in knowing when to use which capability and seamlessly integrating multiple tools when needed.
 '''
-
+class UnstructuredDocumentExtractor:
+    """
+    Production-grade universal document text extractor using Unstructured library.
+    
+    This extractor leverages the powerful Unstructured library for sophisticated
+    document parsing, with comprehensive fallbacks for robustness.
+    
+    Supported formats (via Unstructured):
+    - Documents: DOC, DOCX, ODT, PDF, RTF, TXT, LOG
+    - Spreadsheets: XLS, XLSX, CSV, TSV
+    - Presentations: PPT, PPTX
+    - Web: HTML, HTM, XML
+    - Email: EML, MSG
+    - Images: PNG, JPG, JPEG, TIFF, BMP, HEIC (with OCR)
+    - E-books: EPUB
+    - Markup: MD, RST, ORG
+    - Code: JS, PY, JAVA, CPP, CC, CXX, C, CS, PHP, RB, SWIFT, TS, GO
+    - Data: JSON
+    """
+    
+    def __init__(self, logger: Optional[logging.Logger] = None):
+        """Initialize the extractor with optional logger."""
+        self.logger = logger or logging.getLogger(__name__)
+        
+        # Log available components
+        if UNSTRUCTURED_AVAILABLE:
+            self.logger.info("Unstructured library is available")
+        else:
+            self.logger.warning("Unstructured library not available, using fallback methods")
+            
+    def extract_text(self, 
+                    file_content: Union[bytes, str], 
+                    filename: str,
+                    encoding: Optional[str] = None,
+                    strategy: str = "auto",
+                    include_metadata: bool = False,
+                    max_partition_length: int = 1500,
+                    languages: Optional[List[str]] = None,
+                    extract_tables: bool = True) -> str:
+        """
+        Extract text from any supported document type using Unstructured.
+        
+        Args:
+            file_content: Raw file content as bytes or string
+            filename: Original filename for type detection
+            encoding: Optional encoding override
+            strategy: Partitioning strategy ("auto", "fast", "hi_res", "ocr_only")
+            include_metadata: Whether to include element metadata in output
+            max_partition_length: Maximum length for text partitions
+            languages: OCR languages (e.g., ["eng", "spa"])
+            extract_tables: Whether to extract and format tables
+            
+        Returns:
+            Extracted text as string
+        """
+        try:
+            # Convert string to bytes if needed
+            if isinstance(file_content, str):
+                file_content = file_content.encode('utf-8')
+            
+            # Get file extension
+            file_ext = os.path.splitext(filename)[1].lower()
+            self.logger.info(f"Extracting text from {filename} (type: {file_ext})")
+            
+            # Try Unstructured first if available
+            if UNSTRUCTURED_AVAILABLE:
+                try:
+                    text = self._extract_with_unstructured(
+                        file_content, filename, encoding, strategy, 
+                        include_metadata, max_partition_length, languages
+                    )
+                    if text and len(text.strip()) > 10:
+                        return text
+                except Exception as e:
+                    self.logger.warning(f"Unstructured extraction failed: {str(e)}, trying fallbacks")
+            
+            # Use fallback methods
+            return self._extract_with_fallback(file_content, filename, encoding)
+            
+        except Exception as e:
+            self.logger.error(f"Error extracting text from {filename}: {str(e)}")
+            self.logger.error(f"Traceback: {traceback.format_exc()}")
+            # Emergency fallback
+            return self._emergency_text_extraction(file_content)
+    
+    def _extract_with_unstructured(self, 
+                                  file_content: bytes, 
+                                  filename: str,
+                                  encoding: Optional[str],
+                                  strategy: str,
+                                  include_metadata: bool,
+                                  max_partition_length: int,
+                                  languages: Optional[List[str]]) -> str:
+        """Extract text using Unstructured library."""
+        # Save to temporary file (Unstructured often works better with files)
+        with tempfile.NamedTemporaryFile(
+            delete=False, 
+            suffix=os.path.splitext(filename)[1]
+        ) as tmp_file:
+            tmp_file.write(file_content)
+            tmp_path = tmp_file.name
+        
+        try:
+            file_ext = os.path.splitext(filename)[1].lower()
+            # Prepare kwargs
+            if encoding is None and file_ext in ['.csv', '.txt', '.log', '.md']:
+                encoding = self._detect_encoding(file_content)
+                self.logger.info(f"Auto-detected encoding: {encoding}")
+            
+            kwargs = {
+                "filename": tmp_path,
+                "encoding": encoding or 'utf-8',  # Use detected or default
+                "max_partition": max_partition_length,
+            }
+            
+            if file_ext in ['.pdf', '.png', '.jpg', '.jpeg', '.tiff', '.bmp', '.heic']:
+                kwargs["strategy"] = strategy
+                if languages:
+                    kwargs["languages"] = languages
+            
+            # Special handling for specific file types
+            if file_ext in ['.html', '.htm']:
+                kwargs["include_page_breaks"] = True
+            elif file_ext in ['.pdf']:
+                kwargs["include_page_breaks"] = True
+                kwargs["infer_table_structure"] = True
+            elif file_ext in ['.eml', '.msg']:
+                kwargs["process_attachments"] = False  # Don't process attachments for text extraction
+                kwargs["content_source"] = "text/html"  # Prefer HTML content
+                
+            # Use the main partition function
+            elements = partition(**kwargs)
+            
+            # Convert elements to text
+            text_parts = []
+            
+            for element in elements:
+                # Get element text
+                element_text = str(element)
+                
+                if include_metadata and hasattr(element, 'metadata'):
+                    # Add metadata if requested
+                    metadata = element.metadata
+                    if hasattr(metadata, 'page_number') and metadata.page_number:
+                        element_text = f"[Page {metadata.page_number}] {element_text}"
+                    if hasattr(metadata, 'section') and metadata.section:
+                        element_text = f"[{metadata.section}] {element_text}"
+                
+                # Handle tables specially
+                if hasattr(element, 'metadata') and hasattr(element.metadata, 'text_as_html'):
+                    # Convert HTML table to text representation
+                    table_text = self._html_table_to_text(element.metadata.text_as_html)
+                    if table_text:
+                        text_parts.append(table_text)
+                    else:
+                        text_parts.append(element_text)
+                else:
+                    text_parts.append(element_text)
+            
+            return "\n\n".join(text_parts)
+            
+        finally:
+            # Clean up temp file
+            try:
+                os.unlink(tmp_path)
+            except:
+                pass
+    
+    def _extract_with_fallback(self, file_content: bytes, filename: str, encoding: Optional[str]) -> str:
+        """Fallback extraction methods when Unstructured is not available or fails."""
+        file_ext = os.path.splitext(filename)[1].lower()
+        
+        # Try specific extractors based on file type
+        if file_ext in ['.docx']:
+            return self._extract_docx_fallback(file_content)
+        elif file_ext in ['.pdf']:
+            return self._extract_pdf_fallback(file_content)
+        elif file_ext in ['.xlsx', '.xls']:
+            return self._extract_excel_fallback(file_content, filename)
+        elif file_ext in ['.csv']:
+            return self._extract_csv_fallback(file_content, encoding)
+        elif file_ext in ['.html', '.htm']:
+            return self._extract_html_fallback(file_content, encoding)
+        elif file_ext in ['.json']:
+            return self._extract_json_fallback(file_content, encoding)
+        elif file_ext in ['.xml']:
+            return self._extract_xml_fallback(file_content, encoding)
+        elif file_ext in ['.md', '.markdown']:
+            return self._extract_markdown_fallback(file_content, encoding)
+        elif file_ext in ['.pptx']:
+            return self._extract_pptx_fallback(file_content)
+        elif file_ext in ['.eml']:
+            return self._extract_email_fallback(file_content, encoding)
+        elif file_ext in ['.msg']:
+            return self._extract_msg_fallback(file_content)
+        else:
+            # Default text extraction
+            return self._extract_text_with_encoding(file_content, encoding)
+    
+    def _extract_docx_fallback(self, file_content: bytes) -> str:
+        """Fallback DOCX extraction without Unstructured."""
+        if DocxDocument:
+            try:
+                doc = DocxDocument(BytesIO(file_content))
+                paragraphs = []
+                
+                # Extract paragraphs
+                for para in doc.paragraphs:
+                    if para.text.strip():
+                        paragraphs.append(para.text)
+                
+                # Extract tables
+                for table in doc.tables:
+                    table_text = []
+                    for row in table.rows:
+                        row_text = []
+                        for cell in row.cells:
+                            if cell.text.strip():
+                                row_text.append(cell.text.strip())
+                        if row_text:
+                            table_text.append(" | ".join(row_text))
+                    if table_text:
+                        paragraphs.append("\n".join(table_text))
+                
+                return "\n\n".join(paragraphs)
+            except Exception as e:
+                self.logger.error(f"DOCX fallback failed: {str(e)}")
+        
+        # Try XML extraction
+        return self._extract_docx_xml_fallback(file_content)
+    
+    def _extract_docx_xml_fallback(self, file_content: bytes) -> str:
+        """Extract text from DOCX by parsing XML."""
+        try:
+            import zipfile
+            import xml.etree.ElementTree as ET
+            
+            text_parts = []
+            
+            with zipfile.ZipFile(BytesIO(file_content)) as docx:
+                # Extract main document
+                if 'word/document.xml' in docx.namelist():
+                    xml_content = docx.read('word/document.xml')
+                    tree = ET.fromstring(xml_content)
+                    
+                    namespaces = {
+                        'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
+                    }
+                    
+                    # Extract paragraphs
+                    for para in tree.findall('.//w:p', namespaces):
+                        para_text = []
+                        for t in para.findall('.//w:t', namespaces):
+                            if t.text:
+                                para_text.append(t.text)
+                        if para_text:
+                            text_parts.append(''.join(para_text))
+            
+            return "\n".join(text_parts)
+        except:
+            return self._extract_text_with_encoding(file_content)
+    
+    def _extract_pdf_fallback(self, file_content: bytes) -> str:
+        """Fallback PDF extraction without Unstructured."""
+        try:
+            text_parts = []   
+            with pdfplumber.open(BytesIO(file_content)) as pdf:
+                for i, page in enumerate(pdf.pages):
+                    page_text = page.extract_text()
+                    if page_text:
+                        text_parts.append(f"[Page {i+1}]\n{page_text}")
+                        
+                        # Extract tables
+                    tables = page.extract_tables()
+                    for table in tables:
+                        if table:
+                            table_text = self._format_table(table)
+                            text_parts.append(table_text)
+                
+            return "\n\n".join(text_parts)
+        except:
+            pass
+        
+        return self._extract_text_with_encoding(file_content)
+    
+    def _extract_excel_fallback(self, file_content: bytes, filename: str) -> str:
+        """Fallback Excel extraction without Unstructured."""
+        try:
+            # Save to temp file
+            with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(filename)[1]) as tmp:
+                tmp.write(file_content)
+                tmp_path = tmp.name
+            
+            try:
+                excel_file = pd.ExcelFile(tmp_path)
+                text_parts = []
+                
+                for sheet_name in excel_file.sheet_names:
+                    df = pd.read_excel(tmp_path, sheet_name=sheet_name)
+                    text_parts.append(f"\n[Sheet: {sheet_name}]\n")
+                    
+                    if not df.empty:
+                        # Convert to readable format
+                        text_parts.append(df.to_string())
+                
+                return "\n".join(text_parts)
+            finally:
+                os.unlink(tmp_path)
+        except:
+            return self._extract_csv_fallback(file_content, None)
+    
+    def _extract_csv_fallback(self, file_content: bytes, encoding: Optional[str]) -> str:
+        """Fallback CSV extraction without Unstructured."""
+        try:
+            if encoding is None:
+                encoding = self._detect_encoding(file_content)
+            
+            text_content = file_content.decode(encoding, errors='replace')
+            
+            try:
+                df = pd.read_csv(StringIO(text_content))
+                return df.to_string()
+            except:
+                return text_content
+        except:
+            return self._extract_text_with_encoding(file_content, encoding)
+    
+    def _extract_html_fallback(self, file_content: bytes, encoding: Optional[str]) -> str:
+        """Fallback HTML extraction without Unstructured."""
+        try:
+            if encoding is None:
+                encoding = self._detect_encoding(file_content)
+            
+            text_content = file_content.decode(encoding, errors='replace')
+            
+            if html2text:
+                h = html2text.HTML2Text()
+                h.ignore_links = False
+                h.body_width = 0  # Don't wrap lines
+                return h.handle(text_content)
+            else:
+                # Basic HTML stripping
+                text = re.sub(r'<script[^>]*>.*?</script>', '', text_content, flags=re.DOTALL)
+                text = re.sub(r'<style[^>]*>.*?</style>', '', text, flags=re.DOTALL)
+                text = re.sub(r'<[^>]+>', ' ', text)
+                text = re.sub(r'\s+', ' ', text)
+                return text.strip()
+        except:
+            return self._extract_text_with_encoding(file_content, encoding)
+    
+    def _extract_json_fallback(self, file_content: bytes, encoding: Optional[str]) -> str:
+        """Fallback JSON extraction without Unstructured."""
+        try:
+            if encoding is None:
+                encoding = self._detect_encoding(file_content)
+            
+            text_content = file_content.decode(encoding, errors='replace')
+            data = json.loads(text_content)
+            
+            # Pretty print JSON
+            return json.dumps(data, indent=2, ensure_ascii=False)
+        except:
+            return self._extract_text_with_encoding(file_content, encoding)
+    
+    def _extract_xml_fallback(self, file_content: bytes, encoding: Optional[str]) -> str:
+        """Fallback XML extraction without Unstructured."""
+        try:
+            import xml.etree.ElementTree as ET
+            
+            if encoding is None:
+                encoding = self._detect_encoding(file_content)
+            
+            text_content = file_content.decode(encoding, errors='replace')
+            root = ET.fromstring(text_content)
+            
+            # Extract all text from XML
+            texts = []
+            for elem in root.iter():
+                if elem.text and elem.text.strip():
+                    texts.append(elem.text.strip())
+                if elem.tail and elem.tail.strip():
+                    texts.append(elem.tail.strip())
+            
+            return "\n".join(texts)
+        except:
+            # Just strip tags
+            if encoding is None:
+                encoding = self._detect_encoding(file_content)
+            text = file_content.decode(encoding, errors='replace')
+            text = re.sub(r'<[^>]+>', ' ', text)
+            return re.sub(r'\s+', ' ', text).strip()
+    
+    def _extract_markdown_fallback(self, file_content: bytes, encoding: Optional[str]) -> str:
+        """Fallback Markdown extraction without Unstructured."""
+        try:
+            if encoding is None:
+                encoding = self._detect_encoding(file_content)
+            
+            text_content = file_content.decode(encoding, errors='replace')
+            
+            if markdown and html2text:
+                # Convert to HTML then to plain text
+                html_content = markdown.markdown(text_content)
+                h = html2text.HTML2Text()
+                h.body_width = 0
+                return h.handle(html_content)
+            
+            return text_content
+        except:
+            return self._extract_text_with_encoding(file_content, encoding)
+    
+    def _extract_pptx_fallback(self, file_content: bytes) -> str:
+        """Fallback PPTX extraction without Unstructured."""
+        if Presentation:
+            try:
+                prs = Presentation(BytesIO(file_content))
+                text_parts = []
+                
+                for i, slide in enumerate(prs.slides):
+                    text_parts.append(f"\n[Slide {i + 1}]\n")
+                    
+                    for shape in slide.shapes:
+                        if hasattr(shape, "text") and shape.text:
+                            text_parts.append(shape.text)
+                        
+                        if shape.has_table:
+                            table_text = []
+                            for row in shape.table.rows:
+                                row_text = []
+                                for cell in row.cells:
+                                    if cell.text.strip():
+                                        row_text.append(cell.text.strip())
+                                if row_text:
+                                    table_text.append(" | ".join(row_text))
+                            if table_text:
+                                text_parts.append("\n".join(table_text))
+                
+                return "\n".join(text_parts)
+            except:
+                pass
+        
+        return self._extract_text_with_encoding(file_content)
+    
+    def _extract_email_fallback(self, file_content: bytes, encoding: Optional[str]) -> str:
+        """Fallback email extraction without Unstructured."""
+        try:
+            import email
+            from email import policy
+            
+            if encoding is None:
+                encoding = self._detect_encoding(file_content)
+            
+            # Parse email
+            msg = email.message_from_bytes(file_content, policy=policy.default)
+            
+            text_parts = []
+            
+            # Add headers
+            headers = ['From', 'To', 'Subject', 'Date']
+            for header in headers:
+                value = msg.get(header)
+                if value:
+                    text_parts.append(f"{header}: {value}")
+            
+            text_parts.append("")  # Empty line
+            
+            # Extract body
+            if msg.is_multipart():
+                for part in msg.walk():
+                    if part.get_content_type() == "text/plain":
+                        payload = part.get_payload(decode=True)
+                        if payload:
+                            text_parts.append(payload.decode(encoding, errors='replace'))
+                    elif part.get_content_type() == "text/html" and not any("text/plain" in p.get_content_type() for p in msg.walk()):
+                        payload = part.get_payload(decode=True)
+                        if payload:
+                            html_text = payload.decode(encoding, errors='replace')
+                            # Convert HTML to text
+                            if html2text:
+                                h = html2text.HTML2Text()
+                                text_parts.append(h.handle(html_text))
+                            else:
+                                # Strip HTML tags
+                                text = re.sub(r'<[^>]+>', ' ', html_text)
+                                text_parts.append(text)
+            else:
+                payload = msg.get_payload(decode=True)
+                if payload:
+                    text_parts.append(payload.decode(encoding, errors='replace'))
+            
+            return "\n".join(text_parts)
+        except:
+            return self._extract_text_with_encoding(file_content, encoding)
+    
+    def _extract_msg_fallback(self, file_content: bytes) -> str:
+        """Fallback MSG extraction without Unstructured."""
+        # MSG files are complex binary format, just extract readable text
+        return self._extract_text_with_encoding(file_content)
+    
+    def _html_table_to_text(self, html_table: str) -> str:
+        """Convert HTML table to readable text format."""
+        try:
+            # Simple HTML table parsing
+            rows = re.findall(r'<tr[^>]*>(.*?)</tr>', html_table, re.DOTALL)
+            table_text = []
+            
+            for row in rows:
+                cells = re.findall(r'<t[hd][^>]*>(.*?)</t[hd]>', row, re.DOTALL)
+                if cells:
+                    # Clean cell content
+                    clean_cells = []
+                    for cell in cells:
+                        cell_text = re.sub(r'<[^>]+>', '', cell)
+                        cell_text = cell_text.strip()
+                        clean_cells.append(cell_text)
+                    
+                    table_text.append(" | ".join(clean_cells))
+            
+            return "\n".join(table_text)
+        except:
+            return ""
+    
+    def _format_table(self, table_data: List[List[Any]]) -> str:
+        """Format table data as readable text."""
+        if not table_data:
+            return ""
+        
+        formatted_rows = []
+        for row in table_data:
+            if row:
+                formatted_row = " | ".join(str(cell) if cell is not None else "" for cell in row)
+                formatted_rows.append(formatted_row)
+        
+        return "\n".join(formatted_rows)
+    
+    def _extract_text_with_encoding(self, file_content: bytes, encoding: Optional[str] = None) -> str:
+        """Extract text with automatic encoding detection."""
+        if encoding is None:
+            encoding = self._detect_encoding(file_content)
+        
+        try:
+            return file_content.decode(encoding, errors='replace')
+        except:
+            # Try common encodings
+            for enc in ['utf-8', 'latin-1', 'cp1252', 'iso-8859-1', 'utf-16']:
+                try:
+                    return file_content.decode(enc, errors='replace')
+                except:
+                    continue
+            
+            # Force UTF-8
+            return file_content.decode('utf-8', errors='replace')
+    
+    def _detect_encoding(self, file_content: bytes) -> str:
+        """Detect file encoding using chardet."""
+        try:
+            # Sample first 100KB for performance
+            sample = file_content[:100000] if len(file_content) > 100000 else file_content
+            result = chardet.detect(sample)
+            
+            encoding = result.get('encoding')
+            confidence = result.get('confidence', 0)
+            
+            if encoding and confidence > 0.7:
+                self.logger.info(f"Detected encoding: {encoding} (confidence: {confidence:.2f})")
+                return encoding
+        except:
+            pass
+        
+        return 'utf-8'
+    
+    def _emergency_text_extraction(self, file_content: bytes) -> str:
+        """Emergency fallback to extract any readable text."""
+        try:
+            # First, check if it's a known binary format that we shouldn't try to decode
+            file_header = file_content[:10] if len(file_content) >= 10 else file_content
+            
+            # Check for PDF header
+            if file_header.startswith(b'%PDF'):
+                self.logger.error("Emergency extraction called on PDF file - cannot extract without proper tools")
+                return "PDF file detected but text extraction failed. Please ensure PDF extraction libraries are installed."
+                
+            # Check for other binary formats
+            binary_headers = [
+                b'\x50\x4b\x03\x04',  # ZIP/DOCX/XLSX
+                b'\xd0\xcf\x11\xe0',  # DOC/XLS
+                b'\x89\x50\x4e\x47',  # PNG
+                b'\xff\xd8\xff',      # JPEG
+            ]
+            
+            for header in binary_headers:
+                if file_header.startswith(header):
+                    self.logger.error("Emergency extraction called on binary file - cannot extract")
+                    return "Binary file detected but text extraction failed. Please ensure document processing libraries are installed."
+            
+            # Try to extract printable ASCII and common Unicode
+            text_parts = []
+            i = 0
+            
+            while i < len(file_content):
+                # Try to decode as UTF-8
+                for length in range(4, 0, -1):
+                    if i + length <= len(file_content):
+                        try:
+                            char = file_content[i:i+length].decode('utf-8')
+                            if char.isprintable() or char in '\n\r\t':
+                                text_parts.append(char)
+                                i += length
+                                break
+                        except:
+                            pass
+                else:
+                    # Skip non-decodable byte
+                    i += 1
+            
+            text = ''.join(text_parts)
+            
+            # Clean up
+            text = re.sub(r'\s+', ' ', text)
+            text = re.sub(r' +', ' ', text)
+            
+            result = text.strip()
+            
+            # If we got very little text from a large file, it's probably binary
+            if len(result) < 100 and len(file_content) > 1000:
+                return "Unable to extract meaningful text from this document. The file may be corrupted or in an unsupported format."
+                
+            return result if result else "Unable to extract text from this document."
+            
+        except Exception as e:
+            self.logger.error(f"Emergency extraction failed: {str(e)}")
+            return "Unable to extract text from this document."
+async def extract_text_internal(
+    file_content: bytes,
+    filename: str,
+    strategy: str = "auto",
+    languages: Optional[List[str]] = None,
+    encoding: Optional[str] = None,
+    logger: Optional[logging.Logger] = None
+) -> str:
+    max_chars = 50000
+    """
+    Internal function to extract text from document content.
+    This can be called from other API endpoints.
+    
+    Args:
+        file_content: Raw file content as bytes
+        filename: Original filename for type detection
+        strategy: Extraction strategy
+        languages: OCR languages list
+        encoding: Optional encoding override
+        logger: Logger instance
+        
+    Returns:
+        Extracted text as string
+        
+    Raises:
+        Exception: If extraction fails
+    """
+    if logger is None:
+        logger = logging.getLogger(__name__)
+    
+    try:
+        extractor = UnstructuredDocumentExtractor(logger=logger)
+        extracted_text = extractor.extract_text(
+            file_content=file_content,
+            filename=filename,
+            encoding=encoding,
+            strategy=strategy,
+            languages=languages
+        )
+        if max_chars and len(extracted_text) > max_chars:
+            logger.info(f"Truncating extracted text from {len(extracted_text)} to {max_chars} characters")
+            # Try to truncate at a sentence boundary
+            truncated = extracted_text[:max_chars]
+            last_period = truncated.rfind('.')
+            last_newline = truncated.rfind('\n')
+            cutoff = max(last_period, last_newline)
+            if cutoff > max_chars * 0.8:  # Only use if it's not too far back
+                extracted_text = truncated[:cutoff + 1]
+            else:
+                extracted_text = truncated + "..."
+                
+        return extracted_text
+    except Exception as e:
+        logger.error(f"Internal text extraction failed: {str(e)}")
+        raise
 
 def sync_wait_for_run_completion(client: AzureOpenAI, thread_id: str, max_wait_time: int = 30) -> bool:
     """
@@ -4911,7 +5714,8 @@ async def process_conversation(
     prompt: Optional[str] = None,
     assistant: Optional[str] = None,
     stream_output: bool = True,
-    context: Optional[str] = None  # New parameter - raw context string
+    context: Optional[str] = None,
+    files: Optional[List[UploadFile]] = None 
 ):
     """
     Core function to process conversation with the assistant.
@@ -4938,10 +5742,11 @@ async def process_conversation(
     response_started = False
     
     # Helper function for completions API fallback
-    async def fallback_to_completions(error_context: str = "", user_context: Optional[str] = None):
+    async def fallback_to_completions(error_context: str = "", user_context: Optional[str] = None, files: Optional[List[UploadFile]] = None):
         """
         Fallback to completions API with intelligent context handling.
         Accepts raw context string that can be JSON, plain text, or any format.
+        Supports multiple file uploads with automatic text extraction.
         """
         try:
             logging.info(f"Falling back to completions API. Context: {error_context}")
@@ -5392,7 +6197,77 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
                 
                 stateless_system_prompt += context_prompt
                 logging.info(f"Added user context to prompt (length: {len(user_context)} chars)")
-            
+            if files:
+                file_context_prompt = "\n\n" + "="*60 + "\n"
+                file_context_prompt += "📎 UPLOADED FILE CONTENT 📎\n"
+                file_context_prompt += "="*60 + "\n\n"
+                file_context_prompt += "The user has uploaded the following files. Extract and use relevant information from these files to answer their query:\n\n"
+                
+                for idx, file in enumerate(files):
+                    try:
+                        filename = file.filename
+                        file_content = await file.read()
+                        
+                        # Extract text from file
+                        extracted_text = await extract_text_internal(
+                            file_content=file_content,
+                            filename=filename,
+                            logger=logging.getLogger(__name__)
+                        )
+                        
+                        file_context_prompt += f"─" * 60 + "\n"
+                        file_context_prompt += f"FILE {idx + 1}: {filename}\n"
+                        file_context_prompt += f"File ID: FILE_{idx + 1}\n"
+                        file_context_prompt += f"─" * 60 + "\n"
+                        file_context_prompt += extracted_text + "\n\n"
+                        
+                        logging.info(f"Extracted text from file '{filename}' (length: {len(extracted_text)} chars)")
+                        
+                    except Exception as file_e:
+                        logging.error(f"Error processing file '{file.filename}': {file_e}")
+                        file_context_prompt += f"─" * 60 + "\n"
+                        file_context_prompt += f"FILE {idx + 1}: {file.filename} (ERROR: Could not extract text)\n"
+                        file_context_prompt += f"File ID: FILE_{idx + 1}_ERROR\n"
+                        file_context_prompt += f"─" * 60 + "\n\n"
+                
+                file_context_prompt += "⚠️ CRITICAL FILE PROCESSING INSTRUCTIONS:\n\n"
+                file_context_prompt += "MULTI-FILE HANDLING:\n"
+                file_context_prompt += "• Each file has a unique identifier (FILE_1, FILE_2, etc.)\n"
+                file_context_prompt += "• ALWAYS specify which file you're referencing using format: [FILE_X: filename.ext]\n"
+                file_context_prompt += "• When comparing files, clearly distinguish content from each source\n"
+                file_context_prompt += "• If files contain related information, synthesize insights across all files\n\n"
+                
+                file_context_prompt += "REFERENCE FORMAT:\n"
+                file_context_prompt += "• Direct quotes: \"quoted text\" [FILE_1: document.pdf, page X]\n"
+                file_context_prompt += "• Data points: The revenue was $X million [FILE_2: financials.xlsx, Sheet: Q4]\n"
+                file_context_prompt += "• Summaries: Based on [FILE_3: report.docx], the main findings are...\n"
+                file_context_prompt += "• Cross-references: Comparing [FILE_1] with [FILE_2] reveals...\n\n"
+                
+                file_context_prompt += "ANALYSIS REQUIREMENTS:\n"
+                file_context_prompt += "1. IDENTIFY file types and tailor analysis accordingly:\n"
+                file_context_prompt += "   • Spreadsheets: Extract data, calculate metrics, identify trends\n"
+                file_context_prompt += "   • Documents: Summarize key points, extract specific sections\n"
+                file_context_prompt += "   • PDFs: Page-specific references when available\n"
+                file_context_prompt += "   • Code files: Analyze structure, identify patterns\n"
+                file_context_prompt += "2. EXTRACT relevant information based on user's specific query\n"
+                file_context_prompt += "3. PROVIDE quantitative analysis for data files:\n"
+                file_context_prompt += "   • Calculate totals, averages, trends\n"
+                file_context_prompt += "   • Identify outliers and anomalies\n"
+                file_context_prompt += "   • Create comparative analysis\n"
+                file_context_prompt += "4. CITE specific locations (page numbers, sheet names, sections)\n"
+                file_context_prompt += "5. SYNTHESIZE information when multiple files relate to the same topic\n"
+                file_context_prompt += "6. HIGHLIGHT discrepancies or contradictions between files\n"
+                file_context_prompt += "7. STRUCTURE response with clear sections if analyzing multiple files\n\n"
+                
+                file_context_prompt += "RESPONSE STRUCTURE FOR MULTI-FILE QUERIES:\n"
+                file_context_prompt += "• Start with overview of all uploaded files\n"
+                file_context_prompt += "• Group related findings by topic, not by file\n"
+                file_context_prompt += "• Use headers to organize complex analyses\n"
+                file_context_prompt += "• End with synthesis/conclusions drawing from all sources\n"
+                file_context_prompt += "=" * 60 + "\n"
+                
+                stateless_system_prompt += file_context_prompt
+                logging.info(f"Added {len(files)} file(s) to context")
             # Build messages for completions API
             messages = [{"role": "system", "content": stateless_system_prompt}]
             
@@ -6257,10 +7132,10 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
             logging.info(f"Acquired thread lock for session {session}")
         except asyncio.TimeoutError:
             logging.warning(f"Timeout acquiring thread lock for session {session}")
-            return await fallback_to_completions(error_context=f"Thread lock timeout",user_context=context)
+            return await fallback_to_completions(error_context=f"Thread lock timeout",user_context=context, files=files)
         except Exception as lock_e:
             logging.error(f"Error acquiring thread lock: {lock_e}")
-            return await fallback_to_completions(error_context=f"Thread lock error: {str(lock_e)}",user_context=context)
+            return await fallback_to_completions(error_context=f"Thread lock error: {str(lock_e)}",user_context=context, files=files)
         
         # Validate resources if provided 
         try:
@@ -6274,7 +7149,7 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
                 logging.info(f"Missing required parameters: {', '.join(missing_params)}. Falling back to completions API.")
                 return await fallback_to_completions(
                     error_context=f"Missing required parameters: {', '.join(missing_params)}",
-                    user_context=context
+                    user_context=context, files=files
                 )
             validation = await validate_resources(client, session, assistant)
             
@@ -6289,12 +7164,31 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
                 logging.warning(f"Invalid resources: {', '.join(invalid_resources)}. Falling back to completions API.")
                 return await fallback_to_completions(
                     error_context=f"Invalid resources: {', '.join(invalid_resources)}",
-                    user_context=context
+                    user_context=context, files=files
                 )
         except Exception as validation_e:
             logging.error(f"Error during resource validation: {validation_e}")
-            return await fallback_to_completions(error_context=f"Resource validation error: {str(validation_e)}",user_context=context)
-        
+            return await fallback_to_completions(error_context=f"Resource validation error: {str(validation_e)}",user_context=context, files=files)
+
+        try:
+            if files:
+                logging.info(f"📎 FILES DETECTED - Using enhanced completions with file analysis")
+                logging.info(f"  Files count: {len(files)}")
+                logging.info(f"  Files: {[f.filename for f in files]}")
+                # Immediately use fallback_to_completions when files are present
+                return await fallback_to_completions(
+                    error_context="File analysis requested",
+                    user_context=context,
+                    files=files
+                )
+        except Exception as file_error:
+            logging.error(f"Error handling files: {str(file_error)}")
+            # Still try to process without files if there's an error
+            return await fallback_to_completions(
+                error_context=f"File handling error: {str(file_error)}",
+                user_context=context,
+                files=None  # Don't pass corrupted files
+            )
         
         # Check if there's an active run before adding a message
         active_run = False
@@ -6339,11 +7233,11 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
                     except Exception as trim_e:
                         logging.error(f"Error trimming thread: {trim_e}")
                         # Fallback to completions on trim error
-                        return await fallback_to_completions(error_context=f"Thread trimming error: {str(trim_e)}", user_context=context)
+                        return await fallback_to_completions(error_context=f"Thread trimming error: {str(trim_e)}", user_context=context, files=files)
             except Exception as list_e:
                 logging.error(f"Error listing messages for trimming: {list_e}")
                 # Fallback on any error
-                return await fallback_to_completions(error_context=f"Message listing error: {str(list_e)}", user_context=context)
+                return await fallback_to_completions(error_context=f"Message listing error: {str(list_e)}", user_context=context, files=files)
         
         # Add user message to the thread if prompt is given
         if prompt:
@@ -6480,14 +7374,14 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
                         logging.error(f"Failed to add message to thread {session}: {e}")
                         if attempt == max_retries - 1:
                             # Use fallback instead of raising exception
-                            return await fallback_to_completions(error_context=f"Failed to add message: {str(e)}", user_context=context)
+                            return await fallback_to_completions(error_context=f"Failed to add message: {str(e)}", user_context=context, files=files)
             
             if not success:
                 # Fallback to completions instead of creating new thread
                 logging.warning(f"Failed to add message to thread {session} after all retries. Falling back to completions API.")
                 return await fallback_to_completions(
                     error_context=f"Failed to add message to thread after {max_retries} attempts",
-                    user_context=context
+                    user_context=context, files=files
                 )
         
         
@@ -6685,7 +7579,7 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
                                 return JSONResponse(content={"response": "The conversation has become too long. Please start a new conversation."})
                             else:
                                 # Use fallback
-                                return await fallback_to_completions(error_context= f"Run {run_status.status}: {error_details}", user_context=context)
+                                return await fallback_to_completions(error_context= f"Run {run_status.status}: {error_details}", user_context=context, files=files)
                         
                         # Handle tool calls
                         elif run_status.status == "requires_action":
@@ -6874,7 +7768,7 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
                                     
                                     if not submit_success:
                                         # Use fallback
-                                        return await fallback_to_completions(error_context= f"Failed to submit tool outputs: {submit_e}", user_context=context)
+                                        return await fallback_to_completions(error_context= f"Failed to submit tool outputs: {submit_e}", user_context=context, files=files)
                         
                         # Continue polling if still in progress
                         if attempt < max_poll_attempts - 1:
@@ -6915,14 +7809,14 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
                 # Final fallback if we still don't have a response
                 if not full_response:
                     # Use completions API fallback
-                    return await fallback_to_completions(error_context= "No response received from assistant", user_context=context)
+                    return await fallback_to_completions(error_context= "No response received from assistant", user_context=context, files=files)
 
                 return JSONResponse(content={"response": full_response})
                 
             except Exception as e:
                 logging.error(f"Error in non-streaming response generation: {e}")
                 # Use fallback
-                return await fallback_to_completions(error_context=f"Non-streaming error: {str(e)}", user_context=context)
+                return await fallback_to_completions(error_context=f"Non-streaming error: {str(e)}", user_context=context, files=files)
         
         # Return the streaming response for streaming mode
         try:
@@ -6934,7 +7828,7 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
             return response
         except Exception as stream_setup_e:
             logging.error(f"Error setting up streaming response: {stream_setup_e}")
-            return await fallback_to_completions(error_context= f"Stream setup error: {str(stream_setup_e)}", user_context=context)
+            return await fallback_to_completions(error_context= f"Stream setup error: {str(stream_setup_e)}", user_context=context, files=files)
 
     except Exception as e:
         endpoint_type = "conversation" if stream_output else "chat"
@@ -6942,7 +7836,7 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
         
         # Use fallback if response hasn't started
         if not response_started:
-            return await fallback_to_completions(error_context= f"Unexpected error: {str(e)}", user_context=context)
+            return await fallback_to_completions(error_context= f"Unexpected error: {str(e)}", user_context=context, files=files)
         else:
             # If streaming already started, we can't change response type
             raise HTTPException(status_code=500, detail="An error occurred during response streaming")
@@ -6964,7 +7858,8 @@ async def conversation(
     session: Optional[str] = Query(None, description="Session ID from /initiate-chat"),
     prompt: Optional[str] = Query(None, description="User message"),
     assistant: Optional[str] = Query(None, description="Assistant ID"),
-    context: Optional[str] = Query(None, description="Additional context for stateless mode")
+    context: Optional[str] = Query(None, description="Additional context for stateless mode"),
+    files: Optional[List[UploadFile]] = File(None, description="Multiple files to analyze with the query")
 ):
     """
     Handles conversation queries with streaming response.
@@ -6972,7 +7867,7 @@ async def conversation(
     1. Stateful: With session and assistant IDs (existing behavior)
     2. Stateless: When context is provided, uses completions API with intelligent context handling
     """
-    return await process_conversation(session, prompt, assistant, stream_output=True, context=context)
+    return await process_conversation(session, prompt, assistant, stream_output=True, context=context, files=files)
 
 @app.get("/chat",
          response_model=ChatResponse,
@@ -6983,10 +7878,17 @@ async def chat(
     session: Optional[str] = Query(None, description="Session ID"),
     prompt: Optional[str] = Query(None, description="User message"),
     assistant: Optional[str] = Query(None, description="Assistant ID"),
-    context: Optional[str] = Query(None, description="Additional context")
+    context: Optional[str] = Query(None, description="Additional context"),
+    files: Optional[List[UploadFile]] = File(None, description="Multiple files to analyze with the query")
 ):
-    """Get complete chat responses without streaming."""
-    return await process_conversation(session, prompt, assistant, stream_output=False, context=context)
+    """Get complete chat responses without streaming.
+    File Support:
+    - Upload multiple files for analysis
+    - Supports documents, spreadsheets, PDFs, and more
+    - AI will reference specific files and provide detailed analysis
+    - Ideal for document comparison, data analysis, and content extraction
+    """
+    return await process_conversation(session, prompt, assistant, stream_output=False, context=context, files=files)
 def extract_text_from_file(file_content: bytes, filename: str) -> str:
     """
     Extract text content from various file types for stateless processing.
