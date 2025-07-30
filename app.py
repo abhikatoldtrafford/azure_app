@@ -1,12 +1,14 @@
 import logging
 import threading
-from fastapi import FastAPI, Request, UploadFile, Form, HTTPException, Query, Path
-from fastapi.responses import JSONResponse, StreamingResponse, FileResponse, Response, HTMLResponse
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Query, Request, Response, Path
+from fastapi.responses import JSONResponse, StreamingResponse, FileResponse, HTMLResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
+from fastapi.staticfiles import StaticFile
+from pydantic import BaseModel, Field
+
 from openai import AzureOpenAI
 from typing import Optional, List, Dict, Any, Tuple, AsyncGenerator, Union
-from pydantic import BaseModel, Field
+
 import os, io
 from datetime import datetime
 import time
