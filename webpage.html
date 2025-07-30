@@ -1629,781 +1629,98 @@
                 </div>
             </div>
         </div>
-
         <!-- Documentation & Testing Tab -->
         <div id="docs-tab" class="tab-content">
             <div class="section">
                 <h2 class="section-title">API Documentation & Live Testing</h2>
-                <p class="text-muted mb-3">Complete API reference with live testing capability - Test endpoints in real-time</p>
-
-                <!-- Quick Start -->
+                <p class="text-muted mb-3">Interactive API documentation powered by OpenAPI/Swagger</p>
+        
+                <!-- Documentation Options -->
                 <div class="doc-section">
-                    <h3 style="font-size: 18px; margin-bottom: 16px;">🚀 Quick Start</h3>
-                    <div class="result-container">
-                        <div class="base-url-container">
-                            <h4 style="margin-bottom: 8px;">Base URL</h4>
-                            <pre style="background-color: var(--bg-primary); padding: 8px; border-radius: 4px;"><span id="baseUrlDisplay">${window.location.origin}</span></pre>
-                        </div>
-                        
-                        <h4 style="margin: 16px 0 8px;">Authentication</h4>
-                        <p class="text-muted">This API does not require authentication for testing purposes. In production, secure your endpoints appropriately.</p>
-                        
-                        <h4 style="margin: 16px 0 8px;">Rate Limits</h4>
-                        <p class="text-muted">Default rate limits apply based on Azure OpenAI service quotas.</p>
-                    </div>
-                </div>
-
-                <!-- Chatbot Endpoints -->
-                <div class="doc-section">
-                    <h3 style="font-size: 18px; margin-bottom: 16px;">💬 Chatbot API</h3>
-                    
-                    <div class="doc-endpoint">
-                        <div class="endpoint-header">
-                            <span class="method-badge method-post">POST</span>
-                            <span class="endpoint-path">/initiate-chat</span>
-                        </div>
-                        <p class="endpoint-description">
-                            Initialize a new chat session with an AI assistant. Creates an assistant, thread, and vector store.
-                            Optionally upload a file and set initial context.
-                        </p>
-                        
-                        <h4 class="text-small" style="margin: 16px 0 8px;">Parameters</h4>
-                        <table class="params-table">
-                            <thead>
-                                <tr>
-                                    <th>Parameter</th>
-                                    <th>Type</th>
-                                    <th>Required</th>
-                                    <th>Description</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td><code>context</code></td>
-                                    <td>string</td>
-                                    <td class="param-optional">Optional</td>
-                                    <td>Initial context or persona for the assistant</td>
-                                </tr>
-                                <tr>
-                                    <td><code>file</code></td>
-                                    <td>file</td>
-                                    <td class="param-optional">Optional</td>
-                                    <td>File to upload (PDF, DOCX, images, CSV, Excel)</td>
-                                </tr>
-                            </tbody>
-                        </table>
-
-                        <!-- Live Testing Section -->
-                        <div class="api-test-section">
-                            <h4 style="margin-bottom: 12px; color: var(--accent);">🧪 Live Test</h4>
-                            <div class="test-form">
-                                <div class="test-form-row">
-                                    <label>Context:</label>
-                                    <textarea id="test-initiate-context" placeholder="You are a helpful assistant specialized in data analysis" rows="2"></textarea>
-                                </div>
-                                <div class="test-form-row">
-                                    <label>File:</label>
-                                    <input type="file" id="test-initiate-file" accept=".txt,.pdf,.docx,.html,.xlsx,.csv,.jpg,.jpeg,.png,.gif,.bmp,.webp">
-                                </div>
-                                <div class="test-actions">
-                                    <button class="btn btn-small" onclick="testInitiateChat()">Test Endpoint</button>
-                                    <button class="btn btn-secondary btn-small" onclick="copyAsCode('initiate-chat')">Copy as cURL</button>
-                                </div>
-                            </div>
-                            <div id="test-initiate-response" class="test-response" style="display: none;"></div>
-                        </div>
-
-                        <div class="code-block">
-                            <div class="code-header">
-                                <span class="code-title">cURL Example</span>
-                                <button class="btn copy-btn" onclick="copyCode('init-chat-curl')">Copy</button>
-                            </div>
-                            <pre id="init-chat-curl">curl -X POST "<span class="base-url-placeholder">${window.location.origin}</span>/initiate-chat" \
-  -F "context=You are a helpful assistant specialized in data analysis" \
-  -F "file=@document.pdf"</pre>
-                        </div>
-
-                        <div class="code-block">
-                            <div class="code-header">
-                                <span class="code-title">Response Example</span>
-                            </div>
-                            <pre>{
-  "message": "Chat initiated successfully.",
-  "assistant": "asst_abc123...",
-  "session": "thread_xyz789...",
-  "vector_store": "vs_def456..."
-}</pre>
+                    <div class="doc-options" style="margin-bottom: 20px;">
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                            <button class="btn" onclick="showSwaggerUI()">
+                                📖 Swagger UI
+                            </button>
+                            <button class="btn btn-secondary" onclick="showReDoc()">
+                                📚 ReDoc View
+                            </button>
+                            <a href="/openapi.json" target="_blank" class="btn btn-secondary" style="text-decoration: none;">
+                                📄 OpenAPI Spec
+                            </a>
+                            <button class="btn btn-secondary" onclick="toggleFullscreen()">
+                                🔳 Fullscreen
+                            </button>
                         </div>
                     </div>
-
-                    <div class="doc-endpoint">
-                        <div class="endpoint-header">
-                            <span class="method-badge method-get">GET</span>
-                            <span class="endpoint-path">/conversation</span>
+        
+                    <!-- Documentation Container -->
+                    <div id="doc-container" style="position: relative;">
+                        <!-- Loading indicator -->
+                        <div id="doc-loading" style="display: none; text-align: center; padding: 40px;">
+                            <div class="loading-spinner"></div>
+                            <p style="margin-top: 16px; color: var(--text-secondary);">Loading documentation...</p>
                         </div>
-                        <p class="endpoint-description">
-                            Send a message to the assistant and receive a streaming response (Server-Sent Events). Perfect for real-time chat interfaces.
-                        </p>
-                        
-                        <h4 class="text-small" style="margin: 16px 0 8px;">Parameters</h4>
-                        <table class="params-table">
-                            <thead>
-                                <tr>
-                                    <th>Parameter</th>
-                                    <th>Type</th>
-                                    <th>Required</th>
-                                    <th>Description</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td><code>session</code></td>
-                                    <td>string</td>
-                                    <td class="param-required">Required</td>
-                                    <td>Thread ID from initiate-chat</td>
-                                </tr>
-                                <tr>
-                                    <td><code>assistant</code></td>
-                                    <td>string</td>
-                                    <td class="param-required">Required</td>
-                                    <td>Assistant ID from initiate-chat</td>
-                                </tr>
-                                <tr>
-                                    <td><code>prompt</code></td>
-                                    <td>string</td>
-                                    <td class="param-required">Required</td>
-                                    <td>User message</td>
-                                </tr>
-                            </tbody>
-                        </table>
-
-                        <!-- Live Testing Section -->
-                        <div class="api-test-section">
-                            <h4 style="margin-bottom: 12px; color: var(--accent);">🧪 Live Test</h4>
-                            <div class="test-form">
-                                <div class="test-form-row">
-                                    <label>Session ID:</label>
-                                    <input type="text" id="test-conversation-session" placeholder="thread_xyz789..." value="">
-                                </div>
-                                <div class="test-form-row">
-                                    <label>Assistant ID:</label>
-                                    <input type="text" id="test-conversation-assistant" placeholder="asst_abc123..." value="">
-                                </div>
-                                <div class="test-form-row">
-                                    <label>Message:</label>
-                                    <textarea id="test-conversation-prompt" placeholder="Hello, how are you?" rows="3"></textarea>
-                                </div>
-                                <div class="test-actions">
-                                    <button class="btn btn-small" onclick="testConversation()">Test Streaming</button>
-                                    <button class="btn btn-secondary btn-small" onclick="copyAsCode('conversation')">Copy as cURL</button>
-                                </div>
-                            </div>
-                            <div id="test-conversation-response" class="test-response" style="display: none;"></div>
-                        </div>
-
-                        <div class="code-block">
-                            <div class="code-header">
-                                <span class="code-title">cURL Example (Streaming)</span>
-                                <button class="btn copy-btn" onclick="copyCode('conversation-curl')">Copy</button>
-                            </div>
-                            <pre id="conversation-curl">curl -N "<span class="base-url-placeholder">${window.location.origin}</span>/conversation" \
-  -G --data-urlencode "session=thread_abc123" \
-  --data-urlencode "assistant=asst_xyz789" \
-  --data-urlencode "prompt=Analyze the sales data from the uploaded file"</pre>
-                        </div>
+        
+                        <!-- Swagger/ReDoc iframe -->
+                        <iframe 
+                            id="api-docs-frame"
+                            src="/docs" 
+                            style="width: 100%; height: 800px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-primary);"
+                            title="API Documentation"
+                            onload="onDocLoad()">
+                        </iframe>
                     </div>
-
-                    <div class="doc-endpoint">
-                        <div class="endpoint-header">
-                            <span class="method-badge method-post">POST</span>
-                            <span class="endpoint-path">/upload-file</span>
-                        </div>
-                        <p class="endpoint-description">
-                            Upload a file to an existing assistant session. Supports documents, images, and data files.
-                        </p>
+        
+                    <!-- Quick Info Panel -->
+                    <div class="result-container" style="margin-top: 20px;">
+                        <h3 style="font-size: 18px; margin-bottom: 16px;">🚀 Quick Start Guide</h3>
                         
-                        <!-- Live Testing Section -->
-                        <div class="api-test-section">
-                            <h4 style="margin-bottom: 12px; color: var(--accent);">🧪 Live Test</h4>
-                            <div class="test-form">
-                                <div class="test-form-row">
-                                    <label>File:</label>
-                                    <input type="file" id="test-upload-file" accept=".txt,.pdf,.docx,.html,.xlsx,.csv,.jpg,.jpeg,.png,.gif,.bmp,.webp">
-                                </div>
-                                <div class="test-form-row">
-                                    <label>Assistant ID:</label>
-                                    <input type="text" id="test-upload-assistant" placeholder="asst_xyz789..." value="">
-                                </div>
-                                <div class="test-form-row">
-                                    <label>Session ID:</label>
-                                    <input type="text" id="test-upload-session" placeholder="thread_abc123..." value="">
-                                </div>
-                                <div class="test-actions">
-                                    <button class="btn btn-small" onclick="testUploadFile()">Test Upload</button>
-                                    <button class="btn btn-secondary btn-small" onclick="copyAsCode('upload-file')">Copy as cURL</button>
-                                </div>
+                        <div class="info-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+                            <div class="info-card">
+                                <h4 style="color: var(--accent); margin-bottom: 8px;">Base URL</h4>
+                                <pre style="background: var(--bg-primary); padding: 8px; border-radius: 4px; font-size: 13px;"><span id="baseUrlDisplay">${window.location.origin}</span></pre>
                             </div>
-                            <div id="test-upload-response" class="test-response" style="display: none;"></div>
-                        </div>
-
-                        <div class="code-block">
-                            <div class="code-header">
-                                <span class="code-title">cURL Example</span>
-                                <button class="btn copy-btn" onclick="copyCode('upload-curl')">Copy</button>
-                            </div>
-                            <pre id="upload-curl">curl -X POST "<span class="base-url-placeholder">${window.location.origin}</span>/upload-file" \
-  -F "file=@sales_data.csv" \
-  -F "assistant=asst_xyz789" \
-  -F "session=thread_abc123" \
-  -F "prompt=Analyze this sales data"</pre>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Content Creation -->
-                <div class="doc-section">
-                    <h3 style="font-size: 18px; margin-bottom: 16px;">💡 Content & Idea Generation API</h3>
-                    
-                    <div class="doc-endpoint">
-                        <div class="endpoint-header">
-                            <span class="method-badge method-post">POST</span>
-                            <span class="endpoint-path">/completion</span>
-                        </div>
-                        <p class="endpoint-description">
-                            Generate creative content, ideas, documents, or structured data using AI. Supports multiple output formats including Word documents, Excel files, and CSV.
-                        </p>
-                        
-                        <h4 class="text-small" style="margin: 16px 0 8px;">Parameters</h4>
-                        <table class="params-table">
-                            <thead>
-                                <tr>
-                                    <th>Parameter</th>
-                                    <th>Type</th>
-                                    <th>Required</th>
-                                    <th>Description</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td><code>prompt</code></td>
-                                    <td>string</td>
-                                    <td class="param-required">Required</td>
-                                    <td>Main generation prompt</td>
-                                </tr>
-                                <tr>
-                                    <td><code>output_format</code></td>
-                                    <td>string</td>
-                                    <td class="param-optional">Optional</td>
-                                    <td>Format: docx, csv, excel, or none (text)</td>
-                                </tr>
-                                <tr>
-                                    <td><code>system_message</code></td>
-                                    <td>string</td>
-                                    <td class="param-optional">Optional</td>
-                                    <td>Additional context or guidelines</td>
-                                </tr>
-                                <tr>
-                                    <td><code>rows_to_generate</code></td>
-                                    <td>integer</td>
-                                    <td class="param-optional">Optional</td>
-                                    <td>For CSV/Excel: number of rows (default: 30)</td>
-                                </tr>
-                            </tbody>
-                        </table>
-
-                        <!-- Live Testing Section -->
-                        <div class="api-test-section">
-                            <h4 style="margin-bottom: 12px; color: var(--accent);">🧪 Live Test</h4>
-                            <div class="test-form">
-                                <div class="test-form-row">
-                                    <label>Prompt:</label>
-                                    <textarea id="test-completion-prompt" placeholder="Create a comprehensive marketing strategy for a new mobile app" rows="3"></textarea>
-                                </div>
-                                <div class="test-form-row">
-                                    <label>Output Format:</label>
-                                    <select id="test-completion-format">
-                                        <option value="">Text (browser display)</option>
-                                        <option value="docx">Word Document (.docx)</option>
-                                        <option value="csv">CSV Spreadsheet</option>
-                                        <option value="excel">Excel Workbook (.xlsx)</option>
-                                    </select>
-                                </div>
-                                <div class="test-form-row">
-                                    <label>System Message:</label>
-                                    <textarea id="test-completion-system" placeholder="Include market analysis and financial projections" rows="2"></textarea>
-                                </div>
-                                <div class="test-form-row">
-                                    <label>Rows (CSV/Excel):</label>
-                                    <input type="number" id="test-completion-rows" placeholder="30" value="30">
-                                </div>
-                                <div class="test-actions">
-                                    <button class="btn btn-small" onclick="testCompletion()">Test Generation</button>
-                                    <button class="btn btn-secondary btn-small" onclick="copyAsCode('completion')">Copy as cURL</button>
-                                </div>
-                            </div>
-                            <div id="test-completion-response" class="test-response" style="display: none;"></div>
-                        </div>
-
-                        <div class="code-block">
-                            <div class="code-header">
-                                <span class="code-title">Generate Business Plan (DOCX)</span>
-                                <button class="btn copy-btn" onclick="copyCode('completion-docx')">Copy</button>
-                            </div>
-                            <pre id="completion-docx">curl -X POST "<span class="base-url-placeholder">${window.location.origin}</span>/completion" \
-  -F "prompt=Create a comprehensive business plan for a SaaS startup in the HR tech space" \
-  -F "output_format=docx" \
-  -F "system_message=Include market analysis, 5-year financial projections, and go-to-market strategy"</pre>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Reviews & Data -->
-                <div class="doc-section">
-                    <h3 style="font-size: 18px; margin-bottom: 16px;">⭐ Reviews & Data Processing API</h3>
-                    
-                    <div class="doc-endpoint">
-                        <div class="endpoint-header">
-                            <span class="method-badge method-post">POST</span>
-                            <span class="endpoint-path">/extract-reviews</span>
-                        </div>
-                        <p class="endpoint-description">
-                            Extract reviews and structured data from documents or generate synthetic review datasets. Perfect for creating test data or analyzing customer feedback.
-                        </p>
-                        
-                        <h4 class="text-small" style="margin: 16px 0 8px;">Parameters</h4>
-                        <table class="params-table">
-                            <thead>
-                                <tr>
-                                    <th>Parameter</th>
-                                    <th>Type</th>
-                                    <th>Required</th>
-                                    <th>Description</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td><code>file</code></td>
-                                    <td>file</td>
-                                    <td class="param-optional">Optional</td>
-                                    <td>File to extract data from</td>
-                                </tr>
-                                <tr>
-                                    <td><code>prompt</code></td>
-                                    <td>string</td>
-                                    <td class="param-optional">Optional</td>
-                                    <td>Instructions for extraction/generation</td>
-                                </tr>
-                                <tr>
-                                    <td><code>mode</code></td>
-                                    <td>string</td>
-                                    <td class="param-optional">Optional</td>
-                                    <td>auto (default), extract, or generate</td>
-                                </tr>
-                                <tr>
-                                    <td><code>columns</code></td>
-                                    <td>string</td>
-                                    <td class="param-optional">Optional</td>
-                                    <td>Column names or "auto" (default)</td>
-                                </tr>
-                                <tr>
-                                    <td><code>output_format</code></td>
-                                    <td>string</td>
-                                    <td class="param-optional">Optional</td>
-                                    <td>excel (default), csv, or json</td>
-                                </tr>
-                                <tr>
-                                    <td><code>rows_to_generate</code></td>
-                                    <td>integer</td>
-                                    <td class="param-optional">Optional</td>
-                                    <td>For generation mode (default: 30)</td>
-                                </tr>
-                            </tbody>
-                        </table>
-
-                        <!-- Live Testing Section -->
-                        <div class="api-test-section">
-                            <h4 style="margin-bottom: 12px; color: var(--accent);">🧪 Live Test</h4>
-                            <div class="test-form">
-                                <div class="test-form-row">
-                                    <label>File (optional):</label>
-                                    <input type="file" id="test-extract-file" accept=".pdf,.docx,.txt,.json,.html,.csv,.xlsx,.xls">
-                                </div>
-                                <div class="test-form-row">
-                                    <label>Prompt:</label>
-                                    <textarea id="test-extract-prompt" placeholder="Extract customer reviews with ratings, or Generate 50 realistic product reviews for headphones" rows="3"></textarea>
-                                </div>
-                                <div class="test-form-row">
-                                    <label>Mode:</label>
-                                    <select id="test-extract-mode">
-                                        <option value="auto">Auto-detect</option>
-                                        <option value="extract">Extract from file</option>
-                                        <option value="generate">Generate synthetic</option>
-                                    </select>
-                                </div>
-                                <div class="test-form-row">
-                                    <label>Columns:</label>
-                                    <input type="text" id="test-extract-columns" placeholder="customer_name,rating,review_text,date">
-                                </div>
-                                <div class="test-form-row">
-                                    <label>Output Format:</label>
-                                    <select id="test-extract-format">
-                                        <option value="excel">Excel (.xlsx)</option>
-                                        <option value="csv">CSV</option>
-                                        <option value="json">JSON</option>
-                                    </select>
-                                </div>
-                                <div class="test-form-row">
-                                    <label>Rows to Generate:</label>
-                                    <input type="number" id="test-extract-rows" placeholder="30" value="30">
-                                </div>
-                                <div class="test-actions">
-                                    <button class="btn btn-small" onclick="testExtractReviews()">Test Processing</button>
-                                    <button class="btn btn-secondary btn-small" onclick="copyAsCode('extract-reviews')">Copy as cURL</button>
-                                </div>
-                            </div>
-                            <div id="test-extract-response" class="test-response" style="display: none;"></div>
-                        </div>
-
-                        <div class="code-block">
-                            <div class="code-header">
-                                <span class="code-title">Generate Synthetic Reviews</span>
-                                <button class="btn copy-btn" onclick="copyCode('generate-reviews')">Copy</button>
-                            </div>
-                            <pre id="generate-reviews">curl -X POST "<span class="base-url-placeholder">${window.location.origin}</span>/extract-reviews" \
-  -F "mode=generate" \
-  -F "prompt=Generate realistic product reviews for wireless headphones" \
-  -F "columns=customer_name,rating,review_title,review_text,verified_purchase,helpful_count" \
-  -F "rows_to_generate=50" \
-  -F "output_format=excel"</pre>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Utility Endpoints -->
-                <div class="doc-section">
-                    <h3 style="font-size: 18px; margin-bottom: 16px;">🔧 Utility Endpoints</h3>
-                    
-                    <div class="doc-endpoint">
-                        <div class="endpoint-header">
-                            <span class="method-badge method-get">GET</span>
-                            <span class="endpoint-path">/health-check</span>
-                        </div>
-                        <p class="endpoint-description">
-                            Comprehensive health check for all system components including Azure OpenAI, file system, dependencies, and pandas agent.
-                        </p>
-                        
-                        <!-- Live Testing Section -->
-                        <div class="api-test-section">
-                            <h4 style="margin-bottom: 12px; color: var(--accent);">🧪 Live Test</h4>
-                            <div class="test-form">
-                                <div class="test-actions">
-                                    <button class="btn btn-small" onclick="testHealthCheck()">Test Health Check</button>
-                                    <button class="btn btn-secondary btn-small" onclick="copyAsCode('health-check')">Copy as cURL</button>
-                                </div>
-                            </div>
-                            <div id="test-health-response" class="test-response" style="display: none;"></div>
-                        </div>
-
-                        <div class="code-block">
-                            <div class="code-header">
-                                <span class="code-title">cURL Example</span>
-                                <button class="btn copy-btn" onclick="copyCode('health-check')">Copy</button>
-                            </div>
-                            <pre id="health-check">curl "<span class="base-url-placeholder">${window.location.origin}</span>/health-check"</pre>
-                        </div>
-                    </div>
-
-                    <div class="doc-endpoint">
-                        <div class="endpoint-header">
-                            <span class="method-badge method-get">GET</span>
-                            <span class="endpoint-path">/download-files/{filename}</span>
-                        </div>
-                        <p class="endpoint-description">
-                            Download a generated file. Files are automatically cleaned up after a certain number of downloads.
-                        </p>
-                        
-                        <div class="code-block">
-                            <div class="code-header">
-                                <span class="code-title">cURL Example</span>
-                                <button class="btn copy-btn" onclick="copyCode('download-file')">Copy</button>
-                            </div>
-                            <pre id="download-file">curl "<span class="base-url-placeholder">${window.location.origin}</span>/download-files/generated_data_20240104_123456.xlsx" \
-  -o output.xlsx</pre>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Error Codes -->
-                <div class="doc-section">
-                    <h3 style="font-size: 18px; margin-bottom: 16px;">❗ Error Codes & Troubleshooting</h3>
-                    
-                    <div class="result-container">
-                        <h4 style="margin-bottom: 12px;">Common Error Codes</h4>
-                        <table class="params-table">
-                            <thead>
-                                <tr>
-                                    <th>Code</th>
-                                    <th>Meaning</th>
-                                    <th>Solution</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td>400</td>
-                                    <td>Bad Request</td>
-                                    <td>Check your request parameters and format</td>
-                                </tr>
-                                <tr>
-                                    <td>404</td>
-                                    <td>Not Found</td>
-                                    <td>Verify the endpoint URL and resource IDs</td>
-                                </tr>
-                                <tr>
-                                    <td>422</td>
-                                    <td>Unprocessable Entity</td>
-                                    <td>Check data format and content requirements</td>
-                                </tr>
-                                <tr>
-                                    <td>500</td>
-                                    <td>Internal Server Error</td>
-                                    <td>Retry the request; contact support if persists</td>
-                                </tr>
-                                <tr>
-                                    <td>503</td>
-                                    <td>Service Unavailable</td>
-                                    <td>Service temporarily down; retry later</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                        
-                    <!-- Basic Health Endpoint -->
-                    <div class="doc-endpoint">
-                        <div class="endpoint-header">
-                            <span class="method-badge method-get">GET</span>
-                            <span class="endpoint-path">/health</span>
-                        </div>
-                        <p class="endpoint-description">
-                            Basic health check endpoint for load balancers and monitoring. Returns quickly with minimal checks.
-                        </p>
-                        
-                        <!-- Live Testing Section -->
-                        <div class="api-test-section">
-                            <h4 style="margin-bottom: 12px; color: var(--accent);">🧪 Live Test</h4>
-                            <div class="test-form">
-                                <div class="test-actions">
-                                    <button class="btn btn-small" onclick="testBasicHealth()">Test Basic Health</button>
-                                    <button class="btn btn-secondary btn-small" onclick="copyAsCode('basic-health')">Copy as cURL</button>
-                                </div>
-                            </div>
-                            <div id="test-basic-health-response" class="test-response" style="display: none;"></div>
-                        </div>
-
-                        <div class="code-block">
-                            <div class="code-header">
-                                <span class="code-title">cURL Example</span>
-                                <button class="btn copy-btn" onclick="copyCode('basic-health')">Copy</button>
-                            </div>
-                            <pre id="basic-health">curl "<span class="base-url-placeholder">${window.location.origin}</span>/health"</pre>
-                        </div>
-                    </div>
-
-                    <!-- Test Endpoint (Debug) -->
-                    <div class="doc-endpoint">
-                        <div class="endpoint-header">
-                            <span class="method-badge method-post">POST</span>
-                            <span class="endpoint-path">/test-endpoint</span>
-                        </div>
-                        <div class="result-container" style="background: #fff3cd; border: 1px solid #ffeaa7; padding: 12px; margin-top: 12px;">
-                            <strong style="color: #856404;">⚠️ Production Note:</strong> This endpoint is disabled in production environments for security reasons. Set ENVIRONMENT variable to "development" or "staging" to enable.
-                        </div>
-                        <p class="endpoint-description">
-                            Test a specific endpoint with mock data for debugging. <strong>Note: Only available in non-production environments.</strong>
-                        </p>
-                        
-                        <table class="params-table">
-                            <thead>
-                                <tr>
-                                    <th>Parameter</th>
-                                    <th>Type</th>
-                                    <th>Required</th>
-                                    <th>Description</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td>endpoint</td>
-                                    <td>string</td>
-                                    <td><span class="param-required">Yes</span></td>
-                                    <td>Endpoint to test (e.g., "/completion", "/extract-reviews")</td>
-                                </tr>
-                                <tr>
-                                    <td>test_data</td>
-                                    <td>string</td>
-                                    <td><span class="param-optional">No</span></td>
-                                    <td>Mock data to use for testing</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                        
-                        <!-- Live Testing Section -->
-                        <div class="api-test-section">
-                            <h4 style="margin-bottom: 12px; color: var(--accent);">🧪 Live Test</h4>
-                            <div class="test-form">
-                                <div class="test-form-row">
-                                    <label>Endpoint:</label>
-                                    <select id="test-endpoint-name">
-                                        <option value="/completion">/completion</option>
-                                        <option value="/extract-reviews">/extract-reviews</option>
-                                    </select>
-                                </div>
-                                <div class="test-form-row">
-                                    <label>Test Data:</label>
-                                    <textarea id="test-endpoint-data" placeholder="Optional mock data" rows="3"></textarea>
-                                </div>
-                                <div class="test-actions">
-                                    <button class="btn btn-small" onclick="testSpecificEndpoint()">Test Endpoint</button>
-                                    <button class="btn btn-secondary btn-small" onclick="copyAsCode('test-endpoint')">Copy as cURL</button>
-                                </div>
-                            </div>
-                            <div id="test-endpoint-response" class="test-response" style="display: none;"></div>
-                        </div>
-
-                        <div class="code-block">
-                            <div class="code-header">
-                                <span class="code-title">cURL Example</span>
-                                <button class="btn copy-btn" onclick="copyCode('test-endpoint')">Copy</button>
-                            </div>
-                            <pre id="test-endpoint">curl -X POST "<span class="base-url-placeholder">${window.location.origin}</span>/test-endpoint" \
-  -F "endpoint=/completion" \
-  -F "test_data=Test prompt data"</pre>
-                        </div>
-                    </div>
-
-                    <div class="doc-endpoint">
-                        <div class="endpoint-header">
-                            <span class="method-badge method-post">POST</span>
-                            <span class="endpoint-path">/test-comprehensive</span>
-                        </div>
-                        <p class="endpoint-description">
-                            Run comprehensive system tests for scaling, concurrency, tool calling, and edge cases with configurable parameters.
-                        </p>
-                        
-                        <table class="params-table">
-                            <thead>
-                                <tr>
-                                    <th>Parameter</th>
-                                    <th>Type</th>
-                                    <th>Required</th>
-                                    <th>Description</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td>test_mode</td>
-                                    <td>string</td>
-                                    <td><span class="param-optional">No</span></td>
-                                    <td>Test mode: "all", "long_thread", "concurrent", "same_thread", "run_consistency", "scaling", "tools" (default: "all")</td>
-                                </tr>
-                                <tr>
-                                    <td>test_duration</td>
-                                    <td>integer</td>
-                                    <td><span class="param-optional">No</span></td>
-                                    <td>Test duration in seconds (default: 60)</td>
-                                </tr>
-                                <tr>
-                                    <td>concurrent_users</td>
-                                    <td>integer</td>
-                                    <td><span class="param-optional">No</span></td>
-                                    <td>Number of concurrent users to simulate (default: 5)</td>
-                                </tr>
-                                <tr>
-                                    <td>messages_per_thread</td>
-                                    <td>integer</td>
-                                    <td><span class="param-optional">No</span></td>
-                                    <td>Messages per thread for long thread test (default: 60)</td>
-                                </tr>
-                                <tr>
-                                    <td>verbose</td>
-                                    <td>boolean</td>
-                                    <td><span class="param-optional">No</span></td>
-                                    <td>Include detailed logs (default: true)</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                        
-                        <!-- Live Testing Section -->
-                        <div class="api-test-section">
-                            <h4 style="margin-bottom: 12px; color: var(--accent);">🧪 Live Test</h4>
-                            <div class="test-form">
-                                <div class="test-form-row">
-                                    <label>Test Mode:</label>
-                                    <select id="test-comprehensive-mode" onchange="updateTestDescription()">
-                                        <option value="all">All Tests</option>
-                                        <option value="long_thread">Long Thread (Message Handling)</option>
-                                        <option value="concurrent">Concurrent Users</option>
-                                        <option value="same_thread">Same Thread Concurrency</option>
-                                        <option value="run_consistency">Run Consistency & Cleanup</option>
-                                        <option value="scaling">Scaling Test</option>
-                                        <option value="tools">Tool Calling Test</option>
-                                    </select>
-                                </div>
-                                <div id="test-mode-description" class="test-description">
-                                    <strong>All Tests:</strong> Runs all available tests comprehensively
-                                </div>
-                                <div class="test-form-row">
-                                    <label>Test Duration (seconds):</label>
-                                    <input type="number" id="test-comprehensive-duration" value="60" min="10" max="300">
-                                </div>
-                                <div class="test-form-row">
-                                    <label>Concurrent Users:</label>
-                                    <input type="number" id="test-comprehensive-users" value="5" min="1" max="20">
-                                </div>
-                                <div class="test-form-row">
-                                    <label>Messages per Thread:</label>
-                                    <input type="number" id="test-comprehensive-messages" value="60" min="10" max="200">
-                                </div>
-                                <div class="test-form-row">
-                                    <label>
-                                        <input type="checkbox" id="test-comprehensive-verbose" checked /> Include verbose logs
-                                    </label>
-                                </div>
-                                <div class="test-actions">
-                                    <button id="comprehensive-test-btn" class="btn btn-small" onclick="testComprehensive()">Run Comprehensive Test</button>
-                                    <button class="btn btn-secondary btn-small" onclick="copyAsCode('comprehensive-test')">Copy as cURL</button>
-                                </div>
-                            </div>
-                            <div id="test-comprehensive-response" class="test-response" style="display: none;">
-                                <div id="test-results" style="display: none;"></div>
+        
+                            <div class="info-card">
+                                <h4 style="color: var(--accent); margin-bottom: 8px;">Authentication</h4>
+                                <p class="text-muted" style="font-size: 13px;">No authentication required for testing. Secure your endpoints in production.</p>
                             </div>
                         </div>
-
-                        <div class="code-block">
-                            <div class="code-header">
-                                <span class="code-title">cURL Example</span>
-                                <button class="btn copy-btn" onclick="copyCode('comprehensive-test')">Copy</button>
-                            </div>
-                            <pre id="comprehensive-test">curl -X POST "<span class="base-url-placeholder">${window.location.origin}</span>/test-comprehensive" \
-  -F "test_mode=all" \
-  -F "test_duration=60" \
-  -F "concurrent_users=5" \
-  -F "messages_per_thread=60" \
-  -F "verbose=true"</pre>
+        
+                        <div class="info-section" style="margin-top: 20px;">
+                            <h4 style="color: var(--accent); margin-bottom: 12px;">Using the Interactive Docs</h4>
+                            <ol style="margin-left: 20px; line-height: 1.8; color: var(--text-secondary); font-size: 14px;">
+                                <li>Click on any endpoint to expand its details</li>
+                                <li>Click "Try it out" to enable the interactive form</li>
+                                <li>Fill in the required parameters (red asterisk = required)</li>
+                                <li>Click "Execute" to send the request</li>
+                                <li>View the response, including status code and body</li>
+                                <li>Copy the curl command for use in your applications</li>
+                            </ol>
                         </div>
-                    </div>
-                        <h4 style="margin: 20px 0 12px;">Best Practices</h4>
-                        <ul style="line-height: 1.6; color: var(--text-secondary);">
-                            <li>Always handle errors gracefully in your application</li>
-                            <li>Implement exponential backoff for retries</li>
-                            <li>Store assistant and session IDs for conversation continuity</li>
-                            <li>Validate file formats before uploading</li>
-                            <li>Use appropriate output formats for your use case</li>
-                            <li>Monitor health endpoints for service availability</li>
-                        </ul>
+        
+                        <div class="info-section" style="margin-top: 20px;">
+                            <h4 style="color: var(--accent); margin-bottom: 12px;">Features</h4>
+                            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+                                <div class="view-card" style="background: var(--bg-tertiary); padding: 12px; border-radius: 6px;">
+                                    <strong style="color: var(--text-primary);">Auto-Updated</strong>
+                                    <p class="text-muted" style="font-size: 12px; margin-top: 4px;">New endpoints appear automatically</p>
+                                </div>
+                                <div class="view-card" style="background: var(--bg-tertiary); padding: 12px; border-radius: 6px;">
+                                    <strong style="color: var(--text-primary);">Live Testing</strong>
+                                    <p class="text-muted" style="font-size: 12px; margin-top: 4px;">Test endpoints directly from docs</p>
+                                </div>
+                                <div class="view-card" style="background: var(--bg-tertiary); padding: 12px; border-radius: 6px;">
+                                    <strong style="color: var(--text-primary);">Type Safe</strong>
+                                    <p class="text-muted" style="font-size: 12px; margin-top: 4px;">Validated parameters & responses</p>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
 
     <script>
         // API Configuration
@@ -2441,9 +1758,7 @@
             if (baseUrlElement) {
                 baseUrlElement.textContent = API_BASE_URL;
             }
-            document.querySelectorAll('.base-url-placeholder').forEach(el => {
-                el.textContent = API_BASE_URL;
-            });
+            // Remove the old placeholder update code since we don't have manual docs anymore
         }
 
         // Tab Switching
@@ -2916,7 +2231,82 @@
             if (previewDiv) previewDiv.style.display = 'none';
             if (fileInput) fileInput.value = '';
         }
-
+        // Documentation viewer functions
+        let currentDocView = 'swagger';
+        
+        function showSwaggerUI() {
+            const frame = document.getElementById('api-docs-frame');
+            const loading = document.getElementById('doc-loading');
+            
+            loading.style.display = 'block';
+            frame.style.display = 'none';
+            
+            frame.src = '/docs';
+            currentDocView = 'swagger';
+        }
+        
+        function showReDoc() {
+            const frame = document.getElementById('api-docs-frame');
+            const loading = document.getElementById('doc-loading');
+            
+            loading.style.display = 'block';
+            frame.style.display = 'none';
+            
+            frame.src = '/redoc';
+            currentDocView = 'redoc';
+        }
+        
+        function onDocLoad() {
+            const frame = document.getElementById('api-docs-frame');
+            const loading = document.getElementById('doc-loading');
+            
+            loading.style.display = 'none';
+            frame.style.display = 'block';
+        }
+        
+        function toggleFullscreen() {
+            const container = document.getElementById('doc-container');
+            const frame = document.getElementById('api-docs-frame');
+            
+            if (!document.fullscreenElement) {
+                container.requestFullscreen().then(() => {
+                    frame.style.height = '100vh';
+                });
+            } else {
+                document.exitFullscreen().then(() => {
+                    frame.style.height = '800px';
+                });
+            }
+        }
+        
+        // Add loading spinner CSS if not already present
+        if (!document.querySelector('style[data-loading-spinner]')) {
+            const style = document.createElement('style');
+            style.setAttribute('data-loading-spinner', 'true');
+            style.textContent = `
+                .loading-spinner {
+                    display: inline-block;
+                    width: 40px;
+                    height: 40px;
+                    border: 3px solid rgba(59, 130, 246, 0.3);
+                    border-radius: 50%;
+                    border-top-color: #3b82f6;
+                    animation: spin 1s ease-in-out infinite;
+                }
+                
+                @keyframes spin {
+                    to { transform: rotate(360deg); }
+                }
+                
+                /* Iframe responsive adjustments */
+                @media (max-width: 768px) {
+                    #api-docs-frame {
+                        height: 600px !important;
+                    }
+                }
+            `;
+            document.head.appendChild(style);
+        }
         // ==========================
         // Document Generation Functions
         // ==========================
@@ -3233,702 +2623,6 @@
             const dataFileInput = document.getElementById('dataFile');
             if (dataFileInput) dataFileInput.value = '';
             updateDataFileInfo();
-        }
-
-        // ==========================
-        // API Testing Functions
-        // ==========================
-
-        async function testInitiateChat() {
-            const context = document.getElementById('test-initiate-context').value;
-            const fileInput = document.getElementById('test-initiate-file');
-            const responseDiv = document.getElementById('test-initiate-response');
-            
-            responseDiv.style.display = 'block';
-            responseDiv.textContent = 'Testing...';
-            
-            try {
-                const formData = new FormData();
-                if (context) formData.append('context', context);
-                if (fileInput.files[0]) formData.append('file', fileInput.files[0]);
-                
-                const response = await fetch(`${API_BASE_URL}/initiate-chat`, {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                const data = await response.json();
-                responseDiv.textContent = JSON.stringify(data, null, 2);
-                
-                if (response.ok && data.assistant && data.session) {
-                    // Auto-populate other test forms
-                    state.assistantId = data.assistant;
-                    state.sessionId = data.session;
-                    updateTestFormIds();
-                    showToast('Test successful! IDs auto-populated', 'success');
-                } else {
-                    showToast('Test completed with issues', 'error');
-                }
-            } catch (error) {
-                responseDiv.textContent = `Error: ${error.message}`;
-                showToast('Test failed', 'error');
-            }
-        }
-
-        async function testConversation() {
-            const sessionId = document.getElementById('test-conversation-session').value;
-            const assistantId = document.getElementById('test-conversation-assistant').value;
-            const prompt = document.getElementById('test-conversation-prompt').value;
-            const responseDiv = document.getElementById('test-conversation-response');
-            
-            if (!sessionId || !assistantId || !prompt) {
-                showToast('Please fill in all required fields', 'error');
-                return;
-            }
-            
-            responseDiv.style.display = 'block';
-            responseDiv.textContent = 'Starting stream...';
-            
-            try {
-                const response = await fetch(`${API_BASE_URL}/conversation?` + new URLSearchParams({
-                    session: sessionId,
-                    assistant: assistantId,
-                    prompt: prompt
-                }));
-                
-                if (!response.ok) throw new Error('Failed to start conversation');
-                
-                const reader = response.body.getReader();
-                const decoder = new TextDecoder();
-                let fullResponse = '';
-                
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-                    
-                    const chunk = decoder.decode(value);
-                    const lines = chunk.split('\n');
-                    
-                    for (const line of lines) {
-                        if (line.startsWith('data: ')) {
-                            const data = line.slice(6);
-                            if (data === '[DONE]') break;
-                            
-                            try {
-                                const json = JSON.parse(data);
-                                if (json.choices?.[0]?.delta?.content) {
-                                    fullResponse += json.choices[0].delta.content;
-                                    responseDiv.textContent = `Streaming response:\n\n${fullResponse}`;
-                                }
-                            } catch (e) {
-                                // Skip parsing errors
-                            }
-                        }
-                    }
-                }
-                
-                showToast('Streaming test completed', 'success');
-            } catch (error) {
-                responseDiv.textContent = `Error: ${error.message}`;
-                showToast('Streaming test failed', 'error');
-            }
-        }
-
-        async function testUploadFile() {
-            const fileInput = document.getElementById('test-upload-file');
-            const assistantId = document.getElementById('test-upload-assistant').value;
-            const sessionId = document.getElementById('test-upload-session').value;
-            const responseDiv = document.getElementById('test-upload-response');
-            
-            if (!fileInput.files[0] || !assistantId) {
-                showToast('Please select a file and enter assistant ID', 'error');
-                return;
-            }
-            
-            responseDiv.style.display = 'block';
-            responseDiv.textContent = 'Uploading...';
-            
-            try {
-                const formData = new FormData();
-                formData.append('file', fileInput.files[0]);
-                formData.append('assistant', assistantId);
-                if (sessionId) formData.append('session', sessionId);
-                
-                const response = await fetch(`${API_BASE_URL}/upload-file`, {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                const data = await response.json();
-                responseDiv.textContent = JSON.stringify(data, null, 2);
-                
-                if (response.ok) {
-                    showToast('File upload test successful', 'success');
-                } else {
-                    showToast('File upload test failed', 'error');
-                }
-            } catch (error) {
-                responseDiv.textContent = `Error: ${error.message}`;
-                showToast('File upload test failed', 'error');
-            }
-        }
-
-        async function testCompletion() {
-            const prompt = document.getElementById('test-completion-prompt').value;
-            const format = document.getElementById('test-completion-format').value;
-            const system = document.getElementById('test-completion-system').value;
-            const rows = document.getElementById('test-completion-rows').value;
-            const responseDiv = document.getElementById('test-completion-response');
-            
-            if (!prompt) {
-                showToast('Please enter a prompt', 'error');
-                return;
-            }
-            
-            responseDiv.style.display = 'block';
-            responseDiv.textContent = 'Generating...';
-            
-            try {
-                const formData = new FormData();
-                formData.append('prompt', prompt);
-                if (format) formData.append('output_format', format);
-                if (system) formData.append('system_message', system);
-                if (rows) formData.append('rows_to_generate', rows);
-                
-                const response = await fetch(`${API_BASE_URL}/completion`, {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                const data = await response.json();
-                responseDiv.textContent = JSON.stringify(data, null, 2);
-                
-                if (response.ok) {
-                    showToast('Completion test successful', 'success');
-                    if (data.download_url) {
-                        responseDiv.innerHTML += `\n\n<a href="${data.download_url}" target="_blank" style="color: var(--accent);">Download Generated File</a>`;
-                    }
-                } else {
-                    showToast('Completion test failed', 'error');
-                }
-            } catch (error) {
-                responseDiv.textContent = `Error: ${error.message}`;
-                showToast('Completion test failed', 'error');
-            }
-        }
-
-        async function testExtractReviews() {
-            const fileInput = document.getElementById('test-extract-file');
-            const prompt = document.getElementById('test-extract-prompt').value;
-            const mode = document.getElementById('test-extract-mode').value;
-            const columns = document.getElementById('test-extract-columns').value;
-            const format = document.getElementById('test-extract-format').value;
-            const rows = document.getElementById('test-extract-rows').value;
-            const responseDiv = document.getElementById('test-extract-response');
-            
-            responseDiv.style.display = 'block';
-            responseDiv.textContent = 'Processing...';
-            
-            try {
-                const formData = new FormData();
-                if (fileInput.files[0]) formData.append('file', fileInput.files[0]);
-                if (prompt) formData.append('prompt', prompt);
-                formData.append('mode', mode);
-                if (columns) formData.append('columns', columns);
-                formData.append('output_format', format);
-                if (rows) formData.append('rows_to_generate', rows);
-                
-                const response = await fetch(`${API_BASE_URL}/extract-reviews`, {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                const data = await response.json();
-                responseDiv.textContent = JSON.stringify(data, null, 2);
-                
-                if (response.ok) {
-                    showToast('Extract/Generate test successful', 'success');
-                    if (data.download_url) {
-                        responseDiv.innerHTML += `\n\n<a href="${data.download_url}" target="_blank" style="color: var(--accent);">Download Generated File</a>`;
-                    }
-                } else {
-                    showToast('Extract/Generate test failed', 'error');
-                }
-            } catch (error) {
-                responseDiv.textContent = `Error: ${error.message}`;
-                showToast('Extract/Generate test failed', 'error');
-            }
-        }
-
-        async function testHealthCheck() {
-            const responseDiv = document.getElementById('test-health-response');
-            
-            responseDiv.style.display = 'block';
-            responseDiv.textContent = 'Checking system health...';
-            
-            try {
-                const response = await fetch(`${API_BASE_URL}/health-check`);
-                const data = await response.json();
-                responseDiv.textContent = JSON.stringify(data, null, 2);
-                
-                if (response.ok) {
-                    showToast('Health check completed', 'success');
-                } else {
-                    showToast('Health check failed', 'error');
-                }
-            } catch (error) {
-                responseDiv.textContent = `Error: ${error.message}`;
-                showToast('Health check failed', 'error');
-            }
-        }
-        
-        async function testSystemTest() {
-            const verbose = document.getElementById('test-verbose').checked;
-            const responseDiv = document.getElementById('test-system-response');
-            
-            responseDiv.style.display = 'block';
-            responseDiv.innerHTML = '<div class="loading">Running system tests...</div>';
-            
-            try {
-                const url = new URL(`${API_BASE_URL}/test`);
-                if (verbose) url.searchParams.append('verbose', 'true');
-                
-                const response = await fetch(url);
-                const data = await response.json();
-                
-                let html = '<h4>System Test Results</h4>';
-                html += `<div class="result-item"><strong>Overall Status:</strong> <span class="${data.overall_status === 'healthy' ? 'success' : data.overall_status === 'degraded' ? 'warning' : 'error'}">${data.overall_status}</span></div>`;
-                html += `<div class="result-item"><strong>Summary:</strong> ${data.overall_summary}</div>`;
-                html += `<div class="result-item"><strong>Execution Time:</strong> ${data.execution_time}</div>`;
-                
-                // Display summary counts
-                if (data.summary) {
-                    html += '<h5>Test Summary:</h5>';
-                    html += `<div class="result-item"><strong>Total Tests:</strong> ${data.summary.total || 0}</div>`;
-                    html += `<div class="result-item"><strong>Passed:</strong> <span class="success">${data.summary.passed || 0}</span></div>`;
-                    html += `<div class="result-item"><strong>Failed:</strong> <span class="error">${data.summary.failed || 0}</span></div>`;
-                    html += `<div class="result-item"><strong>Warnings:</strong> <span class="warning">${data.summary.warnings || 0}</span></div>`;
-                }
-                
-                // Display individual test results
-                if (data.tests) {
-                    html += '<h5>Test Details:</h5>';
-                    for (const [testName, testResult] of Object.entries(data.tests)) {
-                        const statusClass = testResult.status === 'passed' ? 'success' : 
-                                          testResult.status === 'warning' ? 'warning' : 'error';
-                        html += `<div class="result-item">
-                            <strong>${testName}:</strong> 
-                            <span class="${statusClass}">${testResult.status}</span>
-                            ${testResult.message ? ` - ${testResult.message}` : ''}
-                            ${testResult.error ? ` - Error: ${testResult.error}` : ''}
-                        </div>`;
-                    }
-                }
-                
-                // Display logs if verbose
-                if (verbose && data.logs && data.logs.length > 0) {
-                    html += '<h5>Detailed Logs:</h5>';
-                    html += '<pre style="max-height: 300px; overflow-y: auto; background: var(--bg-primary); padding: 8px; border-radius: 4px;">';
-                    data.logs.forEach(log => {
-                        html += `[${log.time}] ${log.level.toUpperCase()}: ${log.message}\n`;
-                    });
-                    html += '</pre>';
-                }
-                
-                responseDiv.innerHTML = html;
-            } catch (error) {
-                responseDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
-            }
-        }
-
-        async function testBasicHealth() {
-            const responseDiv = document.getElementById('test-basic-health-response');
-            
-            responseDiv.style.display = 'block';
-            responseDiv.innerHTML = '<div class="loading">Checking health...</div>';
-            
-            try {
-                const response = await fetch(`${API_BASE_URL}/health`);
-                const data = await response.json();
-                
-                let html = '<h4>Basic Health Check</h4>';
-                html += `<div class="result-item"><strong>Status:</strong> <span class="${data.status === 'healthy' ? 'success' : 'error'}">${data.status}</span></div>`;
-                html += `<div class="result-item"><strong>Timestamp:</strong> ${new Date(data.timestamp).toLocaleString()}</div>`;
-                
-                if (data.error) {
-                    html += `<div class="result-item error"><strong>Error:</strong> ${data.error}</div>`;
-                }
-                
-                responseDiv.innerHTML = html;
-            } catch (error) {
-                responseDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
-            }
-        }
-
-        async function testSpecificEndpoint() {
-            const endpoint = document.getElementById('test-endpoint-name').value;
-            const testData = document.getElementById('test-endpoint-data').value;
-            const responseDiv = document.getElementById('test-endpoint-response');
-            
-            responseDiv.style.display = 'block';
-            responseDiv.innerHTML = '<div class="loading">Testing endpoint...</div>';
-            
-            try {
-                const formData = new FormData();
-                formData.append('endpoint', endpoint);
-                if (testData) formData.append('test_data', testData);
-                
-                const response = await fetch(`${API_BASE_URL}/test-endpoint`, {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                if (response.status === 403) {
-                    responseDiv.innerHTML = '<div class="error">This endpoint is not available in production environment.</div>';
-                    return;
-                }
-                
-                const data = await response.json();
-                
-                let html = '<h4>Endpoint Test Results</h4>';
-                html += `<div class="result-item"><strong>Endpoint:</strong> ${data.endpoint}</div>`;
-                html += `<div class="result-item"><strong>Timestamp:</strong> ${new Date(data.timestamp).toLocaleString()}</div>`;
-                
-                if (data.test_data) {
-                    html += `<div class="result-item"><strong>Test Data:</strong> ${data.test_data}</div>`;
-                }
-                
-                if (data.result) {
-                    html += '<h5>Result:</h5>';
-                    html += '<pre style="max-height: 300px; overflow-y: auto; background: var(--bg-primary); padding: 8px; border-radius: 4px;">' + JSON.stringify(data.result, null, 2) + '</pre>';
-                }
-                
-                if (data.error) {
-                    html += `<div class="result-item error"><strong>Error:</strong> ${data.error}</div>`;
-                    if (data.traceback) {
-                        html += '<details><summary>View Traceback</summary><pre style="background: var(--bg-primary); padding: 8px; border-radius: 4px;">' + data.traceback + '</pre></details>';
-                    }
-                }
-                
-                responseDiv.innerHTML = html;
-            } catch (error) {
-                responseDiv.innerHTML = `<div class="error">Error: ${error.message}</div>`;
-            }
-        }
-
-        function updateTestDescription() {
-            const mode = document.getElementById('test-comprehensive-mode').value;
-            const descDiv = document.getElementById('test-mode-description');
-            
-            const descriptions = {
-                'all': '<strong>All Tests:</strong> Runs all available tests comprehensively',
-                'long_thread': '<strong>Long Thread:</strong> Tests thread message handling, trimming behavior, and response consistency with 60+ messages',
-                'concurrent': '<strong>Concurrent Users:</strong> Simulates multiple users interacting with different assistants simultaneously',
-                'same_thread': '<strong>Same Thread Concurrency:</strong> Tests multiple concurrent requests to the same thread',
-                'run_consistency': '<strong>Run Consistency:</strong> Tests run handling, cleanup, cancellation, and error recovery',
-                'scaling': '<strong>Scaling Test:</strong> Creates many threads and assistants to test system limits',
-                'tools': '<strong>Tool Calling:</strong> Tests pandas agent, file processing, and concurrent tool usage'
-            };
-            
-            descDiv.innerHTML = descriptions[mode] || descriptions['all'];
-        }
-
-        async function testComprehensive() {
-            const mode = document.getElementById('test-comprehensive-mode').value;
-            const duration = document.getElementById('test-comprehensive-duration').value;
-            const users = document.getElementById('test-comprehensive-users').value;
-            const messages = document.getElementById('test-comprehensive-messages').value;
-            const verbose = document.getElementById('test-comprehensive-verbose').checked;
-            const responseDiv = document.getElementById('test-comprehensive-response');
-            const resultsDiv = document.getElementById('test-results');
-            const testBtn = document.getElementById('comprehensive-test-btn');
-            
-            // Show the response container and results div
-            responseDiv.style.display = 'block';
-            resultsDiv.style.display = 'block'; // THIS WAS MISSING - need to show the results div!
-            resultsDiv.innerHTML = '<div style="color: #4ade80;">Starting comprehensive test...</div>';
-            testBtn.disabled = true;
-            testBtn.textContent = 'Running...';
-            
-            try {
-                const formData = new FormData();
-                formData.append('test_mode', mode);
-                formData.append('test_duration', duration);
-                formData.append('concurrent_users', users);
-                formData.append('messages_per_thread', messages);
-                formData.append('verbose', verbose);
-                
-                const response = await fetch(`${API_BASE_URL}/test-comprehensive`, {
-                    method: 'POST',
-                    body: formData,
-                    signal: AbortSignal.timeout(300000), // 5 minute timeout
-                    keepalive: true,
-                    headers: {
-                        // These headers help prevent proxy timeouts
-                        'Connection': 'keep-alive',
-                        'Keep-Alive': 'timeout=300'
-                    }
-                });
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                
-                // Handle streaming response
-                const reader = response.body.getReader();
-                const decoder = new TextDecoder();
-                let buffer = '';
-                let allUpdates = [];
-                // Add timeout detection
-                let lastUpdateTime = Date.now();
-                const timeoutChecker = setInterval(() => {
-                    const timeSinceLastUpdate = Date.now() - lastUpdateTime;
-                    if (timeSinceLastUpdate > 30000) { // 30 seconds without updates
-                        resultsDiv.innerHTML += `<div style="color: #fbbf24; margin-top: 10px;">⚠️ No updates for ${Math.round(timeSinceLastUpdate/1000)} seconds - test may still be running...</div>`;
-                    }
-                }, 10000);
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-                    
-                    buffer += decoder.decode(value, { stream: true });
-                    const lines = buffer.split('\n');
-                    buffer = lines.pop() || '';
-                    
-                    for (const line of lines) {
-                        if (line.trim()) {
-                            lastUpdateTime = Date.now(); // ADD THIS LINE HERE
-                            try {
-                                const update = JSON.parse(line);
-                                allUpdates.push(update);
-                                
-                                // Handle different update types
-                                if (update.type === 'test_start') {
-                                    resultsDiv.innerHTML += `<div style="margin-top: 10px;"><strong>🚀 ${update.data.test_name}</strong></div>`;
-                                    resultsDiv.innerHTML += `<div style="color: #94a3b8;">${update.data.description}</div>`;
-                                } else if (update.type === 'test_progress') {
-                                    resultsDiv.innerHTML += `<div style="color: #60a5fa; margin-left: 20px;">• ${update.data.message}</div>`;
-                                } else if (update.type === 'test_complete') {
-                                    const statusColor = update.data.status === 'passed' ? '#4ade80' : 
-                                                      update.data.status === 'warning' ? '#fbbf24' : '#f87171';
-                                    resultsDiv.innerHTML += `<div style="color: ${statusColor}; margin-left: 20px;">✓ Test completed: ${update.data.status.toUpperCase()}</div>`;
-                                    if (update.data.summary) {
-                                        resultsDiv.innerHTML += `<div style="margin-left: 40px; color: #e2e8f0;">${update.data.summary}</div>`;
-                                    }
-                                } else if (update.type === 'error') {
-                                    resultsDiv.innerHTML += `<div style="color: #f87171; margin-left: 20px;">❌ Error: ${update.data.message}</div>`;
-                                } else if (update.type === 'test_suite_completed') {
-                                    resultsDiv.innerHTML += `<hr style="margin: 20px 0; border-color: #475569;">`;
-                                    resultsDiv.innerHTML += `<div style="font-size: 18px; font-weight: bold;">📊 Test Suite Completed</div>`;
-                                    resultsDiv.innerHTML += `<div>Status: <span style="color: ${update.data.status === 'healthy' ? '#4ade80' : '#f87171'}">${update.data.status.toUpperCase()}</span></div>`;
-                                    resultsDiv.innerHTML += `<div>${update.data.summary}</div>`;
-                                    resultsDiv.innerHTML += `<div>Execution time: ${update.data.execution_time}</div>`;
-                                    if (update.data.final_results) {
-                                        resultsDiv.innerHTML += `<div style="margin-top: 10px;">Results: Passed: ${update.data.final_results.passed}, Failed: ${update.data.final_results.failed}, Warnings: ${update.data.final_results.warnings}</div>`;
-                                    }
-                                } else if (update.type === 'final_results') {
-                                    // Display complete test results
-                                    if (update.data && verbose) {
-                                        resultsDiv.innerHTML += `<details style="margin-top: 20px;"><summary style="cursor: pointer; color: #60a5fa;">View Detailed Results</summary><pre style="background: var(--bg-primary); padding: 12px; border-radius: 4px; margin-top: 10px; overflow-x: auto;">${JSON.stringify(update.data, null, 2)}</pre></details>`;
-                                    }
-                                }
-                                
-                                // Auto-scroll to bottom
-                                resultsDiv.scrollTop = resultsDiv.scrollHeight;
-                            } catch (e) {
-                                console.error('Error parsing update:', e);
-                            }
-                        }
-                    }
-                }
-                
-                showToast('Comprehensive test completed', 'success');
-            } catch (error) {
-                resultsDiv.innerHTML += `<div style="color: #f87171; margin-top: 20px;">Error: ${error.message}</div>`;
-                showToast('Test failed', 'error');
-            } finally {
-                clearInterval(timeoutChecker); // Add this line
-                testBtn.disabled = false;
-                testBtn.textContent = 'Run Comprehensive Test';
-            }
-        }
-        
-        function displayComprehensiveResults(data, container) {
-            let html = '<h4>Comprehensive Test Results</h4>';
-            
-            // Overall summary card
-            html += '<div class="test-card">';
-            html += '<div class="test-card-header">';
-            html += '<span class="test-card-title">Overall Summary</span>';
-            html += `<span class="test-status-badge status-${data.overall_status === 'healthy' ? 'passed' : data.overall_status === 'degraded' ? 'warning' : 'failed'}">${data.overall_status || 'unknown'}</span>`;
-            html += '</div>';
-            
-            html += `<div class="test-metric"><span class="test-metric-label">Test Mode:</span><span class="test-metric-value">${data.test_mode}</span></div>`;
-            html += `<div class="test-metric"><span class="test-metric-label">Execution Time:</span><span class="test-metric-value">${data.execution_time || 'N/A'}</span></div>`;
-            html += `<div class="test-metric"><span class="test-metric-label">Timestamp:</span><span class="test-metric-value">${new Date(data.timestamp).toLocaleString()}</span></div>`;
-            
-            if (data.parameters) {
-                html += '<hr style="margin: 12px 0; border-color: var(--border);">';
-                for (const [key, value] of Object.entries(data.parameters)) {
-                    const label = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-                    html += `<div class="test-metric"><span class="test-metric-label">${label}:</span><span class="test-metric-value">${value}</span></div>`;
-                }
-            }
-            
-            if (data.summary) {
-                html += '<hr style="margin: 12px 0; border-color: var(--border);">';
-                html += `<div class="test-metric"><span class="test-metric-label">Total Tests:</span><span class="test-metric-value">${data.summary.total_tests || 0}</span></div>`;
-                html += `<div class="test-metric"><span class="test-metric-label">Passed:</span><span class="test-metric-value" style="color: var(--success);">${data.summary.passed || 0}</span></div>`;
-                html += `<div class="test-metric"><span class="test-metric-label">Failed:</span><span class="test-metric-value" style="color: var(--error);">${data.summary.failed || 0}</span></div>`;
-                html += `<div class="test-metric"><span class="test-metric-label">Warnings:</span><span class="test-metric-value" style="color: #ff9800;">${data.summary.warnings || 0}</span></div>`;
-            }
-            html += '</div>';
-            
-            // Individual test results
-            if (data.tests) {
-                html += '<h5 style="margin-top: 20px;">Detailed Test Results</h5>';
-                
-                for (const [testName, testResult] of Object.entries(data.tests)) {
-                    const testStatus = testResult.status || 'unknown';
-                    const statusClass = testStatus === 'passed' ? 'passed' : 
-                                      testStatus === 'warning' ? 'warning' : 
-                                      testStatus === 'failed' ? 'failed' : 'running';
-                    
-                    html += '<div class="test-card">';
-                    html += '<div class="test-card-header">';
-                    html += `<span class="test-card-title">${testName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</span>`;
-                    html += `<span class="test-status-badge status-${statusClass}">${testStatus}</span>`;
-                    html += '</div>';
-                    
-                    // Test summary
-                    if (testResult.summary) {
-                        html += `<div style="margin-bottom: 12px; color: var(--text-secondary);">${testResult.summary}</div>`;
-                    }
-                    
-                    // Test metrics
-                    const metricsToShow = ['messages_created', 'successful_conversations', 'failed_conversations', 
-                                         'avg_response_time', 'threads_created', 'assistants_created', 
-                                         'successful_requests', 'failed_requests', 'files_processed'];
-                    
-                    for (const metric of metricsToShow) {
-                        if (testResult[metric] !== undefined) {
-                            const label = metric.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-                            let value = testResult[metric];
-                            if (metric.includes('time') && typeof value === 'number') {
-                                value = value.toFixed(2) + 's';
-                            }
-                            html += `<div class="test-metric"><span class="test-metric-label">${label}:</span><span class="test-metric-value">${value}</span></div>`;
-                        }
-                    }
-                    
-                    // Response times
-                    if (testResult.response_times && Array.isArray(testResult.response_times) && testResult.response_times.length > 0) {
-                        const avgTime = testResult.response_times.reduce((a, b) => a + b, 0) / testResult.response_times.length;
-                        const minTime = Math.min(...testResult.response_times);
-                        const maxTime = Math.max(...testResult.response_times);
-                        html += '<div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);">';
-                        html += '<strong>Response Time Analysis:</strong>';
-                        html += `<div class="test-metric"><span class="test-metric-label">Average:</span><span class="test-metric-value">${avgTime.toFixed(2)}s</span></div>`;
-                        html += `<div class="test-metric"><span class="test-metric-label">Min/Max:</span><span class="test-metric-value">${minTime.toFixed(2)}s / ${maxTime.toFixed(2)}s</span></div>`;
-                        html += '</div>';
-                    }
-                    
-                    // Errors
-                    if (testResult.errors && Array.isArray(testResult.errors) && testResult.errors.length > 0) {
-                        html += '<div class="test-errors">';
-                        html += '<div class="test-errors-title">Errors:</div>';
-                        testResult.errors.forEach(error => {
-                            html += `<div class="test-error-item">• ${error}</div>`;
-                        });
-                        html += '</div>';
-                    }
-                    
-                    html += '</div>';
-                }
-            }
-            
-            // Logs section
-            if (data.logs && Array.isArray(data.logs) && data.logs.length > 0) {
-                html += '<h5 style="margin-top: 20px;">Detailed Logs</h5>';
-                html += '<div class="test-card">';
-                html += '<pre style="max-height: 400px; overflow-y: auto; background: var(--bg-primary); padding: 12px; font-size: 12px; line-height: 1.5;">';
-                data.logs.forEach(log => {
-                    const levelClass = log.level === 'error' ? 'error' : log.level === 'warning' ? 'warning' : '';
-                    const timestamp = new Date(log.time).toLocaleTimeString();
-                    html += `<span class="${levelClass}">[${timestamp}] ${log.level.toUpperCase()}: ${log.message}</span>\n`;
-                });
-                html += '</pre>';
-                html += '</div>';
-            }
-            
-            container.innerHTML = html;
-        }
-        function copyAsCode(endpoint) {
-            let code = '';
-            
-            switch (endpoint) {
-                case 'initiate-chat':
-                    const context = document.getElementById('test-initiate-context').value;
-                    code = `curl -X POST "${API_BASE_URL}/initiate-chat"`;
-                    if (context) code += ` \\\n  -F "context=${context}"`;
-                    code += ` \\\n  -F "file=@your-file.pdf"`;
-                    break;
-                case 'conversation':
-                    const session = document.getElementById('test-conversation-session').value;
-                    const assistant = document.getElementById('test-conversation-assistant').value;
-                    const prompt = document.getElementById('test-conversation-prompt').value;
-                    code = `curl -N "${API_BASE_URL}/conversation" \\\n  -G --data-urlencode "session=${session}" \\\n  --data-urlencode "assistant=${assistant}" \\\n  --data-urlencode "prompt=${prompt}"`;
-                    break;
-                case 'upload-file':
-                    const uploadAssistant = document.getElementById('test-upload-assistant').value;
-                    const uploadSession = document.getElementById('test-upload-session').value;
-                    code = `curl -X POST "${API_BASE_URL}/upload-file" \\\n  -F "file=@your-file.pdf" \\\n  -F "assistant=${uploadAssistant}"`;
-                    if (uploadSession) code += ` \\\n  -F "session=${uploadSession}"`;
-                    break;
-                case 'completion':
-                    const compPrompt = document.getElementById('test-completion-prompt').value;
-                    const compFormat = document.getElementById('test-completion-format').value;
-                    code = `curl -X POST "${API_BASE_URL}/completion" \\\n  -F "prompt=${compPrompt}"`;
-                    if (compFormat) code += ` \\\n  -F "output_format=${compFormat}"`;
-                    break;
-                case 'extract-reviews':
-                    const extPrompt = document.getElementById('test-extract-prompt').value;
-                    const extMode = document.getElementById('test-extract-mode').value;
-                    code = `curl -X POST "${API_BASE_URL}/extract-reviews" \\\n  -F "mode=${extMode}"`;
-                    if (extPrompt) code += ` \\\n  -F "prompt=${extPrompt}"`;
-                    code += ` \\\n  -F "file=@your-file.pdf"`;
-                    break;
-                case 'health-check':
-                    code = `curl "${API_BASE_URL}/health-check"`;
-                    break;
-                case 'system-test':
-                    const verbose = document.getElementById('test-verbose').checked;
-                    code = `curl "${API_BASE_URL}/test${verbose ? '?verbose=true' : ''}"`;
-                    break;
-                case 'basic-health':
-                    code = `curl "${API_BASE_URL}/health"`;
-                    break;
-                case 'test-endpoint':
-                    const endpointName = document.getElementById('test-endpoint-name').value;
-                    const endpointData = document.getElementById('test-endpoint-data').value;
-                    code = `curl -X POST "${API_BASE_URL}/test-endpoint" \\\n  -F "endpoint=${endpointName}"`;
-                    if (endpointData) code += ` \\\n  -F "test_data=${endpointData}"`;
-                    break;
-                case 'comprehensive-test':
-                    const compMode = document.getElementById('test-comprehensive-mode').value;
-                    const compDuration = document.getElementById('test-comprehensive-duration').value;
-                    const compUsers = document.getElementById('test-comprehensive-users').value;
-                    const compMessages = document.getElementById('test-comprehensive-messages').value;
-                    const compVerbose = document.getElementById('test-comprehensive-verbose').checked;
-                    code = `curl -X POST "${API_BASE_URL}/test-comprehensive" \\\n  -F "test_mode=${compMode}" \\\n  -F "test_duration=${compDuration}" \\\n  -F "concurrent_users=${compUsers}" \\\n  -F "messages_per_thread=${compMessages}" \\\n  -F "verbose=${compVerbose}"`;
-                    break;
-            }
-            
-            navigator.clipboard.writeText(code).then(() => {
-                showToast('cURL command copied!', 'success');
-            }).catch(() => {
-                showToast('Failed to copy', 'error');
-            });
         }
 
         // ==========================
