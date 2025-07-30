@@ -305,154 +305,225 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 # Enhanced CSS with streaming support and all modern features
 CUSTOM_SWAGGER_CSS = """
 <style>
-/* Hide default Swagger UI elements */
+/* AZURE COPILOT V2 - PREMIUM DARK THEME */
+
+/* Hide unwanted elements */
 .swagger-ui .topbar { display: none !important; }
+.swagger-ui .models { display: none !important; }  /* Hide schemas section */
+.swagger-ui section.models { display: none !important; }  /* Hide schemas section completely */
+.swagger-ui .scheme-container { display: none !important; }  /* Hide schemes selector */
 
-/* Root styling */
-body { background: #0f0f0f !important; }
-.swagger-ui { background: #0f0f0f !important; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif !important; }
-.swagger-ui .wrapper { background: #0f0f0f !important; padding: 0 20px !important; }
+/* Root styling with gradient background */
+body { 
+    background: #0a0a0a !important;
+    background-image: 
+        radial-gradient(at 20% 80%, rgba(120, 40, 200, 0.1) 0px, transparent 50%),
+        radial-gradient(at 80% 20%, rgba(40, 120, 200, 0.1) 0px, transparent 50%);
+}
 
-/* Info section matching your header style */
+.swagger-ui { 
+    background: transparent !important; 
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+}
+
+.swagger-ui .wrapper { 
+    background: transparent !important; 
+    padding: 0 20px !important;
+    max-width: 1400px !important;
+    margin: 0 auto !important;
+}
+
+/* Premium header section */
 .swagger-ui .info {
-    background: #1a1a1a !important;
-    border: 1px solid #404040 !important;
-    border-radius: 12px !important;
-    padding: 20px !important;
-    margin-bottom: 20px !important;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1) !important;
+    background: linear-gradient(135deg, #1a1f2e 0%, #151922 100%) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border-radius: 16px !important;
+    padding: 32px !important;
+    margin: 20px 0 30px 0 !important;
+    box-shadow: 
+        0 10px 40px rgba(0, 0, 0, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+    position: relative !important;
+    overflow: hidden !important;
+}
+
+.swagger-ui .info:before {
+    content: "" !important;
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    height: 1px !important;
+    background: linear-gradient(90deg, 
+        transparent 0%, 
+        rgba(120, 119, 198, 0.5) 50%, 
+        transparent 100%) !important;
 }
 
 .swagger-ui .info .title { 
     color: #ffffff !important; 
-    font-weight: 700 !important;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    font-weight: 800 !important;
+    font-size: 36px !important;
+    letter-spacing: -0.02em !important;
+    margin-bottom: 12px !important;
+    background: linear-gradient(135deg, #7877c6 0%, #4a9eff 100%) !important;
     -webkit-background-clip: text !important;
     -webkit-text-fill-color: transparent !important;
 }
 
-.swagger-ui .info .description { color: #a3a3a3 !important; line-height: 1.5 !important; }
-.swagger-ui .info a { color: #3b82f6 !important; text-decoration: none !important; }
-.swagger-ui .info a:hover { color: #2563eb !important; }
-
-/* Schemes section */
-.swagger-ui .scheme-container { 
-    background: #1a1a1a !important; 
-    border: 1px solid #404040 !important;
-    border-radius: 8px !important;
-    padding: 12px !important;
-    margin-bottom: 20px !important;
+.swagger-ui .info .version {
+    background: rgba(120, 119, 198, 0.2) !important;
+    color: #7877c6 !important;
+    padding: 4px 12px !important;
+    border-radius: 20px !important;
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    display: inline-block !important;
+    margin-left: 12px !important;
 }
 
-.swagger-ui .schemes > label { color: #a3a3a3 !important; }
-.swagger-ui .schemes select {
-    background: #262626 !important;
-    border: 1px solid #404040 !important;
-    color: #ffffff !important;
-    border-radius: 8px !important;
-    padding: 8px 12px !important;
+.swagger-ui .info .description { 
+    color: #b8bcc8 !important; 
+    line-height: 1.6 !important;
+    font-size: 15px !important;
 }
 
-/* Operation blocks - matching your section style */
+/* Premium tag groups */
+.swagger-ui .opblock-tag-section {
+    margin-bottom: 40px !important;
+}
+
+.swagger-ui .opblock-tag { 
+    color: #ffffff !important; 
+    font-size: 24px !important;
+    font-weight: 700 !important;
+    margin: 40px 0 20px 0 !important;
+    padding-bottom: 12px !important;
+    border-bottom: 2px solid rgba(120, 119, 198, 0.3) !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 12px !important;
+}
+
+.swagger-ui .opblock-tag:before {
+    content: "▸" !important;
+    color: #7877c6 !important;
+    font-size: 20px !important;
+}
+
+.swagger-ui .opblock-tag small { 
+    color: #9ca3af !important; 
+    font-weight: 400 !important;
+    font-size: 14px !important;
+    margin-left: auto !important;
+}
+
+/* Premium operation blocks */
 .swagger-ui .opblock {
-    background: #1a1a1a !important;
-    border: 1px solid #404040 !important;
+    background: rgba(26, 31, 46, 0.5) !important;
+    backdrop-filter: blur(10px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.05) !important;
     border-radius: 12px !important;
     margin-bottom: 16px !important;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1) !important;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2) !important;
     overflow: hidden !important;
+    transition: all 0.3s ease !important;
+}
+
+.swagger-ui .opblock:hover {
+    border-color: rgba(120, 119, 198, 0.3) !important;
+    box-shadow: 
+        0 8px 32px rgba(0, 0, 0, 0.3),
+        0 0 0 1px rgba(120, 119, 198, 0.2) !important;
+    transform: translateY(-2px) !important;
 }
 
 .swagger-ui .opblock .opblock-summary {
-    background: #262626 !important;
+    background: transparent !important;
     border: none !important;
-    padding: 12px 16px !important;
+    padding: 16px 20px !important;
     cursor: pointer !important;
     transition: all 0.2s !important;
+    position: relative !important;
 }
 
 .swagger-ui .opblock .opblock-summary:hover {
-    background: #2a2a2a !important;
-    transform: translateY(-1px) !important;
+    background: rgba(120, 119, 198, 0.05) !important;
 }
 
-/* Method badges exactly matching your style */
+/* Premium method badges */
+.swagger-ui .opblock .opblock-summary-method {
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    padding: 6px 12px !important;
+    border-radius: 6px !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.05em !important;
+    min-width: 60px !important;
+    text-align: center !important;
+}
+
 .swagger-ui .opblock.opblock-post .opblock-summary-method { 
-    background: #007bff !important; 
-    font-size: 11px !important;
-    font-weight: 700 !important;
-    padding: 4px 8px !important;
-    text-transform: uppercase !important;
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
+    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3) !important;
 }
+
 .swagger-ui .opblock.opblock-get .opblock-summary-method { 
-    background: #28a745 !important;
-    font-size: 11px !important;
-    font-weight: 700 !important;
-    padding: 4px 8px !important;
-    text-transform: uppercase !important;
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3) !important;
 }
-.swagger-ui .opblock.opblock-put .opblock-summary-method { background: #ffc107 !important; }
-.swagger-ui .opblock.opblock-delete .opblock-summary-method { background: #dc3545 !important; }
 
-/* Text colors */
+.swagger-ui .opblock.opblock-put .opblock-summary-method { 
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%) !important;
+    box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3) !important;
+}
+
+.swagger-ui .opblock.opblock-delete .opblock-summary-method { 
+    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
+    box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3) !important;
+}
+
+/* Enhanced path styling */
 .swagger-ui .opblock .opblock-summary-path { 
-    color: #ffffff !important; 
-    font-weight: 500 !important;
-    font-family: 'Monaco', 'Consolas', monospace !important;
-}
-.swagger-ui .opblock .opblock-summary-description { color: #a3a3a3 !important; }
-.swagger-ui .opblock-description-wrapper { background: #1a1a1a !important; padding: 20px !important; }
-.swagger-ui .opblock-description-wrapper p { color: #a3a3a3 !important; line-height: 1.5 !important; }
-
-/* Tags section */
-.swagger-ui .opblock-tag { 
-    color: #ffffff !important; 
-    font-size: 20px !important;
+    color: #e5e7eb !important; 
     font-weight: 600 !important;
-    margin: 20px 0 10px 0 !important;
-}
-.swagger-ui .opblock-tag small { color: #a3a3a3 !important; font-weight: 400 !important; }
-
-/* Parameters section */
-.swagger-ui .parameters-col_description { color: #a3a3a3 !important; }
-.swagger-ui .parameter__name { color: #ffffff !important; font-weight: 500 !important; }
-.swagger-ui .parameter__type { color: #3b82f6 !important; font-family: monospace !important; }
-.swagger-ui .parameter__deprecated { color: #ef4444 !important; }
-.swagger-ui .parameter__in { color: #737373 !important; font-size: 12px !important; }
-.swagger-ui .parameter__extension { color: #3b82f6 !important; }
-
-/* Required fields */
-.swagger-ui .required { color: #ef4444 !important; font-weight: 700 !important; }
-.swagger-ui .required:after { content: " *" !important; color: #ef4444 !important; }
-
-/* Tables matching your params-table style */
-.swagger-ui table {
-    background: #1a1a1a !important;
-    color: #ffffff !important;
-    border-collapse: collapse !important;
+    font-family: 'JetBrains Mono', 'Monaco', monospace !important;
+    font-size: 14px !important;
+    letter-spacing: -0.02em !important;
 }
 
-.swagger-ui table thead tr th {
-    background: #262626 !important;
-    color: #3b82f6 !important;
-    border-bottom: 1px solid #404040 !important;
-    font-weight: 600 !important;
-    padding: 8px !important;
-    text-align: left !important;
+.swagger-ui .opblock .opblock-summary-path__deprecated {
+    text-decoration: line-through !important;
+    opacity: 0.6 !important;
 }
 
-.swagger-ui table tbody tr td {
-    background: #1a1a1a !important;
-    color: #ffffff !important;
-    border-bottom: 1px solid #404040 !important;
-    padding: 8px !important;
+/* Enhanced description */
+.swagger-ui .opblock .opblock-summary-description { 
+    color: #9ca3af !important;
+    font-size: 13px !important;
+    margin-left: 12px !important;
 }
 
-.swagger-ui table tbody tr:hover td {
-    background: #262626 !important;
+/* Streaming indicator with animation */
+.swagger-ui .opblock.opblock-post[data-path*="conversation"] .opblock-summary:after,
+.swagger-ui .opblock.opblock-get[data-path*="conversation"] .opblock-summary:after,
+.swagger-ui .opblock.opblock-post[data-path*="test-comprehensive"] .opblock-summary:after {
+    content: "STREAMING" !important;
+    position: absolute !important;
+    right: 20px !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+    background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%) !important;
+    color: white !important;
+    padding: 4px 10px !important;
+    border-radius: 20px !important;
+    font-size: 10px !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.05em !important;
+    box-shadow: 0 2px 8px rgba(6, 182, 212, 0.3) !important;
 }
 
-/* Input fields matching your form-control style */
+/* Premium input styling */
 .swagger-ui input[type=text], 
 .swagger-ui input[type=password], 
 .swagger-ui input[type=email], 
@@ -460,383 +531,320 @@ body { background: #0f0f0f !important; }
 .swagger-ui input[type=number],
 .swagger-ui textarea, 
 .swagger-ui select {
-    background: #262626 !important;
-    border: 1px solid #404040 !important;
+    background: rgba(17, 24, 39, 0.6) !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
     color: #ffffff !important;
     border-radius: 8px !important;
-    padding: 10px 14px !important;
+    padding: 12px 16px !important;
     font-size: 14px !important;
-    width: 100% !important;
-    box-sizing: border-box !important;
     transition: all 0.2s !important;
+    backdrop-filter: blur(10px) !important;
 }
 
-.swagger-ui input[type=text]:focus,
-.swagger-ui input[type=number]:focus,
+.swagger-ui input:focus,
 .swagger-ui textarea:focus,
 .swagger-ui select:focus {
-    border-color: #3b82f6 !important;
-    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1) !important;
+    border-color: #7877c6 !important;
+    box-shadow: 
+        0 0 0 3px rgba(120, 119, 198, 0.1),
+        0 0 20px rgba(120, 119, 198, 0.2) !important;
     outline: none !important;
+    background: rgba(17, 24, 39, 0.8) !important;
 }
 
-/* Buttons matching your exact style */
+/* Premium buttons */
 .swagger-ui .btn {
-    background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%) !important;
+    background: linear-gradient(135deg, #7877c6 0%, #5a67d8 100%) !important;
     color: white !important;
     border: none !important;
     border-radius: 8px !important;
     padding: 10px 20px !important;
-    font-weight: 500 !important;
+    font-weight: 600 !important;
     font-size: 14px !important;
     cursor: pointer !important;
     transition: all 0.2s !important;
-    display: inline-flex !important;
-    align-items: center !important;
-    gap: 8px !important;
+    box-shadow: 
+        0 4px 12px rgba(120, 119, 198, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+    text-transform: none !important;
+    letter-spacing: 0.02em !important;
 }
 
 .swagger-ui .btn:hover {
-    opacity: 0.9 !important;
     transform: translateY(-1px) !important;
-    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3) !important;
+    box-shadow: 
+        0 6px 20px rgba(120, 119, 198, 0.4),
+        inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
 }
 
 .swagger-ui .btn:active {
     transform: translateY(0) !important;
 }
 
-.swagger-ui .btn.cancel {
-    background: #262626 !important;
-    border: 1px solid #404040 !important;
-}
-
-.swagger-ui .btn.cancel:hover {
-    background: #303030 !important;
-    border-color: #525252 !important;
-}
-
 .swagger-ui .btn.execute {
-    background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%) !important;
-}
-
-.swagger-ui .btn.authorize {
     background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+    min-width: 120px !important;
 }
 
-/* Try it out button special styling */
-.swagger-ui .try-out__btn {
-    background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%) !important;
-    color: white !important;
-    border: none !important;
+.swagger-ui .btn.cancel {
+    background: rgba(75, 85, 99, 0.5) !important;
+    backdrop-filter: blur(10px) !important;
 }
 
-.swagger-ui .try-out__btn.cancel {
-    background: #262626 !important;
-    border: 1px solid #404040 !important;
-}
-
-/* Response section */
+/* Premium response section */
 .swagger-ui .responses-wrapper {
-    background: #1a1a1a !important;
-    border: 1px solid #404040 !important;
+    background: rgba(17, 24, 39, 0.4) !important;
+    backdrop-filter: blur(10px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.05) !important;
+    border-radius: 12px !important;
+    padding: 20px !important;
+    margin-top: 20px !important;
+}
+
+/* Enhanced response display for streaming */
+.swagger-ui .response-body {
+    background: #0d1117 !important;
+    border: 1px solid rgba(120, 119, 198, 0.2) !important;
     border-radius: 8px !important;
     padding: 16px !important;
-    margin-top: 16px !important;
+    margin-top: 12px !important;
+    position: relative !important;
+    overflow: hidden !important;
 }
 
-.swagger-ui .responses-inner { background: transparent !important; }
-.swagger-ui .response-col_status { color: #ffffff !important; font-weight: 500 !important; }
-.swagger-ui .response-col_description { color: #a3a3a3 !important; }
-
-/* Response codes with proper colors */
-.swagger-ui .responses-table .response-col_status .response-code {
-    font-weight: 600 !important;
-    font-family: monospace !important;
+/* Streaming response formatter */
+.swagger-ui .response-body pre {
+    color: #e6edf3 !important;
+    font-family: 'JetBrains Mono', monospace !important;
+    font-size: 13px !important;
+    line-height: 1.6 !important;
+    white-space: pre-wrap !important;
+    word-break: break-word !important;
 }
 
-.swagger-ui table.responses-table tr.response[data-code^="2"] .response-col_status {
+/* Clean SSE output display */
+.swagger-ui .response-body .microlight {
+    display: block !important;
+}
+
+/* Format SSE data nicely */
+.swagger-ui .response-body pre:has-text("data:") {
+    background: #0d1117 !important;
+    padding: 12px !important;
+    border-radius: 6px !important;
+}
+
+/* Add visual separator for SSE chunks */
+.swagger-ui .response-body .hljs-string:has-text("data:") {
+    display: block !important;
+    margin-bottom: 8px !important;
+    padding-bottom: 8px !important;
+    border-bottom: 1px solid rgba(120, 119, 198, 0.1) !important;
+}
+
+/* Response status colors */
+.swagger-ui .responses-table .response.response-200 .response-col_status,
+.swagger-ui .responses-table .response[data-code^="2"] .response-col_status {
     color: #10b981 !important;
+    font-weight: 700 !important;
 }
 
-.swagger-ui table.responses-table tr.response[data-code^="4"] .response-col_status {
+.swagger-ui .responses-table .response[data-code^="4"] .response-col_status {
     color: #f59e0b !important;
+    font-weight: 700 !important;
 }
 
-.swagger-ui table.responses-table tr.response[data-code^="5"] .response-col_status {
+.swagger-ui .responses-table .response[data-code^="5"] .response-col_status {
+    color: #ef4444 !important;
+    font-weight: 700 !important;
+}
+
+/* Premium table styling */
+.swagger-ui table {
+    background: rgba(17, 24, 39, 0.4) !important;
+    backdrop-filter: blur(10px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.05) !important;
+    border-radius: 8px !important;
+    overflow: hidden !important;
+}
+
+.swagger-ui table thead tr th {
+    background: rgba(31, 41, 55, 0.6) !important;
+    color: #7877c6 !important;
+    font-weight: 700 !important;
+    padding: 12px 16px !important;
+    font-size: 13px !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.05em !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+.swagger-ui table tbody tr td {
+    padding: 12px 16px !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+    color: #e5e7eb !important;
+}
+
+.swagger-ui table tbody tr:hover td {
+    background: rgba(120, 119, 198, 0.05) !important;
+}
+
+/* Parameter sections */
+.swagger-ui .parameters-col_description {
+    color: #9ca3af !important;
+    font-size: 13px !important;
+}
+
+.swagger-ui .parameter__name {
+    color: #ffffff !important;
+    font-weight: 600 !important;
+    font-size: 14px !important;
+}
+
+.swagger-ui .parameter__type {
+    color: #7877c6 !important;
+    font-family: 'JetBrains Mono', monospace !important;
+    font-size: 12px !important;
+    background: rgba(120, 119, 198, 0.1) !important;
+    padding: 2px 6px !important;
+    border-radius: 4px !important;
+}
+
+.swagger-ui .parameter__in {
+    color: #6b7280 !important;
+    font-size: 11px !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.05em !important;
+}
+
+/* Required fields */
+.swagger-ui .required {
+    color: #ef4444 !important;
+    font-weight: 700 !important;
+}
+
+.swagger-ui .required:after {
+    content: " *" !important;
     color: #ef4444 !important;
 }
 
-/* Code highlighting */
-.swagger-ui .highlight-code {
-    background: #0f0f0f !important;
-    border: 1px solid #404040 !important;
-    border-radius: 6px !important;
-    margin: 12px 0 !important;
-    position: relative !important;
-}
-
-.swagger-ui .highlight-code pre {
-    color: #f8f8f2 !important;
-    background: #0f0f0f !important;
-    padding: 12px !important;
-    margin: 0 !important;
-    font-family: 'Monaco', 'Consolas', monospace !important;
+/* Code blocks */
+.swagger-ui .highlight-code pre,
+.swagger-ui pre {
+    background: #0d1117 !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border-radius: 8px !important;
+    padding: 16px !important;
+    font-family: 'JetBrains Mono', monospace !important;
     font-size: 13px !important;
-    line-height: 1.4 !important;
-    overflow-x: auto !important;
+    line-height: 1.5 !important;
+    color: #e6edf3 !important;
 }
 
-/* Streaming response indication */
-.swagger-ui .response-content-type.controls-accept-header select {
-    background: #262626 !important;
-    border: 1px solid #404040 !important;
-    color: #ffffff !important;
+/* Markdown styling */
+.swagger-ui .markdown code {
+    background: rgba(120, 119, 198, 0.1) !important;
+    color: #7dd3fc !important;
+    padding: 2px 6px !important;
     border-radius: 4px !important;
+    font-family: 'JetBrains Mono', monospace !important;
+    font-size: 13px !important;
 }
 
-/* Loading states for streaming endpoints */
+/* Loading animation */
 .swagger-ui .loading-container {
-    padding: 20px !important;
+    padding: 40px !important;
     text-align: center !important;
-    color: #a3a3a3 !important;
 }
 
 .swagger-ui .loading-container:after {
-    content: "Streaming response..." !important;
-    display: block !important;
-    margin-top: 10px !important;
-    color: #3b82f6 !important;
-    font-style: italic !important;
+    content: "⚡" !important;
+    font-size: 32px !important;
+    animation: pulse 2s ease-in-out infinite !important;
 }
 
-/* Model/Schema section */
-.swagger-ui .model-container {
-    background: #1a1a1a !important;
-    border: 1px solid #404040 !important;
-    border-radius: 8px !important;
-    padding: 16px !important;
-    margin: 16px 0 !important;
-}
-
-.swagger-ui .model-title { 
-    color: #ffffff !important; 
-    font-weight: 600 !important;
-    margin-bottom: 12px !important;
-}
-
-.swagger-ui .model { color: #a3a3a3 !important; }
-.swagger-ui .prop-type { color: #3b82f6 !important; font-family: monospace !important; }
-.swagger-ui .prop-format { color: #737373 !important; font-size: 12px !important; }
-
-/* Example values */
-.swagger-ui .example { 
-    background: #0f0f0f !important;
-    border: 1px solid #404040 !important;
-    border-radius: 6px !important;
-}
-
-.swagger-ui .example-value { color: #f8f8f2 !important; }
-
-/* Markdown content in descriptions */
-.swagger-ui .markdown p { 
-    color: #a3a3a3 !important; 
-    line-height: 1.5 !important;
-    margin-bottom: 12px !important;
-}
-
-.swagger-ui .markdown code {
-    background: #262626 !important;
-    color: #3b82f6 !important;
-    padding: 2px 6px !important;
-    border-radius: 4px !important;
-    font-family: monospace !important;
-    font-size: 13px !important;
-}
-
-.swagger-ui .markdown pre {
-    background: #0f0f0f !important;
-    border: 1px solid #404040 !important;
-    border-radius: 6px !important;
-    padding: 12px !important;
-    overflow-x: auto !important;
-}
-
-.swagger-ui .markdown pre code {
-    background: transparent !important;
-    padding: 0 !important;
-}
-
-.swagger-ui .markdown ul, .swagger-ui .markdown ol {
-    color: #a3a3a3 !important;
-    margin-left: 20px !important;
-    margin-bottom: 12px !important;
-}
-
-.swagger-ui .markdown li {
-    margin-bottom: 6px !important;
-    line-height: 1.5 !important;
-}
-
-/* Links */
-.swagger-ui a { color: #3b82f6 !important; text-decoration: none !important; }
-.swagger-ui a:hover { color: #2563eb !important; text-decoration: underline !important; }
-
-/* Copy button */
-.swagger-ui .copy-to-clipboard {
-    background: #262626 !important;
-    border: 1px solid #404040 !important;
-    border-radius: 4px !important;
-    padding: 4px 8px !important;
-    position: absolute !important;
-    right: 8px !important;
-    top: 8px !important;
-}
-
-.swagger-ui .copy-to-clipboard button {
-    background: transparent !important;
-    color: #a3a3a3 !important;
-    border: none !important;
-    cursor: pointer !important;
-    font-size: 12px !important;
-}
-
-.swagger-ui .copy-to-clipboard button:hover {
-    color: #ffffff !important;
-}
-
-/* File upload styling */
-.swagger-ui .file-wrapper {
-    border: 2px dashed #404040 !important;
-    background: #1a1a1a !important;
-    border-radius: 8px !important;
-    padding: 20px !important;
-    text-align: center !important;
-    transition: all 0.2s !important;
-}
-
-.swagger-ui .file-wrapper:hover {
-    border-color: #3b82f6 !important;
-    background: #262626 !important;
-}
-
-.swagger-ui .file-wrapper input[type=file] {
-    display: block !important;
-    width: 100% !important;
-    padding: 10px !important;
+@keyframes pulse {
+    0%, 100% { opacity: 0.3; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.1); }
 }
 
 /* Error states */
 .swagger-ui .errors-wrapper {
     background: rgba(239, 68, 68, 0.1) !important;
-    border: 1px solid #ef4444 !important;
+    border: 1px solid rgba(239, 68, 68, 0.3) !important;
     border-radius: 8px !important;
-    padding: 12px !important;
-    margin: 12px 0 !important;
-}
-
-.swagger-ui .errors-wrapper .error {
-    color: #ef4444 !important;
-}
-
-/* Expand/Collapse arrows */
-.swagger-ui .arrow { 
-    fill: #a3a3a3 !important; 
-    transition: all 0.2s !important;
-}
-
-.swagger-ui .arrow:hover { fill: #ffffff !important; }
-
-/* Tab headers */
-.swagger-ui .tab li {
-    color: #a3a3a3 !important;
-    border-bottom: 2px solid transparent !important;
-    padding: 8px 16px !important;
-    cursor: pointer !important;
-    transition: all 0.2s !important;
-}
-
-.swagger-ui .tab li:hover {
-    color: #ffffff !important;
-    background: rgba(59, 130, 246, 0.1) !important;
-}
-
-.swagger-ui .tab li.active {
-    color: #ffffff !important;
-    border-bottom-color: #3b82f6 !important;
-}
-
-/* Response body section */
-.swagger-ui .response-body {
-    background: #0f0f0f !important;
-    border: 1px solid #404040 !important;
-    border-radius: 6px !important;
     padding: 16px !important;
-    margin-top: 12px !important;
+    margin: 16px 0 !important;
 }
 
-/* Execute button loading state */
-.swagger-ui .btn.execute.loading {
-    opacity: 0.6 !important;
-    cursor: not-allowed !important;
+/* Copy button enhancement */
+.swagger-ui .copy-to-clipboard {
+    background: rgba(120, 119, 198, 0.2) !important;
+    border: 1px solid rgba(120, 119, 198, 0.3) !important;
+    border-radius: 6px !important;
+    padding: 4px 8px !important;
+    transition: all 0.2s !important;
 }
 
-.swagger-ui .btn.execute.loading:after {
-    content: " ..." !important;
-    display: inline-block !important;
-    animation: loading-dots 1.4s infinite !important;
+.swagger-ui .copy-to-clipboard:hover {
+    background: rgba(120, 119, 198, 0.3) !important;
+    border-color: rgba(120, 119, 198, 0.5) !important;
 }
 
-@keyframes loading-dots {
-    0% { content: " ." !important; }
-    33% { content: " .." !important; }
-    66% { content: " ..." !important; }
+/* Scrollbar */
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
 }
 
-/* Scrollbar styling */
-.swagger-ui ::-webkit-scrollbar { width: 6px; height: 6px; }
-.swagger-ui ::-webkit-scrollbar-track { background: #1a1a1a; }
-.swagger-ui ::-webkit-scrollbar-thumb { background: #262626; border-radius: 3px; }
-.swagger-ui ::-webkit-scrollbar-thumb:hover { background: #404040; }
+::-webkit-scrollbar-track {
+    background: rgba(17, 24, 39, 0.4);
+}
 
-/* Responsive adjustments */
+::-webkit-scrollbar-thumb {
+    background: rgba(120, 119, 198, 0.3);
+    border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(120, 119, 198, 0.5);
+}
+
+/* Mobile responsive */
 @media (max-width: 768px) {
-    .swagger-ui .wrapper { padding: 0 10px !important; }
-    .swagger-ui .info { padding: 16px !important; }
+    .swagger-ui .info .title { font-size: 28px !important; }
     .swagger-ui .opblock { margin-bottom: 12px !important; }
-    .swagger-ui .opblock-summary { padding: 10px !important; }
-    .swagger-ui input[type=text], .swagger-ui textarea { font-size: 16px !important; }
+    .swagger-ui .btn { padding: 8px 16px !important; font-size: 13px !important; }
 }
 
-/* Live update indicator for new endpoints */
-.swagger-ui .opblock.new-endpoint {
-    border: 2px solid #3b82f6 !important;
-    position: relative !important;
+/* Hide download button in responses */
+.swagger-ui .download-contents-wrapper { display: none !important; }
+
+/* Better JSON syntax highlighting */
+.swagger-ui .renderedMarkdown pre {
+    background: #0d1117 !important;
 }
 
-.swagger-ui .opblock.new-endpoint:before {
-    content: "NEW" !important;
-    position: absolute !important;
-    top: -10px !important;
-    right: 20px !important;
-    background: #3b82f6 !important;
-    color: white !important;
-    padding: 2px 8px !important;
-    border-radius: 4px !important;
-    font-size: 10px !important;
-    font-weight: 700 !important;
+.swagger-ui .renderedMarkdown code {
+    color: #7dd3fc !important;
 }
 
-/* SSE/Streaming endpoint indicator */
-.swagger-ui .opblock[data-path*="conversation"] .opblock-summary:after,
-.swagger-ui .opblock[data-path*="test"] .opblock-summary:after {
-    content: "STREAMING" !important;
-    margin-left: 10px !important;
-    background: #06b6d4 !important;
-    color: white !important;
-    padding: 2px 6px !important;
-    border-radius: 4px !important;
-    font-size: 10px !important;
+/* Make streaming responses more readable */
+.swagger-ui .live-responses-table .response-col_description pre {
+    white-space: pre-wrap !important;
+    word-wrap: break-word !important;
+    max-width: 100% !important;
+}
+
+/* SSE Response Formatter - Makes streaming output beautiful */
+.swagger-ui .microlight span.hljs-string:contains("data:") {
+    display: block !important;
+    margin: 4px 0 !important;
+}
+
+/* Format the [DONE] marker */
+.swagger-ui .microlight:contains("[DONE]") {
+    color: #10b981 !important;
     font-weight: 600 !important;
 }
 </style>
@@ -910,7 +918,42 @@ async def custom_swagger_ui_html():
         <head>
             <title>{app.title} - Swagger UI</title>
             <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css">
+            <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
             {CUSTOM_SWAGGER_CSS}
+            <script>
+            // Custom formatter for SSE responses
+            function formatSSEResponse(text) {{
+                if (!text || !text.includes('data:')) return text;
+                
+                // Parse SSE format and extract content
+                const lines = text.split('\\n');
+                let formattedOutput = '';
+                let fullMessage = '';
+                
+                lines.forEach(line => {{
+                    if (line.startsWith('data: ')) {{
+                        const data = line.substring(6);
+                        if (data === '[DONE]') {{
+                            formattedOutput += '\\n✅ Stream completed\\n';
+                            if (fullMessage) {{
+                                formattedOutput += '\\n📝 Full message:\\n' + fullMessage;
+                            }}
+                        }} else {{
+                            try {{
+                                const json = JSON.parse(data);
+                                if (json.choices && json.choices[0].delta && json.choices[0].delta.content) {{
+                                    fullMessage += json.choices[0].delta.content;
+                                }}
+                            }} catch (e) {{
+                                // Not JSON, show as-is
+                            }}
+                        }}
+                    }}
+                }});
+                
+                return formattedOutput || text;
+            }}
+            </script>
         </head>
         <body>
             <div id="swagger-ui"></div>
@@ -923,20 +966,59 @@ async def custom_swagger_ui_html():
                     SwaggerUIBundle.presets.apis,
                     SwaggerUIBundle.SwaggerUIStandalonePreset
                 ],
+                plugins: [
+                    SwaggerUIBundle.plugins.DownloadUrl
+                ],
                 layout: "BaseLayout",
                 deepLinking: true,
                 showExtensions: true,
                 showCommonExtensions: true,
                 tryItOutEnabled: true,
                 supportedSubmitMethods: ['get', 'post', 'put', 'delete', 'patch'],
+                validatorUrl: null,
                 onComplete: function() {{
+                    // Remove models section
+                    const modelsSection = document.querySelector('.models');
+                    if (modelsSection) modelsSection.style.display = 'none';
+                    
                     // Mark streaming endpoints
                     document.querySelectorAll('.opblock').forEach(block => {{
                         const path = block.getAttribute('data-path');
-                        if (path && (path.includes('/conversation') || path.includes('/test'))) {{
+                        if (path && (path.includes('/conversation') || path.includes('/test') || path.includes('stream'))) {{
                             block.classList.add('streaming-endpoint');
                         }}
                     }});
+                    
+                    // Format SSE responses
+                    const observer = new MutationObserver(function(mutations) {{
+                        mutations.forEach(function(mutation) {{
+                            if (mutation.type === 'childList') {{
+                                const responseBodies = document.querySelectorAll('.response-body pre');
+                                responseBodies.forEach(pre => {{
+                                    if (pre.textContent.includes('data:') && pre.textContent.includes('chat.completion.chunk')) {{
+                                        // This is an SSE response, format it nicely
+                                        const formatted = formatSSEResponse(pre.textContent);
+                                        if (formatted !== pre.textContent) {{
+                                            pre.textContent = formatted;
+                                            pre.style.whiteSpace = 'pre-wrap';
+                                        }}
+                                    }}
+                                }});
+                            }}
+                        }});
+                    }});
+                    
+                    observer.observe(document.body, {{
+                        childList: true,
+                        subtree: true
+                    }});
+                }},
+                responseInterceptor: function(response) {{
+                    // Clean up streaming responses for display
+                    if (response && response.text && response.text.includes('data:')) {{
+                        console.log('Streaming response detected');
+                    }}
+                    return response;
                 }}
             }})
             window.ui = ui
@@ -7849,45 +7931,89 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
                 logging.info(f"Released thread lock for session {session}")
             except Exception as release_e:
                 logging.error(f"Error releasing thread lock: {release_e}")
-@app.get("/conversation",
-         summary="Stream Chat Messages",
-         description="Chat with AI using Server-Sent Events (SSE) for real-time streaming responses.",
-         tags=["Chat Operations"],
-         response_class=StreamingResponse)
+@app.api_route("/conversation",
+               methods=["GET", "POST"],
+               summary="Stream Chat Messages",
+               description="Chat with AI using Server-Sent Events (SSE) for real-time streaming responses. Use POST method to include files.",
+               tags=["Chat Operations"],
+               response_class=StreamingResponse)
 async def conversation(
+    request: Request,
+    # Query parameters for GET requests
     session: Optional[str] = Query(None, description="Session ID from /initiate-chat"),
     prompt: Optional[str] = Query(None, description="User message"),
     assistant: Optional[str] = Query(None, description="Assistant ID"),
     context: Optional[str] = Query(None, description="Additional context for stateless mode"),
-    files: Optional[List[UploadFile]] = File(None, description="Multiple files to analyze with the query")
+    # Form parameters for POST requests (only used when method is POST)
+    session_form: Optional[str] = Form(None, description="Session ID from /initiate-chat"),
+    prompt_form: Optional[str] = Form(None, description="User message"),
+    assistant_form: Optional[str] = Form(None, description="Assistant ID"),
+    context_form: Optional[str] = Form(None, description="Additional context for stateless mode"),
+    files: Optional[List[UploadFile]] = File(None, description="Multiple files to analyze with the query (POST only)")
 ):
     """
     Handles conversation queries with streaming response.
     Can operate in two modes:
     1. Stateful: With session and assistant IDs (existing behavior)
     2. Stateless: When context is provided, uses completions API with intelligent context handling
+    
+    Methods:
+    - GET: For simple text queries without files
+    - POST: For queries with file uploads
     """
+    if request.method == "POST":
+        # Use form data for POST requests
+        session = session_form or session
+        prompt = prompt_form or prompt
+        assistant = assistant_form or assistant
+        context = context_form or context
+    else:
+        # For GET requests, files will be None (can't upload files via GET)
+        files = None
     return await process_conversation(session, prompt, assistant, stream_output=True, context=context, files=files)
 
-@app.get("/chat",
-         response_model=ChatResponse,
-         summary="Chat (Non-Streaming)",
-         description="Chat with AI and receive complete responses. Use for simpler integrations.",
-         tags=["Chat Operations"])
+@app.api_route("/chat",
+               methods=["GET", "POST"],
+               response_model=ChatResponse,
+               summary="Chat (Non-Streaming)",
+               description="Chat with AI and receive complete responses. Use POST method to include files.",
+               tags=["Chat Operations"])
 async def chat(
+    request: Request,
+    # Query parameters for GET requests
     session: Optional[str] = Query(None, description="Session ID"),
     prompt: Optional[str] = Query(None, description="User message"),
     assistant: Optional[str] = Query(None, description="Assistant ID"),
     context: Optional[str] = Query(None, description="Additional context"),
-    files: Optional[List[UploadFile]] = File(None, description="Multiple files to analyze with the query")
+    # Form parameters for POST requests
+    session_form: Optional[str] = Form(None, description="Session ID"),
+    prompt_form: Optional[str] = Form(None, description="User message"),
+    assistant_form: Optional[str] = Form(None, description="Assistant ID"),
+    context_form: Optional[str] = Form(None, description="Additional context"),
+    files: Optional[List[UploadFile]] = File(None, description="Multiple files to analyze with the query (POST only)")
 ):
-    """Get complete chat responses without streaming.
-    File Support:
+    """
+    Get complete chat responses without streaming.
+    
+    Methods:
+    - GET: For simple text queries without files
+    - POST: For queries with file uploads
+    
+    File Support (POST only):
     - Upload multiple files for analysis
     - Supports documents, spreadsheets, PDFs, and more
     - AI will reference specific files and provide detailed analysis
     - Ideal for document comparison, data analysis, and content extraction
     """
+    if request.method == "POST":
+        # Use form data for POST requests
+        session = session_form or session
+        prompt = prompt_form or prompt
+        assistant = assistant_form or assistant
+        context = context_form or context
+    else:
+        # For GET requests, files will be None
+        files = None
     return await process_conversation(session, prompt, assistant, stream_output=False, context=context, files=files)
 def extract_text_from_file(file_content: bytes, filename: str) -> str:
     """
@@ -10055,12 +10181,26 @@ async def comprehensive_health_check():
     )
 
 @app.post("/test-comprehensive",
-          summary="Comprehensive Load Test (Streaming)",
-          description="Run comprehensive load and scaling tests with streaming updates.",
+          summary="Run Comprehensive System Tests",
+          description="""
+          Run comprehensive load and scaling tests with real-time streaming updates.
+          
+          **⚡ STREAMING ENDPOINT** - Returns results via Server-Sent Events (SSE)
+          
+          Test modes available:
+          - `all`: Run all test suites
+          - `long_thread`: Test thread capacity limits
+          - `concurrent`: Test concurrent user handling
+          - `same_thread`: Test thread locking mechanisms
+          - `scaling`: Test system scaling capabilities
+          - `tools`: Test AI tool functionality
+          
+          Results are streamed in real-time as tests execute.
+          """,
           tags=["System"],
           response_class=StreamingResponse)
 async def comprehensive_system_test(
-    test_mode: str = Form("all", description="Test mode", enum=["all", "long_thread", "concurrent", "same_thread", "run_consistency", "scaling", "tools"]),
+    test_mode: str = Form("all", description="Test mode", enum=["all", "long_thread", "concurrent", "same_thread", "scaling", "tools"]),
     test_duration: int = Form(60, ge=10, le=300, description="Test duration in seconds"),
     concurrent_users: int = Form(5, ge=1, le=20, description="Number of concurrent users"),
     messages_per_thread: int = Form(60, ge=10, le=200, description="Messages for long thread test"),
