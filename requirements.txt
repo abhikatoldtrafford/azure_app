@@ -30,6 +30,16 @@ chardet>=5.0.0
 beautifulsoup4>=4.12.0
 markdown2>=2.4.0
 
+# Document extraction packages actually used in the code
+unstructured>=0.10.0
+unstructured[all-docs]>=0.10.0
+python-docx>=0.8.11      # Used in _extract_docx_fallback
+PyPDF2>=3.0.0           # Used in _extract_pdf_fallback
+pdfplumber>=0.9.0       # Used in _extract_pdf_fallback
+python-pptx>=0.6.21     # Used in _extract_pptx_fallback
+html2text>=2020.1.16    # Used in _extract_html_fallback
+markdown>=3.4.0         # Used in _extract_markdown_fallback
+
 # Visualization (optional but recommended)
 matplotlib>=3.7.0
 seaborn>=0.13.0
@@ -37,9 +47,6 @@ plotly>=5.18.0
 wordcloud>=1.9.0
 kaleido>=0.2.1
 
-# REMOVED:
-# - tables (invalid package name)
-# - xhtml2pdf (not used in simplified version)
 
 # NOTE: Azure packages (azure-identity, azure-ai-ml, azureml-inference-server-http)
 # are kept for Azure App Service deployment compatibility even though not
