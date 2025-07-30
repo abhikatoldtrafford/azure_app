@@ -1,15 +1,14 @@
 import logging
 import threading
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Query, Request, Response, Path
-from fastapi.responses import JSONResponse, StreamingResponse, FileResponse, HTMLResponse, Response
+from fastapi.responses import JSONResponse, StreamingResponse, FileResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFile
+from fastapi.staticfiles import StaticFiles  # <- Fixed: StaticFiles (plural, not StaticFile)
 from pydantic import BaseModel, Field
-
 from openai import AzureOpenAI
 from typing import Optional, List, Dict, Any, Tuple, AsyncGenerator, Union
-
-import os, io
+import os
+import io
 from datetime import datetime
 import time
 import base64
@@ -25,8 +24,6 @@ import shutil
 import uuid
 import tempfile
 import platform
-from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any, Union
 # Document processing
 from docx import Document
 from docx.shared import Inches, Pt, RGBColor
