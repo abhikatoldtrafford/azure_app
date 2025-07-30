@@ -1105,56 +1105,109 @@ def custom_openapi():
                             # Check if this is a file-related field
                             is_file_field = False
                             
-                            # Handle different schema structures
-                            if isinstance(prop_value, dict):
-                                # Check for anyOf with array type (optional array of files)
+                            # Enhanced file field detection
+                            if prop_name in ["file", "files"]:
+                                is_file_field = True
+                            elif isinstance(prop_value, dict):
+                                # Check anyOf structure for file fields
                                 if "anyOf" in prop_value:
-                                    for option in prop_value["anyOf"]:
-                                        if isinstance(option, dict) and option.get("type") == "array":
-                                            items = option.get("items", {})
-                                            if "$ref" in items and "UploadFile" in items["$ref"]:
+                                    for option in prop_value.get("anyOf", []):
+                                        if isinstance(option, dict):
+                                            # Check for binary format
+                                            if option.get("format") == "binary":
                                                 is_file_field = True
-                                                # Optional array of files
-                                                new_properties[prop_name] = {
-                                                    "type": "array",
-                                                    "items": {
-                                                        "type": "string",
-                                                        "format": "binary"
-                                                    },
-                                                    "description": prop_value.get("description", "Upload files")
-                                                }
                                                 break
-                                
-                                # Check for array with file items
-                                elif prop_value.get("type") == "array":
-                                    items = prop_value.get("items", {})
-                                    if "$ref" in items and "UploadFile" in items["$ref"]:
-                                        is_file_field = True
-                                        # Required array of files
-                                        new_properties[prop_name] = {
-                                            "type": "array",
-                                            "items": {
-                                                "type": "string",
-                                                "format": "binary"
-                                            },
-                                            "description": prop_value.get("description", "Upload files")
-                                        }
-                                
-                                # Check for single file upload
-                                elif "$ref" in prop_value and "UploadFile" in prop_value["$ref"]:
-                                    is_file_field = True
-                                    # Single file
+                                            # Check for array of binaries
+                                            if option.get("type") == "array":
+                                                items = option.get("items", {})
+                                                if items.get("format") == "binary":
+                                                    is_file_field = True
+                                                    break
+                                            # Check for UploadFile type reference
+                                            if "$ref" in option and "UploadFile" in option["$ref"]:
+                                                is_file_field = True
+                                                break
+                            
+                            # Handle file fields
+                            if is_file_field:
+                                if prop_name == "file":
+                                    # Single file upload
                                     new_properties[prop_name] = {
                                         "type": "string",
                                         "format": "binary",
-                                        "description": prop_value.get("description", "Upload file")
+                                        "description": prop_value.get("description", "File to upload")
                                     }
-                            
-                            # If not a file field, keep original
-                            if not is_file_field:
-                                new_properties[prop_name] = prop_value
+                                elif prop_name == "files":
+                                    # Multiple file upload
+                                    new_properties[prop_name] = {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string",
+                                            "format": "binary"
+                                        },
+                                        "description": prop_value.get("description", "Files to upload")
+                                    }
+                            else:
+                                # Handle non-file fields - clean up anyOf structures
+                                if isinstance(prop_value, dict) and "anyOf" in prop_value:
+                                    # Extract base type and properties
+                                    base_type = None
+                                    base_props = {}
+                                    description = prop_value.get("description", "")
+                                    title = prop_value.get("title", "")
+                                    
+                                    # Analyze anyOf options
+                                    for option in prop_value["anyOf"]:
+                                        if isinstance(option, dict) and option.get("type") != "null":
+                                            base_type = option.get("type")
+                                            # Copy all properties except type
+                                            for key, value in option.items():
+                                                if key not in ["type", "description", "title"]:
+                                                    base_props[key] = value
+                                            break
+                                    
+                                    if base_type:
+                                        # Reconstruct cleaner schema
+                                        new_prop = {"type": base_type}
+                                        new_prop.update(base_props)
+                                        
+                                        # Add metadata
+                                        if description:
+                                            new_prop["description"] = description
+                                        if title:
+                                            new_prop["title"] = title
+                                        
+                                        # Set appropriate defaults based on field name and type
+                                        if "default" not in new_prop:
+                                            # Special handling for specific fields
+                                            if prop_name == "temperature":
+                                                new_prop["default"] = 0.7
+                                            elif prop_name == "max_tokens":
+                                                new_prop["default"] = 4096
+                                            elif prop_name == "max_retries":
+                                                new_prop["default"] = 3
+                                            elif prop_name == "rows_to_generate":
+                                                new_prop["default"] = 30
+                                            elif prop_name == "model":
+                                                new_prop["default"] = "gpt-4o-mini"
+                                            elif base_type == "string":
+                                                new_prop["default"] = ""
+                                            elif base_type == "integer":
+                                                new_prop["default"] = 0
+                                            elif base_type == "number":
+                                                new_prop["default"] = 0.0
+                                            elif base_type == "boolean":
+                                                new_prop["default"] = False
+                                        
+                                        new_properties[prop_name] = new_prop
+                                    else:
+                                        # Fallback if we can't determine type
+                                        new_properties[prop_name] = prop_value
+                                else:
+                                    # Keep simple types as-is
+                                    new_properties[prop_name] = prop_value
                         
-                        # Update the schema with fixed properties
+                        # Update schema with fixed properties
                         schema["properties"] = new_properties
                         
                         # Also check if there are required fields that need adjustment
@@ -1162,7 +1215,7 @@ def custom_openapi():
                             # Keep required fields as is - the schema already handles this correctly
                             pass
     
-    # Add enhanced streaming response documentation
+    # Add enhanced streaming response documentation (PRESERVED FROM ORIGINAL)
     streaming_paths = ["/conversation", "/test-comprehensive"]
     
     for path in streaming_paths:
@@ -1190,7 +1243,7 @@ def custom_openapi():
                         }
                     }
     
-    # Add detailed examples for conversation endpoint
+    # Add detailed examples for conversation endpoint (PRESERVED FROM ORIGINAL)
     conversation_endpoints = ["/conversation", "/chat"]
     for endpoint in conversation_endpoints:
         if endpoint in openapi_schema.get("paths", {}):
@@ -1235,6 +1288,7 @@ def custom_openapi():
 # Override the default OpenAPI function
 app.openapi = custom_openapi
 # Serve custom Swagger UI with our CSS
+
 @app.get("/docs", include_in_schema=False)
 async def custom_swagger_ui_html():
     """
@@ -2682,9 +2736,30 @@ data: [DONE]
         """,
         status_code=200
     )
+async def validate_file_uploads(files: Optional[List[UploadFile]]) -> Optional[List[UploadFile]]:
+    """Validate and clean file uploads from form data."""
+    if not files:
+        return None
+    
+    valid_files = []
+    for file in files:
+        # Skip invalid entries (empty strings from Swagger UI)
+        if not file or not hasattr(file, 'filename'):
+            continue
+            
+        # Skip files with empty or whitespace-only names
+        if not file.filename or not file.filename.strip():
+            continue
+            
+        # This is a valid file
+        valid_files.append(file)
+    
+    return valid_files if valid_files else None
+
 # Serve custom ReDoc
 @app.get("/redoc", include_in_schema=False)
 async def redoc_html():
+    """Serve ReDoc with enhanced dark mode theme"""
     return HTMLResponse(
         content=f"""
         <!DOCTYPE html>
@@ -2693,17 +2768,465 @@ async def redoc_html():
             <title>{app.title} - ReDoc</title>
             <meta charset="utf-8"/>
             <meta name="viewport" content="width=device-width, initial-scale=1">
+            <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
             <style>
-                body {{ margin: 0; padding: 0; background: #0f0f0f; }}
-                #redoc-container {{ background: #0f0f0f; }}
+                /* Base styles */
+                body {{
+                    margin: 0;
+                    padding: 0;
+                    background: #0a0a0a;
+                    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                }}
+                
+                /* ReDoc container */
+                #redoc-container {{
+                    background: #0a0a0a;
+                }}
+                
+                /* Custom scrollbar */
+                ::-webkit-scrollbar {{
+                    width: 12px;
+                    height: 12px;
+                }}
+                
+                ::-webkit-scrollbar-track {{
+                    background: rgba(255, 255, 255, 0.05);
+                    border-radius: 6px;
+                }}
+                
+                ::-webkit-scrollbar-thumb {{
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    border-radius: 6px;
+                    border: 2px solid #0a0a0a;
+                }}
+                
+                ::-webkit-scrollbar-thumb:hover {{
+                    background: linear-gradient(135deg, #764ba2 0%, #f093fb 100%);
+                }}
+                
+                /* Enhanced dark mode overrides */
+                .menu-content {{
+                    background: #0f0f0f !important;
+                    border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+                }}
+                
+                /* API info section */
+                .api-info h1 {{
+                    background: linear-gradient(135deg, #667eea 0%, #f093fb 100%);
+                    -webkit-background-clip: text;
+                    -webkit-text-fill-color: transparent;
+                    background-clip: text;
+                    font-weight: 800;
+                    letter-spacing: -0.02em;
+                }}
+                
+                /* Menu items */
+                .menu-item-depth-0 > .menu-item-header {{
+                    background: rgba(102, 126, 234, 0.08) !important;
+                    border-radius: 8px;
+                    margin: 4px 8px;
+                    transition: all 0.2s ease;
+                }}
+                
+                .menu-item-depth-0 > .menu-item-header:hover {{
+                    background: rgba(102, 126, 234, 0.15) !important;
+                    transform: translateX(2px);
+                }}
+                
+                .menu-item.active > .menu-item-header {{
+                    background: linear-gradient(135deg, rgba(102, 126, 234, 0.2) 0%, rgba(168, 85, 247, 0.2) 100%) !important;
+                    border-left: 3px solid #667eea !important;
+                }}
+                
+                /* Operation blocks */
+                .operation-type {{
+                    border-radius: 6px !important;
+                    font-weight: 700 !important;
+                    padding: 4px 12px !important;
+                    font-size: 12px !important;
+                    text-transform: uppercase !important;
+                    letter-spacing: 0.05em !important;
+                }}
+                
+                /* HTTP method colors with gradients */
+                .get .operation-type {{
+                    background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+                    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3) !important;
+                }}
+                
+                .post .operation-type {{
+                    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
+                    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3) !important;
+                }}
+                
+                .put .operation-type {{
+                    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%) !important;
+                    box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3) !important;
+                }}
+                
+                .delete .operation-type {{
+                    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
+                    box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3) !important;
+                }}
+                
+                /* Code blocks */
+                pre {{
+                    background: #0d1117 !important;
+                    border: 1px solid rgba(102, 126, 234, 0.2) !important;
+                    border-radius: 10px !important;
+                    padding: 16px !important;
+                    font-family: 'JetBrains Mono', 'Monaco', monospace !important;
+                    font-size: 13px !important;
+                    line-height: 1.6 !important;
+                    box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+                }}
+                
+                code {{
+                    font-family: 'JetBrains Mono', 'Monaco', monospace !important;
+                    background: rgba(102, 126, 234, 0.15) !important;
+                    padding: 2px 6px !important;
+                    border-radius: 4px !important;
+                    font-size: 13px !important;
+                }}
+                
+                /* Response examples */
+                .responses-wrapper {{
+                    background: rgba(255, 255, 255, 0.02) !important;
+                    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+                    border-radius: 12px !important;
+                    padding: 16px !important;
+                    margin-top: 16px !important;
+                }}
+                
+                /* Status codes */
+                .response-code {{
+                    font-weight: 700 !important;
+                    padding: 4px 12px !important;
+                    border-radius: 20px !important;
+                    font-size: 13px !important;
+                }}
+                
+                .response-code-2xx {{
+                    background: rgba(16, 185, 129, 0.2) !important;
+                    color: #10b981 !important;
+                    box-shadow: 0 0 12px rgba(16, 185, 129, 0.3) !important;
+                }}
+                
+                .response-code-4xx {{
+                    background: rgba(245, 158, 11, 0.2) !important;
+                    color: #f59e0b !important;
+                    box-shadow: 0 0 12px rgba(245, 158, 11, 0.3) !important;
+                }}
+                
+                .response-code-5xx {{
+                    background: rgba(239, 68, 68, 0.2) !important;
+                    color: #ef4444 !important;
+                    box-shadow: 0 0 12px rgba(239, 68, 68, 0.3) !important;
+                }}
+                
+                /* Parameters table */
+                table {{
+                    background: rgba(255, 255, 255, 0.03) !important;
+                    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+                    border-radius: 10px !important;
+                    overflow: hidden !important;
+                }}
+                
+                th {{
+                    background: rgba(102, 126, 234, 0.1) !important;
+                    font-weight: 600 !important;
+                    text-transform: uppercase !important;
+                    font-size: 12px !important;
+                    letter-spacing: 0.05em !important;
+                    color: #a5b4fc !important;
+                }}
+                
+                td {{
+                    border-color: rgba(255, 255, 255, 0.06) !important;
+                }}
+                
+                tr:hover {{
+                    background: rgba(102, 126, 234, 0.05) !important;
+                }}
+                
+                /* Badges and labels */
+                .param-required {{
+                    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
+                    color: white !important;
+                    padding: 2px 8px !important;
+                    border-radius: 12px !important;
+                    font-size: 11px !important;
+                    font-weight: 700 !important;
+                    text-transform: uppercase !important;
+                    letter-spacing: 0.05em !important;
+                }}
+                
+                .param-type {{
+                    color: #a5b4fc !important;
+                    font-family: 'JetBrains Mono', monospace !important;
+                    font-size: 12px !important;
+                    background: rgba(165, 180, 252, 0.1) !important;
+                    padding: 2px 8px !important;
+                    border-radius: 4px !important;
+                }}
+                
+                /* Try it out button */
+                button {{
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+                    border: none !important;
+                    border-radius: 8px !important;
+                    padding: 8px 20px !important;
+                    font-weight: 600 !important;
+                    transition: all 0.3s ease !important;
+                    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3) !important;
+                }}
+                
+                button:hover {{
+                    transform: translateY(-2px) !important;
+                    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4) !important;
+                }}
+                
+                /* Search box */
+                .search-box input {{
+                    background: rgba(255, 255, 255, 0.05) !important;
+                    border: 1px solid rgba(102, 126, 234, 0.3) !important;
+                    border-radius: 8px !important;
+                    padding: 10px 16px !important;
+                    color: white !important;
+                    font-size: 14px !important;
+                    transition: all 0.3s ease !important;
+                }}
+                
+                .search-box input:focus {{
+                    background: rgba(255, 255, 255, 0.08) !important;
+                    border-color: #667eea !important;
+                    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2) !important;
+                }}
+                
+                /* Loading animation */
+                .loading:before {{
+                    border-color: #667eea transparent #667eea transparent !important;
+                }}
+                
+                /* Section headers */
+                h2, h3, h4 {{
+                    color: #e0e7ff !important;
+                    font-weight: 700 !important;
+                    letter-spacing: -0.02em !important;
+                }}
+                
+                /* Links */
+                a {{
+                    color: #a5b4fc !important;
+                    text-decoration: none !important;
+                    transition: color 0.2s ease !important;
+                }}
+                
+                a:hover {{
+                    color: #c7d2fe !important;
+                    text-decoration: underline !important;
+                }}
+                
+                /* Right panel background */
+                .sc-hKgILt {{
+                    background: #0d0d0d !important;
+                }}
+                
+                /* Operation summary */
+                .sc-eCssSg {{
+                    color: #e0e7ff !important;
+                    font-size: 16px !important;
+                    font-weight: 600 !important;
+                }}
+                
+                /* Description text */
+                .sc-jSgupP {{
+                    color: #a3a3a3 !important;
+                    line-height: 1.6 !important;
+                }}
+                
+                /* Make streaming endpoints stand out */
+                [data-section-id*="conversation"] .menu-item-header,
+                [data-section-id*="test-comprehensive"] .menu-item-header {{
+                    position: relative;
+                    overflow: hidden;
+                }}
+                
+                [data-section-id*="conversation"] .menu-item-header:after,
+                [data-section-id*="test-comprehensive"] .menu-item-header:after {{
+                    content: "⚡";
+                    position: absolute;
+                    right: 16px;
+                    top: 50%;
+                    transform: translateY(-50%);
+                    font-size: 16px;
+                    animation: pulse 2s ease-in-out infinite;
+                }}
+                
+                @keyframes pulse {{
+                    0%, 100% {{ opacity: 0.6; }}
+                    50% {{ opacity: 1; }}
+                }}
+                
+                /* Enhanced tag styling */
+                .sc-dlfnbm {{
+                    background: linear-gradient(135deg, rgba(102, 126, 234, 0.15) 0%, rgba(168, 85, 247, 0.15) 100%) !important;
+                    border: 1px solid rgba(102, 126, 234, 0.3) !important;
+                    border-radius: 16px !important;
+                    padding: 4px 12px !important;
+                    font-size: 12px !important;
+                    font-weight: 600 !important;
+                    color: #a5b4fc !important;
+                }}
             </style>
         </head>
         <body>
             <div id="redoc-container"></div>
-            <redoc spec-url="/openapi.json" 
-                   theme='{{"colors": {{"primary": {{"main": "#3b82f6"}}, "success": {{"main": "#10b981"}}, "warning": {{"main": "#f59e0b"}}, "error": {{"main": "#ef4444"}}, "text": {{"primary": "#ffffff", "secondary": "#a3a3a3"}}, "background": {{"primary": "#0f0f0f", "secondary": "#1a1a1a"}}}} , "typography": {{"fontSize": "14px", "code": {{"backgroundColor": "#262626", "color": "#3b82f6"}}}}, "rightPanel": {{"backgroundColor": "#1a1a1a"}}}}'
-                   options='{{"scrollYOffset": 50, "hideDownloadButton": false, "expandResponses": "200,201", "requiredPropsFirst": true}}'></redoc>
-            <script src="https://cdn.jsdelivr.net/npm/redoc@next/bundles/redoc.standalone.js"></script>
+            <script src="https://cdn.jsdelivr.net/npm/redoc@latest/bundles/redoc.standalone.js"></script>
+            <script>
+                // Initialize ReDoc with enhanced dark theme
+                Redoc.init('/openapi.json', {{
+                    theme: {{
+                        colors: {{
+                            primary: {{
+                                main: '#667eea',
+                                light: '#a5b4fc',
+                                dark: '#4c1d95',
+                                contrastText: '#ffffff'
+                            }},
+                            success: {{
+                                main: '#10b981',
+                                light: '#6ee7b7',
+                                dark: '#047857',
+                                contrastText: '#ffffff'
+                            }},
+                            warning: {{
+                                main: '#f59e0b',
+                                light: '#fcd34d',
+                                dark: '#b45309',
+                                contrastText: '#ffffff'
+                            }},
+                            error: {{
+                                main: '#ef4444',
+                                light: '#fca5a5',
+                                dark: '#991b1b',
+                                contrastText: '#ffffff'
+                            }},
+                            text: {{
+                                primary: '#e0e7ff',
+                                secondary: '#a3a3a3',
+                                disabled: '#6b7280',
+                                hint: '#9ca3af'
+                            }},
+                            background: {{
+                                primary: '#0a0a0a',
+                                secondary: '#0f0f0f',
+                                paper: '#1a1a1a'
+                            }},
+                            border: {{
+                                light: 'rgba(255, 255, 255, 0.08)',
+                                dark: 'rgba(255, 255, 255, 0.04)'
+                            }}
+                        }},
+                        typography: {{
+                            fontSize: '15px',
+                            fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+                            fontWeightLight: 300,
+                            fontWeightRegular: 400,
+                            fontWeightMedium: 500,
+                            fontWeightBold: 700,
+                            headings: {{
+                                fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+                                fontWeight: 700,
+                                lineHeight: 1.2
+                            }},
+                            code: {{
+                                fontSize: '13px',
+                                fontFamily: '"JetBrains Mono", "Monaco", "Consolas", monospace',
+                                lineHeight: 1.6,
+                                fontWeight: 500,
+                                color: '#a5b4fc',
+                                backgroundColor: '#0d1117',
+                                wrap: true
+                            }},
+                            links: {{
+                                color: '#a5b4fc',
+                                hover: '#c7d2fe',
+                                visited: '#a5b4fc'
+                            }}
+                        }},
+                        sidebar: {{
+                            width: '280px',
+                            backgroundColor: '#0f0f0f',
+                            textColor: '#e0e7ff',
+                            activeTextColor: '#ffffff',
+                            groupItems: {{
+                                textTransform: 'uppercase',
+                                fontWeight: 700,
+                                fontSize: '12px',
+                                letterSpacing: '0.05em'
+                            }},
+                            level1Items: {{
+                                textTransform: 'none',
+                                fontWeight: 600,
+                                fontSize: '14px'
+                            }},
+                            arrow: {{
+                                size: '12px',
+                                color: '#a5b4fc'
+                            }}
+                        }},
+                        rightPanel: {{
+                            backgroundColor: '#0d0d0d',
+                            width: '45%',
+                            textColor: '#e0e7ff'
+                        }},
+                        schema: {{
+                            nestedBackground: 'rgba(102, 126, 234, 0.05)',
+                            linesColor: 'rgba(102, 126, 234, 0.2)',
+                            defaultDetailsWidth: '75%',
+                            typeNameColor: '#a5b4fc',
+                            typeTitleColor: '#e0e7ff',
+                            requireLabelColor: '#ef4444',
+                            labelsTextSize: '12px',
+                            nestingSpacing: '16px',
+                            arrow: {{
+                                size: '10px',
+                                color: '#a5b4fc'
+                            }}
+                        }},
+                        codeBlock: {{
+                            backgroundColor: '#0d1117',
+                            borderRadius: '10px',
+                            border: '1px solid rgba(102, 126, 234, 0.2)'
+                        }}
+                    }},
+                    options: {{
+                        scrollYOffset: 0,
+                        hideDownloadButton: false,
+                        expandResponses: '200,201',
+                        requiredPropsFirst: true,
+                        sortPropsAlphabetically: false,
+                        showExtensions: true,
+                        pathInMiddlePanel: true,
+                        hideRequestPayloadSample: false,
+                        noAutoAuth: false,
+                        onlyRequiredInSamples: false,
+                        theme: {{
+                            spacing: {{
+                                unit: 4,
+                                sectionHorizontal: 32,
+                                sectionVertical: 32
+                            }}
+                        }},
+                        disableSearch: false,
+                        hideLoading: false,
+                        nativeScrollbars: false,
+                        showObjectSchemaExamples: true,
+                        unstable_ignoreMimeParameters: false
+                    }}
+                }}, document.getElementById('redoc-container'));
+            </script>
         </body>
         </html>
         """
@@ -7461,6 +7984,8 @@ async def process_conversation(
     When context is provided, it bypasses thread-based conversation and uses
     completions API directly with intelligent context processing.
     """
+    files = await validate_file_uploads(files)
+    files = None if not files else files
     client = create_client()
     # Log the operation mode
     if context is not None:
@@ -7484,6 +8009,8 @@ async def process_conversation(
         Accepts raw context string that can be JSON, plain text, or any format.
         Supports multiple file uploads with automatic text extraction.
         """
+        files = await validate_file_uploads(files)
+        files = None if not files else files
         try:
             logging.info(f"Falling back to completions API. Context: {error_context}")
             
@@ -9929,31 +10456,45 @@ def generate_file_from_response(content: str, file_type: str) -> Optional[Tuple[
 @app.post("/completion",
           response_model=CompletionResponse,
           summary="Generate AI Completion",
-          description="Generate AI-powered text completions with optional file exports in CSV, Excel, or Word formats.",
-          tags=["AI Operations"],
-          responses={
-              200: {"model": CompletionResponse, "description": "Successful completion"},
-              400: {"model": ErrorResponse, "description": "Bad request"},
-              500: {"model": ErrorResponse, "description": "Internal server error"}
-          })
-async def chat_completion(
-    request: Request,
-    prompt: str = Form(..., description="The prompt for AI completion", example="Generate a list of 10 product names"),
-    model: str = Form(default="gpt-4.1-mini", description="Model to use"),
-    temperature: float = Form(default=0.8, ge=0, le=2, description="Sampling temperature (0=deterministic, 2=creative)"),
-    max_tokens: int = Form(default=5000, ge=1, le=10000, description="Maximum tokens in response"),
+          description="""Generate AI-powered text completions with optional file exports in CSV, Excel, or Word formats.
+
+**Features:**
+- Multi-format exports (CSV, Excel, Word)
+- File context integration
+- Customizable AI behavior
+- Automatic retry logic
+
+**Output Formats:**
+- `none`: Plain text response
+- `csv`: Download link for CSV file
+- `excel`: Download link for Excel file
+- `word`: Download link for Word document
+
+**Examples:**
+1. Simple completion: Just provide a prompt
+2. Data generation: Set output_format and rows_to_generate
+3. Document analysis: Upload files with your prompt
+""",
+          tags=["AI Operations"])
+async def completion(
+    prompt: str = Form(..., description="The prompt for AI completion"),
+    model: str = Form(default="gpt-4o-mini", description="Model to use", enum=["gpt-4o-mini", "gpt-4o"]),
+    temperature: float = Form(default=0.7, ge=0, le=2, description="Sampling temperature (0=deterministic, 2=creative)"),
+    max_tokens: int = Form(default=4096, ge=1, le=10000, description="Maximum tokens in response"),
     system_message: Optional[str] = Form(default=None, description="Custom system message"),
-    output_format: Optional[str] = Form(default=None, description="Export format"),
+    output_format: Optional[str] = Form(default=None, description="Export format", enum=["none", "csv", "excel", "word"]),
     files: Optional[List[UploadFile]] = File(default=None, description="Optional files to process"),
     max_retries: int = Form(default=3, ge=1, le=5, description="Maximum retry attempts"),
     rows_to_generate: int = Form(default=30, ge=1, le=1000, description="Number of rows for CSV/Excel generation")
 ):
-
-    """
-    Enhanced generative AI completion endpoint - creates comprehensive, detailed content.
-    Uses the same structure as extract-reviews for CSV/Excel generation.
-    Returns raw text if no output_format specified.
-    """
+    """Generate AI completions with optional file context and export options."""
+    
+    # Validate files using our helper
+    files = await validate_file_uploads(files)
+    files = None if not files else files
+    # Log the request
+    logging.info(f"Completion request - Model: {model}, Format: {output_format}, Files: {len(files) if files else 0}")
+    
     client = create_client()
     
     try:
