@@ -1,11 +1,12 @@
 import logging
 import threading
-from fastapi import FastAPI, Request, UploadFile, Form, HTTPException
+from fastapi import FastAPI, Request, UploadFile, Form, HTTPException, Query, Path
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse, Response, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from openai import AzureOpenAI
-from typing import Optional, List, Dict, Any, Tuple, AsyncGenerator
+from typing import Optional, List, Dict, Any, Tuple, AsyncGenerator, Union
+from pydantic import BaseModel, Field
 import os, io
 from datetime import datetime
 import time
@@ -22,7 +23,8 @@ import shutil
 import uuid
 import tempfile
 import platform
-
+from pydantic import BaseModel, Field
+from typing import Optional, List, Dict, Any, Union
 # Document processing
 from docx import Document
 from docx.shared import Inches, Pt, RGBColor
@@ -55,7 +57,95 @@ except ImportError:
     logging.warning("Chart libraries not available. Chart generation disabled.")
 import asyncio
 from datetime import timedelta
+# Pydantic models for request/response documentation
+# Azure OpenAI client configuration
+AZURE_ENDPOINT = "https://kb-stellar.openai.azure.com/" # Replace with your endpoint if different
+AZURE_API_KEY = "bc0ba854d3644d7998a5034af62d03ce" # Replace with your key if different
+AZURE_API_VERSION = "2024-12-01-preview"
+DOWNLOADS_DIR = "/tmp/chat_downloads"  # Use /tmp for Azure App Service
+MAX_DOWNLOAD_FILES = 10  # Keep only 10 most recent files
 
+class HealthResponse(BaseModel):
+    status: str = Field(..., example="healthy", description="Health status")
+    timestamp: str = Field(..., example="2024-01-15T10:30:00", description="Current timestamp")
+
+class HealthCheckResponse(BaseModel):
+    status: str = Field(..., example="healthy", description="Overall health status")
+    timestamp: str = Field(..., description="Check timestamp")
+    version: str = Field(..., example="1.0.0", description="API version")
+    checks: Dict[str, Any] = Field(..., description="Individual component checks")
+    endpoints_tested: Dict[str, Any] = Field(default_factory=dict, description="Endpoint test results")
+    warnings: List[str] = Field(default_factory=list, description="Warning messages")
+    errors: List[str] = Field(default_factory=list, description="Error messages")
+    health_percentage: float = Field(..., example=100.0, description="Overall health percentage")
+    execution_time_ms: float = Field(..., example=250.5, description="Check execution time in milliseconds")
+    summary: Dict[str, int] = Field(..., description="Summary of checks")
+
+class CompletionResponse(BaseModel):
+    status: str = Field(..., example="success")
+    content: str = Field(..., example="Generated content here", description="AI-generated content")
+    download_url: Optional[str] = Field(None, example="/download-files/generated_data.xlsx")
+    filename: Optional[str] = Field(None, example="generated_data.xlsx")
+    assistant_id: Optional[str] = Field(None, description="Assistant ID used")
+    response: Optional[str] = Field(None, description="Raw response text")
+
+class ErrorResponse(BaseModel):
+    status: str = Field("error", example="error")
+    message: str = Field(..., example="An error occurred", description="Error description")
+    error: Optional[str] = Field(None, description="Error details")
+    details: Optional[Dict[str, Any]] = Field(None, description="Additional error details")
+
+class ChatInitResponse(BaseModel):
+    message: str = Field(..., example="Chat initiated successfully")
+    assistant: str = Field(..., example="asst_abc123", description="Assistant ID")
+    session: str = Field(..., example="thread_xyz789", description="Thread/Session ID")
+    vector_store: str = Field(..., example="vs_def456", description="Vector store ID")
+
+class ExtractResponse(BaseModel):
+    status: str = Field(..., example="success")
+    format: str = Field(..., example="csv", description="Output format")
+    data: Optional[Union[str, List[Dict], Dict]] = Field(None, description="Extracted/generated data")
+    download_url: Optional[str] = Field(None, description="Download URL if file generated")
+    filename: Optional[str] = Field(None, description="Generated filename")
+    source_file: Optional[str] = Field(None, description="Source filename")
+    mode: str = Field(..., example="extract", description="Operation mode used")
+    result: Optional[Dict[str, Any]] = Field(None, description="Result data for JSON format")
+    message: Optional[str] = Field(None, description="Status message")
+
+class FileUploadResponse(BaseModel):
+    status: str = Field(..., example="success")
+    message: str = Field(..., example="File processed successfully")
+    filename: str = Field(..., description="Uploaded filename")
+    file_id: Optional[str] = Field(None, description="File ID in vector store")
+    content_extracted: Optional[bool] = Field(None, description="Whether content was extracted")
+    file_content: Optional[str] = Field(None, description="Extracted file content")
+    preview: Optional[str] = Field(None, description="Content preview")
+
+class ChatResponse(BaseModel):
+    response: str = Field(..., description="AI response")
+    session_id: Optional[str] = Field(None, description="Session ID")
+    message_count: Optional[int] = Field(None, description="Total messages in thread")
+
+class DownloadResponse(BaseModel):
+    status: str = Field(..., example="success")
+    download_url: str = Field(..., example="/download-files/chat_response.docx")
+    filename: str = Field(..., example="chat_response_20240115_123456.docx")
+    message: str = Field(..., example="Chat response ready for download")
+    expires_in: str = Field(..., example="File will be kept for the last 10 downloads")
+
+class FileVerifyResponse(BaseModel):
+    available: bool = Field(..., description="Whether file is available")
+    filename: str = Field(..., description="File name")
+    size: Optional[int] = Field(None, description="File size in bytes")
+    mime_type: Optional[str] = Field(None, description="MIME type")
+    created: Optional[str] = Field(None, description="Creation timestamp")
+
+class TestEndpointResponse(BaseModel):
+    endpoint: str = Field(..., description="Tested endpoint")
+    timestamp: str = Field(..., description="Test timestamp")
+    test_data: Optional[str] = Field(None, description="Test data used")
+    result: Optional[Dict[str, Any]] = Field(None, description="Test result")
+    error: Optional[str] = Field(None, description="Error if test failed")
 # Thread lock manager to prevent concurrent access to the same thread
 class ThreadLockManager:
     def __init__(self):
@@ -96,7 +186,677 @@ operation_statuses = {}
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-app = FastAPI()
+# Enhanced CSS with streaming support and all modern features
+CUSTOM_SWAGGER_CSS = """
+<style>
+/* Hide default Swagger UI elements */
+.swagger-ui .topbar { display: none !important; }
+
+/* Root styling */
+body { background: #0f0f0f !important; }
+.swagger-ui { background: #0f0f0f !important; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif !important; }
+.swagger-ui .wrapper { background: #0f0f0f !important; padding: 0 20px !important; }
+
+/* Info section matching your header style */
+.swagger-ui .info {
+    background: #1a1a1a !important;
+    border: 1px solid #404040 !important;
+    border-radius: 12px !important;
+    padding: 20px !important;
+    margin-bottom: 20px !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1) !important;
+}
+
+.swagger-ui .info .title { 
+    color: #ffffff !important; 
+    font-weight: 700 !important;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    -webkit-background-clip: text !important;
+    -webkit-text-fill-color: transparent !important;
+}
+
+.swagger-ui .info .description { color: #a3a3a3 !important; line-height: 1.5 !important; }
+.swagger-ui .info a { color: #3b82f6 !important; text-decoration: none !important; }
+.swagger-ui .info a:hover { color: #2563eb !important; }
+
+/* Schemes section */
+.swagger-ui .scheme-container { 
+    background: #1a1a1a !important; 
+    border: 1px solid #404040 !important;
+    border-radius: 8px !important;
+    padding: 12px !important;
+    margin-bottom: 20px !important;
+}
+
+.swagger-ui .schemes > label { color: #a3a3a3 !important; }
+.swagger-ui .schemes select {
+    background: #262626 !important;
+    border: 1px solid #404040 !important;
+    color: #ffffff !important;
+    border-radius: 8px !important;
+    padding: 8px 12px !important;
+}
+
+/* Operation blocks - matching your section style */
+.swagger-ui .opblock {
+    background: #1a1a1a !important;
+    border: 1px solid #404040 !important;
+    border-radius: 12px !important;
+    margin-bottom: 16px !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1) !important;
+    overflow: hidden !important;
+}
+
+.swagger-ui .opblock .opblock-summary {
+    background: #262626 !important;
+    border: none !important;
+    padding: 12px 16px !important;
+    cursor: pointer !important;
+    transition: all 0.2s !important;
+}
+
+.swagger-ui .opblock .opblock-summary:hover {
+    background: #2a2a2a !important;
+    transform: translateY(-1px) !important;
+}
+
+/* Method badges exactly matching your style */
+.swagger-ui .opblock.opblock-post .opblock-summary-method { 
+    background: #007bff !important; 
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    padding: 4px 8px !important;
+    text-transform: uppercase !important;
+}
+.swagger-ui .opblock.opblock-get .opblock-summary-method { 
+    background: #28a745 !important;
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    padding: 4px 8px !important;
+    text-transform: uppercase !important;
+}
+.swagger-ui .opblock.opblock-put .opblock-summary-method { background: #ffc107 !important; }
+.swagger-ui .opblock.opblock-delete .opblock-summary-method { background: #dc3545 !important; }
+
+/* Text colors */
+.swagger-ui .opblock .opblock-summary-path { 
+    color: #ffffff !important; 
+    font-weight: 500 !important;
+    font-family: 'Monaco', 'Consolas', monospace !important;
+}
+.swagger-ui .opblock .opblock-summary-description { color: #a3a3a3 !important; }
+.swagger-ui .opblock-description-wrapper { background: #1a1a1a !important; padding: 20px !important; }
+.swagger-ui .opblock-description-wrapper p { color: #a3a3a3 !important; line-height: 1.5 !important; }
+
+/* Tags section */
+.swagger-ui .opblock-tag { 
+    color: #ffffff !important; 
+    font-size: 20px !important;
+    font-weight: 600 !important;
+    margin: 20px 0 10px 0 !important;
+}
+.swagger-ui .opblock-tag small { color: #a3a3a3 !important; font-weight: 400 !important; }
+
+/* Parameters section */
+.swagger-ui .parameters-col_description { color: #a3a3a3 !important; }
+.swagger-ui .parameter__name { color: #ffffff !important; font-weight: 500 !important; }
+.swagger-ui .parameter__type { color: #3b82f6 !important; font-family: monospace !important; }
+.swagger-ui .parameter__deprecated { color: #ef4444 !important; }
+.swagger-ui .parameter__in { color: #737373 !important; font-size: 12px !important; }
+.swagger-ui .parameter__extension { color: #3b82f6 !important; }
+
+/* Required fields */
+.swagger-ui .required { color: #ef4444 !important; font-weight: 700 !important; }
+.swagger-ui .required:after { content: " *" !important; color: #ef4444 !important; }
+
+/* Tables matching your params-table style */
+.swagger-ui table {
+    background: #1a1a1a !important;
+    color: #ffffff !important;
+    border-collapse: collapse !important;
+}
+
+.swagger-ui table thead tr th {
+    background: #262626 !important;
+    color: #3b82f6 !important;
+    border-bottom: 1px solid #404040 !important;
+    font-weight: 600 !important;
+    padding: 8px !important;
+    text-align: left !important;
+}
+
+.swagger-ui table tbody tr td {
+    background: #1a1a1a !important;
+    color: #ffffff !important;
+    border-bottom: 1px solid #404040 !important;
+    padding: 8px !important;
+}
+
+.swagger-ui table tbody tr:hover td {
+    background: #262626 !important;
+}
+
+/* Input fields matching your form-control style */
+.swagger-ui input[type=text], 
+.swagger-ui input[type=password], 
+.swagger-ui input[type=email], 
+.swagger-ui input[type=file],
+.swagger-ui input[type=number],
+.swagger-ui textarea, 
+.swagger-ui select {
+    background: #262626 !important;
+    border: 1px solid #404040 !important;
+    color: #ffffff !important;
+    border-radius: 8px !important;
+    padding: 10px 14px !important;
+    font-size: 14px !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    transition: all 0.2s !important;
+}
+
+.swagger-ui input[type=text]:focus,
+.swagger-ui input[type=number]:focus,
+.swagger-ui textarea:focus,
+.swagger-ui select:focus {
+    border-color: #3b82f6 !important;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1) !important;
+    outline: none !important;
+}
+
+/* Buttons matching your exact style */
+.swagger-ui .btn {
+    background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%) !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 8px !important;
+    padding: 10px 20px !important;
+    font-weight: 500 !important;
+    font-size: 14px !important;
+    cursor: pointer !important;
+    transition: all 0.2s !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+}
+
+.swagger-ui .btn:hover {
+    opacity: 0.9 !important;
+    transform: translateY(-1px) !important;
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3) !important;
+}
+
+.swagger-ui .btn:active {
+    transform: translateY(0) !important;
+}
+
+.swagger-ui .btn.cancel {
+    background: #262626 !important;
+    border: 1px solid #404040 !important;
+}
+
+.swagger-ui .btn.cancel:hover {
+    background: #303030 !important;
+    border-color: #525252 !important;
+}
+
+.swagger-ui .btn.execute {
+    background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%) !important;
+}
+
+.swagger-ui .btn.authorize {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+}
+
+/* Try it out button special styling */
+.swagger-ui .try-out__btn {
+    background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%) !important;
+    color: white !important;
+    border: none !important;
+}
+
+.swagger-ui .try-out__btn.cancel {
+    background: #262626 !important;
+    border: 1px solid #404040 !important;
+}
+
+/* Response section */
+.swagger-ui .responses-wrapper {
+    background: #1a1a1a !important;
+    border: 1px solid #404040 !important;
+    border-radius: 8px !important;
+    padding: 16px !important;
+    margin-top: 16px !important;
+}
+
+.swagger-ui .responses-inner { background: transparent !important; }
+.swagger-ui .response-col_status { color: #ffffff !important; font-weight: 500 !important; }
+.swagger-ui .response-col_description { color: #a3a3a3 !important; }
+
+/* Response codes with proper colors */
+.swagger-ui .responses-table .response-col_status .response-code {
+    font-weight: 600 !important;
+    font-family: monospace !important;
+}
+
+.swagger-ui table.responses-table tr.response[data-code^="2"] .response-col_status {
+    color: #10b981 !important;
+}
+
+.swagger-ui table.responses-table tr.response[data-code^="4"] .response-col_status {
+    color: #f59e0b !important;
+}
+
+.swagger-ui table.responses-table tr.response[data-code^="5"] .response-col_status {
+    color: #ef4444 !important;
+}
+
+/* Code highlighting */
+.swagger-ui .highlight-code {
+    background: #0f0f0f !important;
+    border: 1px solid #404040 !important;
+    border-radius: 6px !important;
+    margin: 12px 0 !important;
+    position: relative !important;
+}
+
+.swagger-ui .highlight-code pre {
+    color: #f8f8f2 !important;
+    background: #0f0f0f !important;
+    padding: 12px !important;
+    margin: 0 !important;
+    font-family: 'Monaco', 'Consolas', monospace !important;
+    font-size: 13px !important;
+    line-height: 1.4 !important;
+    overflow-x: auto !important;
+}
+
+/* Streaming response indication */
+.swagger-ui .response-content-type.controls-accept-header select {
+    background: #262626 !important;
+    border: 1px solid #404040 !important;
+    color: #ffffff !important;
+    border-radius: 4px !important;
+}
+
+/* Loading states for streaming endpoints */
+.swagger-ui .loading-container {
+    padding: 20px !important;
+    text-align: center !important;
+    color: #a3a3a3 !important;
+}
+
+.swagger-ui .loading-container:after {
+    content: "Streaming response..." !important;
+    display: block !important;
+    margin-top: 10px !important;
+    color: #3b82f6 !important;
+    font-style: italic !important;
+}
+
+/* Model/Schema section */
+.swagger-ui .model-container {
+    background: #1a1a1a !important;
+    border: 1px solid #404040 !important;
+    border-radius: 8px !important;
+    padding: 16px !important;
+    margin: 16px 0 !important;
+}
+
+.swagger-ui .model-title { 
+    color: #ffffff !important; 
+    font-weight: 600 !important;
+    margin-bottom: 12px !important;
+}
+
+.swagger-ui .model { color: #a3a3a3 !important; }
+.swagger-ui .prop-type { color: #3b82f6 !important; font-family: monospace !important; }
+.swagger-ui .prop-format { color: #737373 !important; font-size: 12px !important; }
+
+/* Example values */
+.swagger-ui .example { 
+    background: #0f0f0f !important;
+    border: 1px solid #404040 !important;
+    border-radius: 6px !important;
+}
+
+.swagger-ui .example-value { color: #f8f8f2 !important; }
+
+/* Markdown content in descriptions */
+.swagger-ui .markdown p { 
+    color: #a3a3a3 !important; 
+    line-height: 1.5 !important;
+    margin-bottom: 12px !important;
+}
+
+.swagger-ui .markdown code {
+    background: #262626 !important;
+    color: #3b82f6 !important;
+    padding: 2px 6px !important;
+    border-radius: 4px !important;
+    font-family: monospace !important;
+    font-size: 13px !important;
+}
+
+.swagger-ui .markdown pre {
+    background: #0f0f0f !important;
+    border: 1px solid #404040 !important;
+    border-radius: 6px !important;
+    padding: 12px !important;
+    overflow-x: auto !important;
+}
+
+.swagger-ui .markdown pre code {
+    background: transparent !important;
+    padding: 0 !important;
+}
+
+.swagger-ui .markdown ul, .swagger-ui .markdown ol {
+    color: #a3a3a3 !important;
+    margin-left: 20px !important;
+    margin-bottom: 12px !important;
+}
+
+.swagger-ui .markdown li {
+    margin-bottom: 6px !important;
+    line-height: 1.5 !important;
+}
+
+/* Links */
+.swagger-ui a { color: #3b82f6 !important; text-decoration: none !important; }
+.swagger-ui a:hover { color: #2563eb !important; text-decoration: underline !important; }
+
+/* Copy button */
+.swagger-ui .copy-to-clipboard {
+    background: #262626 !important;
+    border: 1px solid #404040 !important;
+    border-radius: 4px !important;
+    padding: 4px 8px !important;
+    position: absolute !important;
+    right: 8px !important;
+    top: 8px !important;
+}
+
+.swagger-ui .copy-to-clipboard button {
+    background: transparent !important;
+    color: #a3a3a3 !important;
+    border: none !important;
+    cursor: pointer !important;
+    font-size: 12px !important;
+}
+
+.swagger-ui .copy-to-clipboard button:hover {
+    color: #ffffff !important;
+}
+
+/* File upload styling */
+.swagger-ui .file-wrapper {
+    border: 2px dashed #404040 !important;
+    background: #1a1a1a !important;
+    border-radius: 8px !important;
+    padding: 20px !important;
+    text-align: center !important;
+    transition: all 0.2s !important;
+}
+
+.swagger-ui .file-wrapper:hover {
+    border-color: #3b82f6 !important;
+    background: #262626 !important;
+}
+
+.swagger-ui .file-wrapper input[type=file] {
+    display: block !important;
+    width: 100% !important;
+    padding: 10px !important;
+}
+
+/* Error states */
+.swagger-ui .errors-wrapper {
+    background: rgba(239, 68, 68, 0.1) !important;
+    border: 1px solid #ef4444 !important;
+    border-radius: 8px !important;
+    padding: 12px !important;
+    margin: 12px 0 !important;
+}
+
+.swagger-ui .errors-wrapper .error {
+    color: #ef4444 !important;
+}
+
+/* Expand/Collapse arrows */
+.swagger-ui .arrow { 
+    fill: #a3a3a3 !important; 
+    transition: all 0.2s !important;
+}
+
+.swagger-ui .arrow:hover { fill: #ffffff !important; }
+
+/* Tab headers */
+.swagger-ui .tab li {
+    color: #a3a3a3 !important;
+    border-bottom: 2px solid transparent !important;
+    padding: 8px 16px !important;
+    cursor: pointer !important;
+    transition: all 0.2s !important;
+}
+
+.swagger-ui .tab li:hover {
+    color: #ffffff !important;
+    background: rgba(59, 130, 246, 0.1) !important;
+}
+
+.swagger-ui .tab li.active {
+    color: #ffffff !important;
+    border-bottom-color: #3b82f6 !important;
+}
+
+/* Response body section */
+.swagger-ui .response-body {
+    background: #0f0f0f !important;
+    border: 1px solid #404040 !important;
+    border-radius: 6px !important;
+    padding: 16px !important;
+    margin-top: 12px !important;
+}
+
+/* Execute button loading state */
+.swagger-ui .btn.execute.loading {
+    opacity: 0.6 !important;
+    cursor: not-allowed !important;
+}
+
+.swagger-ui .btn.execute.loading:after {
+    content: " ..." !important;
+    display: inline-block !important;
+    animation: loading-dots 1.4s infinite !important;
+}
+
+@keyframes loading-dots {
+    0% { content: " ." !important; }
+    33% { content: " .." !important; }
+    66% { content: " ..." !important; }
+}
+
+/* Scrollbar styling */
+.swagger-ui ::-webkit-scrollbar { width: 6px; height: 6px; }
+.swagger-ui ::-webkit-scrollbar-track { background: #1a1a1a; }
+.swagger-ui ::-webkit-scrollbar-thumb { background: #262626; border-radius: 3px; }
+.swagger-ui ::-webkit-scrollbar-thumb:hover { background: #404040; }
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .swagger-ui .wrapper { padding: 0 10px !important; }
+    .swagger-ui .info { padding: 16px !important; }
+    .swagger-ui .opblock { margin-bottom: 12px !important; }
+    .swagger-ui .opblock-summary { padding: 10px !important; }
+    .swagger-ui input[type=text], .swagger-ui textarea { font-size: 16px !important; }
+}
+
+/* Live update indicator for new endpoints */
+.swagger-ui .opblock.new-endpoint {
+    border: 2px solid #3b82f6 !important;
+    position: relative !important;
+}
+
+.swagger-ui .opblock.new-endpoint:before {
+    content: "NEW" !important;
+    position: absolute !important;
+    top: -10px !important;
+    right: 20px !important;
+    background: #3b82f6 !important;
+    color: white !important;
+    padding: 2px 8px !important;
+    border-radius: 4px !important;
+    font-size: 10px !important;
+    font-weight: 700 !important;
+}
+
+/* SSE/Streaming endpoint indicator */
+.swagger-ui .opblock[data-path*="conversation"] .opblock-summary:after,
+.swagger-ui .opblock[data-path*="test"] .opblock-summary:after {
+    content: "STREAMING" !important;
+    margin-left: 10px !important;
+    background: #06b6d4 !important;
+    color: white !important;
+    padding: 2px 6px !important;
+    border-radius: 4px !important;
+    font-size: 10px !important;
+    font-weight: 600 !important;
+}
+</style>
+"""
+
+app = FastAPI(
+    title="Azure Copilot v2 API",
+    description="""
+## 🚀 AI-Powered Assistant API
+
+A comprehensive FastAPI-based AI assistant service powered by Azure OpenAI.
+
+### Core Features
+- 💬 **Conversational AI** with context awareness and streaming support
+- 📊 **Data Analysis** using pandas for CSV/Excel files  
+- 📄 **Document Processing** (PDF, DOCX, TXT, HTML)
+- 🖼️ **Image Analysis** and understanding
+- 📝 **Content Generation** with export capabilities
+- 🔍 **Review Extraction** and structured data mining
+
+### Supported File Types
+- **Documents**: PDF, DOCX, DOC, TXT, MD, HTML, JSON
+- **Data**: CSV, XLSX, XLS
+- **Images**: JPG, JPEG, PNG, GIF, BMP, WEBP
+
+### Streaming Support
+Endpoints marked with **STREAMING** support Server-Sent Events (SSE) for real-time responses.
+
+### Rate Limits
+Default rate limits apply based on Azure OpenAI service quotas.
+    """,
+    version="1.0.0",
+    docs_url=None,  # We'll serve custom docs
+    redoc_url=None,  # We'll serve custom redoc
+    openapi_url="/openapi.json"
+)
+
+# Define tags for API grouping
+tags_metadata = [
+    {
+        "name": "System",
+        "description": "System health, testing, and monitoring endpoints",
+    },
+    {
+        "name": "AI Operations", 
+        "description": "Core AI completion and generation endpoints",
+    },
+    {
+        "name": "Chat Operations",
+        "description": "Session-based chat functionality with streaming support",
+    },
+    {
+        "name": "Data Processing",
+        "description": "Data extraction, generation, and analysis endpoints",
+    },
+    {
+        "name": "File Operations",
+        "description": "File upload, download, and management endpoints",
+    },
+]
+
+app.openapi_tags = tags_metadata
+
+# Serve custom Swagger UI with our CSS
+@app.get("/docs", include_in_schema=False)
+async def custom_swagger_ui_html():
+    return HTMLResponse(
+        content=f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>{app.title} - Swagger UI</title>
+            <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css">
+            {CUSTOM_SWAGGER_CSS}
+        </head>
+        <body>
+            <div id="swagger-ui"></div>
+            <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+            <script>
+            const ui = SwaggerUIBundle({{
+                url: '/openapi.json',
+                dom_id: '#swagger-ui',
+                presets: [
+                    SwaggerUIBundle.presets.apis,
+                    SwaggerUIBundle.SwaggerUIStandalonePreset
+                ],
+                layout: "BaseLayout",
+                deepLinking: true,
+                showExtensions: true,
+                showCommonExtensions: true,
+                tryItOutEnabled: true,
+                supportedSubmitMethods: ['get', 'post', 'put', 'delete', 'patch'],
+                onComplete: function() {{
+                    // Mark streaming endpoints
+                    document.querySelectorAll('.opblock').forEach(block => {{
+                        const path = block.getAttribute('data-path');
+                        if (path && (path.includes('/conversation') || path.includes('/test'))) {{
+                            block.classList.add('streaming-endpoint');
+                        }}
+                    }});
+                }}
+            }})
+            window.ui = ui
+            </script>
+        </body>
+        </html>
+        """
+    )
+
+# Serve custom ReDoc
+@app.get("/redoc", include_in_schema=False)
+async def redoc_html():
+    return HTMLResponse(
+        content=f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>{app.title} - ReDoc</title>
+            <meta charset="utf-8"/>
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <style>
+                body {{ margin: 0; padding: 0; background: #0f0f0f; }}
+                #redoc-container {{ background: #0f0f0f; }}
+            </style>
+        </head>
+        <body>
+            <div id="redoc-container"></div>
+            <redoc spec-url="/openapi.json" 
+                   theme='{{"colors": {{"primary": {{"main": "#3b82f6"}}, "success": {{"main": "#10b981"}}, "warning": {{"main": "#f59e0b"}}, "error": {{"main": "#ef4444"}}, "text": {{"primary": "#ffffff", "secondary": "#a3a3a3"}}, "background": {{"primary": "#0f0f0f", "secondary": "#1a1a1a"}}}} , "typography": {{"fontSize": "14px", "code": {{"backgroundColor": "#262626", "color": "#3b82f6"}}}}, "rightPanel": {{"backgroundColor": "#1a1a1a"}}}}'
+                   options='{{"scrollYOffset": 50, "hideDownloadButton": false, "expandResponses": "200,201", "requiredPropsFirst": true}}'></redoc>
+            <script src="https://cdn.jsdelivr.net/npm/redoc@next/bundles/redoc.standalone.js"></script>
+        </body>
+        </html>
+        """
+    )
+    
 @app.on_event("startup")
 async def startup_event():
     """Start background tasks"""
@@ -118,12 +878,6 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["Content-Disposition", "Content-Type", "Content-Length"]
 )
-# Azure OpenAI client configuration
-AZURE_ENDPOINT = "https://kb-stellar.openai.azure.com/" # Replace with your endpoint if different
-AZURE_API_KEY = "bc0ba854d3644d7998a5034af62d03ce" # Replace with your key if different
-AZURE_API_VERSION = "2024-12-01-preview"
-DOWNLOADS_DIR = "/tmp/chat_downloads"  # Use /tmp for Azure App Service
-MAX_DOWNLOAD_FILES = 10  # Keep only 10 most recent files
 
 system_prompt = '''
 You are an Advanced AI Assistant with comprehensive general knowledge and specialized expertise in product management, document analysis, and data processing. 
@@ -3362,22 +4116,19 @@ def update_operation_status(operation_id: str, status: str, progress: float, mes
     }
     logging.info(f"Operation {operation_id}: {status} - {progress:.0f}% - {message}")
 
-# Status endpoint
-@app.get("/operation-status/{operation_id}")
-async def check_operation_status(operation_id: str):
-    """Check the status of a long-running operation."""
-    if operation_id not in operation_statuses:
-        return JSONResponse(
-            status_code=404,
-            content={"error": f"No operation found with ID {operation_id}"}
-        )
-    
-    return JSONResponse(content=operation_statuses[operation_id])
-@app.post("/initiate-chat")
+
+@app.post("/initiate-chat",
+          response_model=ChatInitResponse,
+          summary="Start Chat Session",
+          description="Initialize a new chat session with an AI assistant. Creates thread and vector store for context.",
+          tags=["Chat Operations"])
 async def initiate_chat(request: Request):
     """
-    Initiates a new assistant, session (thread), and vector store.
-    Optionally uploads a file and sets user context.
+    Create a new chat session with persistent context.
+    
+    Form parameters (parsed from request):
+    - file (optional): Initial file to process
+    - context (optional): User context or persona
     """
     client = create_client()
     logging.info("Initiating new chat session...")
@@ -3601,13 +4352,21 @@ async def initiate_chat(request: Request):
     }
 
     return JSONResponse(res, status_code=200)
-@app.post("/co-pilot")
-async def co_pilot(request: Request):
+@app.post("/co-pilot",
+          response_model=ChatInitResponse,
+          summary="Create Session with Existing Assistant",
+          description="Create a new chat session using an existing assistant and vector store.",
+          tags=["Chat Operations"])
+async def co_pilot(
+    request: Request
+):
     """
-    Sets context for a chatbot, creates a new thread using existing assistant and vector store.
-    Required parameters: assistant_id, vector_store_id
-    Optional parameters: context
-    Returns: Same structure as initiate-chat
+    Use existing assistant for new chat session.
+    
+    Form parameters (parsed from request):
+    - assistant (required): Existing assistant ID
+    - vector_store (required): Existing vector store ID
+    - context (optional): Session context
     """
     client = create_client()
 
@@ -3723,16 +4482,23 @@ async def co_pilot(request: Request):
     except Exception as e:
         logging.error(f"Error in /co-pilot endpoint: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to process co-pilot request: {str(e)}")
-@app.post("/upload-file")
+@app.post("/upload-file",
+          response_model=FileUploadResponse,
+          summary="Upload File to Assistant",
+          description="Upload files for AI processing. Supports documents, images, and data files.",
+          tags=["File Operations"])
 async def upload_file(
     request: Request,
-    file: UploadFile = Form(...),
-    assistant: str = Form(...)
-    # Optional params below read from form inside
+    file: UploadFile = Form(..., description="File to upload"),
+    assistant: str = Form(..., description="Assistant ID to attach file to")
 ):
     """
-    Uploads a file and associates it with the given assistant.
-    Handles different file types appropriately.
+    Upload and process files for AI analysis.
+    
+    Additional form parameters (parsed from request):
+    - session (optional): Session ID for context
+    - context (optional): File context description
+    - prompt (optional): Specific prompt for image analysis
     """
     client = create_client()
 
@@ -6190,12 +6956,16 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
                 logging.info(f"Released thread lock for session {session}")
             except Exception as release_e:
                 logging.error(f"Error releasing thread lock: {release_e}")
-@app.get("/conversation")
+@app.get("/conversation",
+         summary="Stream Chat Messages",
+         description="Chat with AI using Server-Sent Events (SSE) for real-time streaming responses.",
+         tags=["Chat Operations"],
+         response_class=StreamingResponse)
 async def conversation(
-    session: Optional[str] = None,
-    prompt: Optional[str] = None,
-    assistant: Optional[str] = None,
-    context: Optional[str] = None  # New parameter - accepts any string (JSON, text, etc.)
+    session: Optional[str] = Query(None, description="Session ID from /initiate-chat"),
+    prompt: Optional[str] = Query(None, description="User message"),
+    assistant: Optional[str] = Query(None, description="Assistant ID"),
+    context: Optional[str] = Query(None, description="Additional context for stateless mode")
 ):
     """
     Handles conversation queries with streaming response.
@@ -6205,19 +6975,18 @@ async def conversation(
     """
     return await process_conversation(session, prompt, assistant, stream_output=True, context=context)
 
-@app.get("/chat")
+@app.get("/chat",
+         response_model=ChatResponse,
+         summary="Chat (Non-Streaming)",
+         description="Chat with AI and receive complete responses. Use for simpler integrations.",
+         tags=["Chat Operations"])
 async def chat(
-    session: Optional[str] = None,
-    prompt: Optional[str] = None,
-    assistant: Optional[str] = None,
-    context: Optional[str] = None  # New parameter - accepts any string (JSON, text, etc.)
+    session: Optional[str] = Query(None, description="Session ID"),
+    prompt: Optional[str] = Query(None, description="User message"),
+    assistant: Optional[str] = Query(None, description="Assistant ID"),
+    context: Optional[str] = Query(None, description="Additional context")
 ):
-    """
-    Handles conversation queries and returns the full response as JSON.
-    Can operate in two modes:
-    1. Stateful: With session and assistant IDs (existing behavior)
-    2. Stateless: When context is provided, uses completions API with intelligent context handling
-    """
+    """Get complete chat responses without streaming."""
     return await process_conversation(session, prompt, assistant, stream_output=False, context=context)
 def extract_text_from_file(file_content: bytes, filename: str) -> str:
     """
@@ -6389,63 +7158,29 @@ def generate_file_from_response(content: str, file_type: str) -> Optional[Tuple[
     except Exception as e:
         logging.error(f"Error generating {file_type} file: {e}")
         return None
-@app.get("/test-download")
-async def test_download_functionality():
-    """
-    Test endpoint to verify download functionality is working.
-    Creates a test file and returns download URL.
-    """
-    try:
-        # Create a test CSV file
-        test_content = "name,status,timestamp\nDownload Test,Success,{}\n".format(
-            datetime.now().isoformat()
-        )
-        
-        test_filename = f"test_download_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-        
-        # Save the file
-        filepath = save_download_file(
-            test_content.encode('utf-8'),
-            test_filename
-        )
-        
-        # Verify file was created
-        if not os.path.exists(filepath):
-            raise Exception("File creation failed")
-        
-        # Test file permissions
-        if not os.access(filepath, os.R_OK):
-            raise Exception("File is not readable")
-        
-        return JSONResponse({
-            "status": "success",
-            "message": "Download test successful",
-            "filename": test_filename,
-            "download_url": f"/download-files/{test_filename}",
-            "file_size": os.path.getsize(filepath),
-            "downloads_directory": DOWNLOADS_DIR,
-            "file_permissions": oct(os.stat(filepath).st_mode)[-3:]
-        })
-        
-    except Exception as e:
-        logging.error(f"Download test failed: {e}")
-        return JSONResponse({
-            "status": "error",
-            "error": str(e),
-            "downloads_directory": DOWNLOADS_DIR
-        }, status_code=500)
-@app.post("/completion")
+
+@app.post("/completion",
+          response_model=CompletionResponse,
+          summary="Generate AI Completion",
+          description="Generate AI-powered text completions with optional file exports in CSV, Excel, or Word formats.",
+          tags=["AI Operations"],
+          responses={
+              200: {"model": CompletionResponse, "description": "Successful completion"},
+              400: {"model": ErrorResponse, "description": "Bad request"},
+              500: {"model": ErrorResponse, "description": "Internal server error"}
+          })
+
 async def chat_completion(
     request: Request,
-    prompt: str = Form(...),
-    model: str = Form("gpt-4.1-mini"),
-    temperature: float = Form(0.8),
-    max_tokens: int = Form(5000),
-    system_message: Optional[str] = Form(None),
-    output_format: Optional[str] = Form(None),  # 'csv', 'excel', 'docx', or None
-    files: Optional[List[UploadFile]] = None,
-    max_retries: int = Form(3),
-    rows_to_generate: int = Form(30)  # For CSV/Excel generation
+    prompt: str = Form(..., description="The prompt for AI completion", example="Generate a list of 10 product names"),
+    model: str = Form("gpt-4.1-mini", description="Model to use", enum=["gpt-4.1-mini", "gpt-4", "gpt-3.5-turbo"]),
+    temperature: float = Form(0.8, ge=0, le=2, description="Sampling temperature (0=deterministic, 2=creative)"),
+    max_tokens: int = Form(5000, ge=1, le=10000, description="Maximum tokens in response"),
+    system_message: Optional[str] = Form(None, description="Custom system message"),
+    output_format: Optional[str] = Form(None, description="Export format", enum=["csv", "excel", "docx", None]),
+    files: Optional[List[UploadFile]] = File(None, description="Optional files to process"),
+    max_retries: int = Form(3, ge=1, le=5, description="Maximum retry attempts"),
+    rows_to_generate: int = Form(30, ge=1, le=1000, description="Number of rows for CSV/Excel generation")
 ):
     """
     Enhanced generative AI completion endpoint - creates comprehensive, detailed content.
@@ -6979,49 +7714,125 @@ Remember: Output ONLY the JSON structure with ALL {rows_to_generate} rows."""
 
 # Helper methods for enhanced DOCX processing
 def _process_inline_elements(element, paragraph):
-    """Process inline elements like bold, italic, code, links"""
-    # Check if element has children attribute (Tag objects have it, NavigableString objects don't)
-    if not hasattr(element, 'children'):
-        # This is a NavigableString, just add it as text
-        paragraph.add_run(str(element))
+    """
+    Process inline elements like bold, italic, code, links from BeautifulSoup elements.
+    Handles both Tag objects and NavigableString objects properly.
+    """
+    from bs4 import NavigableString, Tag
+    from docx.shared import Pt, RGBColor
+    from docx.enum.text import WD_COLOR_INDEX
+    
+    # Handle NavigableString (plain text)
+    if isinstance(element, NavigableString):
+        text = str(element).strip()
+        if text:
+            paragraph.add_run(text)
         return
-        
+    
+    # Handle Tag objects
+    if not isinstance(element, Tag):
+        # Fallback for any other type
+        text = str(element).strip()
+        if text:
+            paragraph.add_run(text)
+        return
+    
+    # Process the tag's children
     for child in element.children:
-        if hasattr(child, 'name'):
+        if isinstance(child, NavigableString):
+            # Plain text content
+            text = str(child).strip()
+            if text:
+                paragraph.add_run(text)
+        
+        elif isinstance(child, Tag):
+            # Handle specific tags
             if child.name in ['strong', 'b']:
                 run = paragraph.add_run(child.get_text())
                 run.bold = True
+                
             elif child.name in ['em', 'i']:
                 run = paragraph.add_run(child.get_text())
                 run.italic = True
+                
             elif child.name == 'code':
                 run = paragraph.add_run(child.get_text())
                 run.font.name = 'Consolas'
                 run.font.size = Pt(10)
-                from docx.enum.text import WD_COLOR_INDEX
-                run.font.highlight_color = WD_COLOR_INDEX.GRAY_25
+                try:
+                    run.font.highlight_color = WD_COLOR_INDEX.GRAY_25
+                except:
+                    # Fallback if highlight color not available
+                    run.font.color.rgb = RGBColor(100, 100, 100)
+                    
             elif child.name == 'a':
                 # Handle links
                 run = paragraph.add_run(child.get_text())
                 run.font.color.rgb = RGBColor(0, 0, 255)
                 run.underline = True
-            elif child.name == 'del':
+                
+            elif child.name == 'del' or child.name == 's':
+                # Strikethrough
                 run = paragraph.add_run(child.get_text())
                 run.font.strike = True
+                
             elif child.name == 'mark':
+                # Highlighted text
                 run = paragraph.add_run(child.get_text())
-                from docx.enum.text import WD_COLOR_INDEX
-                run.font.highlight_color = WD_COLOR_INDEX.YELLOW
-            else:
-                # Recursively process other elements ONLY if they're Tag objects
-                if hasattr(child, 'children'):
-                    _process_inline_elements(child, paragraph)
+                try:
+                    run.font.highlight_color = WD_COLOR_INDEX.YELLOW
+                except:
+                    # Fallback
+                    run.font.color.rgb = RGBColor(255, 255, 0)
+                    
+            elif child.name == 'u':
+                # Underline
+                run = paragraph.add_run(child.get_text())
+                run.underline = True
+                
+            elif child.name == 'sub':
+                # Subscript
+                run = paragraph.add_run(child.get_text())
+                run.font.subscript = True
+                
+            elif child.name == 'sup':
+                # Superscript
+                run = paragraph.add_run(child.get_text())
+                run.font.superscript = True
+                
+            elif child.name == 'span':
+                # For span, check for any style attributes
+                style = child.get('style', '')
+                text = child.get_text()
+                
+                if 'font-weight: bold' in style or 'font-weight:bold' in style:
+                    run = paragraph.add_run(text)
+                    run.bold = True
+                elif 'font-style: italic' in style or 'font-style:italic' in style:
+                    run = paragraph.add_run(text)
+                    run.italic = True
+                elif 'text-decoration: underline' in style:
+                    run = paragraph.add_run(text)
+                    run.underline = True
                 else:
-                    # If it's not a tag with children, just add its text
-                    paragraph.add_run(child.get_text())
+                    # Recursively process span's children
+                    _process_inline_elements(child, paragraph)
+                    
+            elif child.name in ['p', 'div', 'section', 'article']:
+                # Block elements - recursively process their content
+                _process_inline_elements(child, paragraph)
+                
+            else:
+                # For other tags, just get the text content
+                text = child.get_text().strip()
+                if text:
+                    paragraph.add_run(text)
+        
         else:
-            # Plain text
-            paragraph.add_run(str(child))
+            # Handle any other type by converting to string
+            text = str(child).strip()
+            if text:
+                paragraph.add_run(text)
 def _process_list(doc, list_element, is_ordered, level=0):
     """Process lists with proper nesting"""
     items = list_element.find_all('li', recursive=False)
@@ -7083,21 +7894,29 @@ def _process_table(doc, table_element):
     
     # Add spacing after table
     doc.add_paragraph()
-@app.post("/extract-reviews")
+@app.post("/extract-reviews",
+          response_model=ExtractResponse,
+          summary="Extract or Generate Data",
+          description="Extract structured data from files or generate synthetic datasets. Perfect for data analysis and testing.",
+          tags=["Data Processing"],
+          responses={
+              200: {"model": ExtractResponse},
+              400: {"model": ErrorResponse}
+          })
 async def extract_reviews(
     request: Request,
-    file: Optional[UploadFile] = None,  # Made optional - can work without file
-    columns: Optional[str] = Form("auto"),
-    prompt: Optional[str] = Form(None),
-    model: str = Form("gpt-4.1-mini"),
-    temperature: float = Form(0.1),
-    output_format: str = Form("excel"),
-    max_text_length: int = Form(100000),
-    max_retries: int = Form(3),
-    fallback_to_json: bool = Form(True),
-    mode: str = Form("auto"),  # "extract", "generate", or "auto"
-    rows_to_generate: int = Form(30),  # For generation mode
-    raw_text: Optional[str] = Form(None)  # Direct text input without file
+    file: Optional[UploadFile] = File(None, description="File to extract data from"),
+    columns: Optional[str] = Form("auto", description="Column names or 'auto'", example="name,price,rating"),
+    prompt: Optional[str] = Form(None, description="Custom instructions", example="Extract all prices"),
+    model: str = Form("gpt-4.1-mini", enum=["gpt-4.1-mini", "gpt-4"]),
+    temperature: float = Form(0.1, ge=0, le=2, description="Temperature for generation"),
+    output_format: str = Form("excel", enum=["csv", "excel", "json"]),
+    max_text_length: int = Form(100000, ge=1000, le=500000, description="Max text length to process"),
+    max_retries: int = Form(3, ge=1, le=5, description="Maximum retry attempts"),
+    fallback_to_json: bool = Form(True, description="Fallback to JSON if other formats fail"),
+    mode: str = Form("auto", enum=["auto", "extract", "generate"], description="Operation mode"),
+    rows_to_generate: int = Form(30, ge=1, le=1000, description="Rows to generate (generate mode)"),
+    raw_text: Optional[str] = Form(None, description="Direct text input without file", max_length=100000)
 ):
     """
     Universal data extraction/generation endpoint.
@@ -7774,11 +8593,15 @@ def create_docx_from_content(content: str, images: Optional[List[bytes]] = None)
 
 # Add this new endpoint after the existing endpoints in app.py
 
-@app.get("/download-chat")
+@app.get("/download-chat",
+         response_model=DownloadResponse,
+         summary="Export Chat as Document",
+         description="Export chat conversation as a formatted Word document.",
+         tags=["File Operations"])
 async def download_chat(
     request: Request,
-    session: Optional[str] = None,
-    assistant: Optional[str] = None
+    session: Optional[str] = Query(None, description="Session ID to export"),
+    assistant: Optional[str] = Query(None, description="Assistant ID")
 ):
     """
     Creates a DOCX file from the latest chat response and returns a download URL.
@@ -7909,15 +8732,18 @@ async def download_chat(
         logging.error(f"Error in /download-chat endpoint: {str(e)}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Failed to generate download: {str(e)}")
 
-@app.get("/download-files/{filename}")
-async def serve_download_file(
-    filename: str,
-    request: Request,
-    token: Optional[str] = None  # Optional token for access control
+@app.get("/download-files/{filename}",
+         summary="Download Generated File",
+         description="Download files generated by the API. Files are automatically cleaned up after retention period.",
+         tags=["File Operations"],
+         response_class=FileResponse)
+async def download_file(
+    filename: str = Path(..., description="Name of file to download"),
+    request: Request = None,
+    token: Optional[str] = Query(None, description="Optional access token")
 ):
-    """
-    Serve a file for download with proper headers and security.
-    """
+    """Download generated files."""
+    
     try:
         # Security validation
         if not filename:
@@ -8008,45 +8834,12 @@ async def serve_download_file(
     except Exception as e:
         logging.error(f"Unexpected error serving file {filename}: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
-@app.get("/verify-download/{filename}")
-async def verify_download(filename: str):
-    """
-    Verify if a file is available for download without actually downloading it.
-    """
-    try:
-        # Security validation
-        if not filename or any(char in filename for char in ['..', '/', '\\', '\x00']):
-            return JSONResponse({
-                "available": False,
-                "error": "Invalid filename"
-            }, status_code=400)
-        
-        filepath = os.path.join(DOWNLOADS_DIR, filename)
-        
-        if os.path.exists(filepath) and os.path.isfile(filepath):
-            file_stat = os.stat(filepath)
-            mime_type, _ = mimetypes.guess_type(filename)
-            
-            return JSONResponse({
-                "available": True,
-                "filename": filename,
-                "size": file_stat.st_size,
-                "modified": datetime.fromtimestamp(file_stat.st_mtime).isoformat(),
-                "mime_type": mime_type or "application/octet-stream"
-            })
-        else:
-            return JSONResponse({
-                "available": False,
-                "error": "File not found"
-            }, status_code=404)
-            
-    except Exception as e:
-        logging.error(f"Error verifying download {filename}: {e}")
-        return JSONResponse({
-            "available": False,
-            "error": "Verification failed"
-        }, status_code=500)
-@app.get("/health-check")
+
+@app.get("/health-check",
+         response_model=HealthCheckResponse,
+         summary="Comprehensive Health Check",
+         description="Performs detailed system health checks including Azure OpenAI connection, file system, and all endpoints.",
+         tags=["System"])
 async def comprehensive_health_check():
     """
     Comprehensive health check that tests all critical functionality without creating expensive resources.
@@ -8360,26 +9153,20 @@ async def comprehensive_health_check():
         status_code=status_code
     )
 
-@app.post("/test-comprehensive")
+@app.post("/test-comprehensive",
+          summary="Comprehensive Load Test (Streaming)",
+          description="Run comprehensive load and scaling tests with streaming updates.",
+          tags=["System"],
+          response_class=StreamingResponse)
 async def comprehensive_system_test(
-    test_mode: str = Form("all"),  # "all", "long_thread", "concurrent", "same_thread", "run_consistency", "scaling", "tools"
-    test_duration: int = Form(60),  # seconds
-    concurrent_users: int = Form(5),
-    messages_per_thread: int = Form(60),  # for long thread test
-    verbose: bool = Form(True)
+    test_mode: str = Form("all", description="Test mode", enum=["all", "long_thread", "concurrent", "same_thread", "run_consistency", "scaling", "tools"]),
+    test_duration: int = Form(60, ge=10, le=300, description="Test duration in seconds"),
+    concurrent_users: int = Form(5, ge=1, le=20, description="Number of concurrent users"),
+    messages_per_thread: int = Form(60, ge=10, le=200, description="Messages for long thread test"),
+    verbose: bool = Form(True, description="Include detailed logs")
 ):
-    """
-    Comprehensive system test endpoint for testing scaling, concurrency, tool calling, and edge cases.
-    Now with streaming updates for real-time test progress monitoring.
-    
-    Args:
-        test_mode: Which test to run (or "all" for all tests)
-        test_duration: How long to run concurrent tests (seconds)
-        concurrent_users: Number of concurrent users to simulate
-        messages_per_thread: Number of messages for long thread test
-        verbose: Whether to include detailed logs in response
-    """
-    
+    """Run comprehensive system tests for scaling and performance."""
+
     # Security check
     if os.getenv("ENVIRONMENT", "development") == "production":
         # In production, require a secret token
@@ -9617,7 +10404,11 @@ async def comprehensive_system_test(
         }
     )
 # Add a lightweight health check endpoint for quick monitoring
-@app.get("/health")
+@app.get("/health", 
+         response_model=HealthResponse,
+         summary="Basic Health Check",
+         description="Quick health check for monitoring. Returns minimal status information.",
+         tags=["System"])
 async def basic_health():
     """
     Basic health check endpoint for load balancers and monitoring.
@@ -9642,78 +10433,6 @@ async def basic_health():
         )
 
 
-# Add endpoint-specific test endpoint for debugging
-@app.post("/test-endpoint")
-async def test_specific_endpoint(
-    endpoint: str = Form(...),
-    test_data: Optional[str] = Form(None)
-):
-    """
-    Test a specific endpoint with mock data for debugging.
-    Only available in non-production environments.
-    """
-    # Security: Only allow in development/staging
-    if os.getenv("ENVIRONMENT", "development") == "production":
-        raise HTTPException(status_code=403, detail="Test endpoint not available in production")
-    
-    test_results = {
-        "endpoint": endpoint,
-        "timestamp": datetime.now().isoformat(),
-        "test_data": test_data,
-        "result": None,
-        "error": None
-    }
-    
-    try:
-        if endpoint == "/completion":
-            # Test completion endpoint
-            mock_request = type('Request', (), {
-                'base_url': 'http://localhost:8080/',
-                'headers': {'host': 'localhost:8080'}
-            })()
-            
-            result = await chat_completion(
-                request=mock_request,
-                prompt=test_data or "Hello, this is a test",
-                model="gpt-4.1-mini",
-                temperature=0.5,
-                max_tokens=50
-            )
-            
-            test_results["result"] = json.loads(result.body.decode())
-            
-        elif endpoint == "/extract-reviews":
-            # Test with mock file
-            mock_file = type('UploadFile', (), {
-                'filename': 'test_reviews.txt',
-                'content_type': 'text/plain',
-                'read': lambda: asyncio.coroutine(lambda: test_data.encode() if test_data else b"User: John\nReview: Great product!\nRating: 5\n\nUser: Jane\nReview: Not bad\nRating: 3")()
-            })()
-            
-            mock_request = type('Request', (), {
-                'base_url': 'http://localhost:8080/',
-                'headers': {'host': 'localhost:8080'}
-            })()
-            
-            result = await extract_reviews(
-                request=mock_request,
-                file=mock_file,
-                columns="user,review,rating",
-                model="gpt-4.1-mini",
-                temperature=0.1,
-                output_format="csv"
-            )
-            
-            test_results["result"] = json.loads(result.body.decode())
-            
-        else:
-            test_results["error"] = f"Unknown endpoint: {endpoint}"
-            
-    except Exception as e:
-        test_results["error"] = str(e)
-        test_results["traceback"] = traceback.format_exc()
-    
-    return JSONResponse(test_results)
 from fastapi.responses import HTMLResponse
 
 @app.get("/", response_class=HTMLResponse)
