@@ -304,28 +304,61 @@ operation_statuses = {}
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Enhanced CSS with streaming support and all modern features
 CUSTOM_SWAGGER_CSS = """
 <style>
-/* AZURE COPILOT V2 - PREMIUM DARK THEME */
+/* 🎨 AZURE COPILOT V2 - ULTRA PREMIUM THEME */
 
 /* Hide unwanted elements */
 .swagger-ui .topbar { display: none !important; }
-.swagger-ui .models { display: none !important; }  /* Hide schemas section */
-.swagger-ui section.models { display: none !important; }  /* Hide schemas section completely */
-.swagger-ui .scheme-container { display: none !important; }  /* Hide schemes selector */
+.swagger-ui .models { display: none !important; }
+.swagger-ui section.models { display: none !important; }
+.swagger-ui .scheme-container { display: none !important; }
 
-/* Root styling with gradient background */
+/* Animated gradient background */
+@keyframes gradientShift {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+@keyframes floatParticle {
+    0% { transform: translateY(100vh) rotate(0deg); opacity: 0; }
+    10% { opacity: 1; }
+    90% { opacity: 1; }
+    100% { transform: translateY(-100vh) rotate(720deg); opacity: 0; }
+}
+
+/* Root with animated background */
 body { 
-    background: #0a0a0a !important;
+    background: #000000;
     background-image: 
-        radial-gradient(at 20% 80%, rgba(120, 40, 200, 0.1) 0px, transparent 50%),
-        radial-gradient(at 80% 20%, rgba(40, 120, 200, 0.1) 0px, transparent 50%);
+        linear-gradient(125deg, #0a0a0a 0%, #1a0f2e 25%, #2d1b4e 50%, #1a0f2e 75%, #0a0a0a 100%);
+    background-size: 400% 400%;
+    animation: gradientShift 20s ease infinite;
+    position: relative;
+    overflow-x: hidden;
+}
+
+/* Floating particles effect */
+body::before {
+    content: '';
+    position: fixed;
+    width: 100%;
+    height: 100%;
+    background-image: 
+        radial-gradient(circle at 20% 50%, rgba(120, 119, 198, 0.3) 0%, transparent 50%),
+        radial-gradient(circle at 80% 80%, rgba(236, 72, 153, 0.3) 0%, transparent 50%),
+        radial-gradient(circle at 40% 20%, rgba(99, 102, 241, 0.3) 0%, transparent 50%);
+    animation: floatParticle 30s linear infinite;
+    pointer-events: none;
+    z-index: 1;
 }
 
 .swagger-ui { 
     background: transparent !important; 
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+    position: relative;
+    z-index: 2;
 }
 
 .swagger-ui .wrapper { 
@@ -335,197 +368,293 @@ body {
     margin: 0 auto !important;
 }
 
-/* Premium header section */
-.swagger-ui .info {
-    background: linear-gradient(135deg, #1a1f2e 0%, #151922 100%) !important;
-    border: 1px solid rgba(255, 255, 255, 0.1) !important;
-    border-radius: 16px !important;
-    padding: 32px !important;
-    margin: 20px 0 30px 0 !important;
-    box-shadow: 
-        0 10px 40px rgba(0, 0, 0, 0.3),
-        inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
-    position: relative !important;
-    overflow: hidden !important;
+/* Ultra Premium Header with Glow Effect */
+@keyframes pulseGlow {
+    0%, 100% { box-shadow: 0 0 20px rgba(120, 119, 198, 0.5), 0 0 40px rgba(120, 119, 198, 0.3); }
+    50% { box-shadow: 0 0 30px rgba(120, 119, 198, 0.8), 0 0 60px rgba(120, 119, 198, 0.5); }
 }
 
-.swagger-ui .info:before {
+.swagger-ui .info {
+    background: linear-gradient(135deg, rgba(26, 31, 46, 0.9) 0%, rgba(21, 25, 34, 0.9) 100%) !important;
+    backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid transparent !important;
+    background-clip: padding-box !important;
+    border-radius: 24px !important;
+    padding: 40px !important;
+    margin: 30px 0 40px 0 !important;
+    position: relative !important;
+    overflow: hidden !important;
+    animation: pulseGlow 4s ease-in-out infinite !important;
+}
+
+/* Animated border gradient */
+.swagger-ui .info::before {
     content: "" !important;
     position: absolute !important;
     top: 0 !important;
     left: 0 !important;
     right: 0 !important;
-    height: 1px !important;
-    background: linear-gradient(90deg, 
-        transparent 0%, 
-        rgba(120, 119, 198, 0.5) 50%, 
-        transparent 100%) !important;
+    bottom: 0 !important;
+    border-radius: 24px !important;
+    padding: 2px !important;
+    background: linear-gradient(45deg, #667eea, #764ba2, #f093fb, #667eea) !important;
+    background-size: 300% 300% !important;
+    animation: gradientShift 6s ease infinite !important;
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0) !important;
+    -webkit-mask-composite: xor !important;
+    mask-composite: exclude !important;
+    z-index: -1 !important;
+}
+
+/* Glowing title */
+@keyframes textGlow {
+    0%, 100% { text-shadow: 0 0 10px rgba(120, 119, 198, 0.8), 0 0 20px rgba(120, 119, 198, 0.6); }
+    50% { text-shadow: 0 0 20px rgba(120, 119, 198, 1), 0 0 40px rgba(120, 119, 198, 0.8); }
 }
 
 .swagger-ui .info .title { 
     color: #ffffff !important; 
-    font-weight: 800 !important;
-    font-size: 36px !important;
-    letter-spacing: -0.02em !important;
-    margin-bottom: 12px !important;
-    background: linear-gradient(135deg, #7877c6 0%, #4a9eff 100%) !important;
+    font-weight: 900 !important;
+    font-size: 42px !important;
+    letter-spacing: -0.03em !important;
+    margin-bottom: 16px !important;
+    background: linear-gradient(135deg, #667eea 0%, #f093fb 50%, #667eea 100%) !important;
+    background-size: 200% 200% !important;
     -webkit-background-clip: text !important;
     -webkit-text-fill-color: transparent !important;
+    animation: gradientShift 4s ease infinite, textGlow 2s ease-in-out infinite !important;
+}
+
+/* Floating version badge */
+@keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-5px); }
 }
 
 .swagger-ui .info .version {
-    background: rgba(120, 119, 198, 0.2) !important;
-    color: #7877c6 !important;
-    padding: 4px 12px !important;
-    border-radius: 20px !important;
-    font-size: 12px !important;
-    font-weight: 600 !important;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    color: white !important;
+    padding: 6px 16px !important;
+    border-radius: 24px !important;
+    font-size: 13px !important;
+    font-weight: 700 !important;
     display: inline-block !important;
-    margin-left: 12px !important;
+    margin-left: 16px !important;
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4) !important;
+    animation: float 3s ease-in-out infinite !important;
 }
 
+/* Enhanced description with better styling */
 .swagger-ui .info .description { 
-    color: #b8bcc8 !important; 
-    line-height: 1.6 !important;
-    font-size: 15px !important;
+    color: #e0e7ff !important; 
+    line-height: 1.8 !important;
+    font-size: 16px !important;
 }
 
-/* Premium tag groups */
+.swagger-ui .info .description h1 {
+    font-size: 48px !important;
+    margin: 20px 0 !important;
+}
+
+.swagger-ui .info .description h3 {
+    font-size: 20px !important;
+    margin: 20px 0 10px 0 !important;
+}
+
+/* Glowing tag groups */
 .swagger-ui .opblock-tag-section {
-    margin-bottom: 40px !important;
+    margin-bottom: 50px !important;
+}
+
+@keyframes tagPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.02); }
 }
 
 .swagger-ui .opblock-tag { 
     color: #ffffff !important; 
-    font-size: 24px !important;
-    font-weight: 700 !important;
-    margin: 40px 0 20px 0 !important;
-    padding-bottom: 12px !important;
-    border-bottom: 2px solid rgba(120, 119, 198, 0.3) !important;
+    font-size: 28px !important;
+    font-weight: 800 !important;
+    margin: 50px 0 25px 0 !important;
+    padding: 20px !important;
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(168, 85, 247, 0.1) 100%) !important;
+    border-radius: 16px !important;
+    border-left: 4px solid #667eea !important;
     display: flex !important;
     align-items: center !important;
-    gap: 12px !important;
+    justify-content: space-between !important;
+    animation: tagPulse 4s ease-in-out infinite !important;
+    backdrop-filter: blur(10px) !important;
 }
 
-.swagger-ui .opblock-tag:before {
-    content: "▸" !important;
-    color: #7877c6 !important;
-    font-size: 20px !important;
+.swagger-ui .opblock-tag:hover {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(168, 85, 247, 0.2) 100%) !important;
+    transform: translateX(5px) !important;
 }
 
 .swagger-ui .opblock-tag small { 
-    color: #9ca3af !important; 
+    color: #c7d2fe !important; 
     font-weight: 400 !important;
-    font-size: 14px !important;
-    margin-left: auto !important;
+    font-size: 16px !important;
+    max-width: 600px !important;
 }
 
-/* Premium operation blocks */
+/* Ultra Premium Operation Blocks with Hover Effects */
+@keyframes operationGlow {
+    0%, 100% { box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3); }
+    50% { box-shadow: 0 8px 40px rgba(0, 0, 0, 0.4); }
+}
+
 .swagger-ui .opblock {
-    background: rgba(26, 31, 46, 0.5) !important;
-    backdrop-filter: blur(10px) !important;
-    border: 1px solid rgba(255, 255, 255, 0.05) !important;
-    border-radius: 12px !important;
-    margin-bottom: 16px !important;
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2) !important;
+    background: rgba(26, 31, 46, 0.6) !important;
+    backdrop-filter: blur(16px) saturate(180%) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-radius: 16px !important;
+    margin-bottom: 20px !important;
     overflow: hidden !important;
-    transition: all 0.3s ease !important;
-}
-
-.swagger-ui .opblock:hover {
-    border-color: rgba(120, 119, 198, 0.3) !important;
-    box-shadow: 
-        0 8px 32px rgba(0, 0, 0, 0.3),
-        0 0 0 1px rgba(120, 119, 198, 0.2) !important;
-    transform: translateY(-2px) !important;
-}
-
-.swagger-ui .opblock .opblock-summary {
-    background: transparent !important;
-    border: none !important;
-    padding: 16px 20px !important;
-    cursor: pointer !important;
-    transition: all 0.2s !important;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    animation: operationGlow 4s ease-in-out infinite !important;
     position: relative !important;
 }
 
-.swagger-ui .opblock .opblock-summary:hover {
-    background: rgba(120, 119, 198, 0.05) !important;
+/* Hover state with color-coded glow */
+.swagger-ui .opblock.opblock-post:hover {
+    border-color: rgba(59, 130, 246, 0.5) !important;
+    box-shadow: 
+        0 8px 32px rgba(59, 130, 246, 0.2),
+        0 0 80px rgba(59, 130, 246, 0.1) !important;
+    transform: translateY(-2px) scale(1.01) !important;
 }
 
-/* Premium method badges */
+.swagger-ui .opblock.opblock-get:hover {
+    border-color: rgba(16, 185, 129, 0.5) !important;
+    box-shadow: 
+        0 8px 32px rgba(16, 185, 129, 0.2),
+        0 0 80px rgba(16, 185, 129, 0.1) !important;
+    transform: translateY(-2px) scale(1.01) !important;
+}
+
+.swagger-ui .opblock.opblock-put:hover {
+    border-color: rgba(245, 158, 11, 0.5) !important;
+    box-shadow: 
+        0 8px 32px rgba(245, 158, 11, 0.2),
+        0 0 80px rgba(245, 158, 11, 0.1) !important;
+    transform: translateY(-2px) scale(1.01) !important;
+}
+
+.swagger-ui .opblock.opblock-delete:hover {
+    border-color: rgba(239, 68, 68, 0.5) !important;
+    box-shadow: 
+        0 8px 32px rgba(239, 68, 68, 0.2),
+        0 0 80px rgba(239, 68, 68, 0.1) !important;
+    transform: translateY(-2px) scale(1.01) !important;
+}
+
+/* Animated method badges */
+@keyframes badgePulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+}
+
 .swagger-ui .opblock .opblock-summary-method {
-    font-size: 11px !important;
-    font-weight: 700 !important;
-    padding: 6px 12px !important;
-    border-radius: 6px !important;
+    font-size: 12px !important;
+    font-weight: 800 !important;
+    padding: 8px 16px !important;
+    border-radius: 8px !important;
     text-transform: uppercase !important;
     letter-spacing: 0.05em !important;
-    min-width: 60px !important;
+    min-width: 70px !important;
     text-align: center !important;
+    position: relative !important;
+    overflow: hidden !important;
+    animation: badgePulse 2s ease-in-out infinite !important;
+}
+
+/* Method-specific gradients with shimmer effect */
+@keyframes shimmer {
+    0% { background-position: -200% center; }
+    100% { background-position: 200% center; }
 }
 
 .swagger-ui .opblock.opblock-post .opblock-summary-method { 
     background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
-    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3) !important;
+    box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4) !important;
+    position: relative !important;
+}
+
+.swagger-ui .opblock.opblock-post .opblock-summary-method::after {
+    content: '' !important;
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    background: linear-gradient(105deg, transparent 40%, rgba(255, 255, 255, 0.3) 50%, transparent 60%) !important;
+    background-size: 200% 100% !important;
+    animation: shimmer 3s linear infinite !important;
 }
 
 .swagger-ui .opblock.opblock-get .opblock-summary-method { 
     background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
-    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3) !important;
+    box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4) !important;
 }
 
 .swagger-ui .opblock.opblock-put .opblock-summary-method { 
     background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%) !important;
-    box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3) !important;
+    box-shadow: 0 4px 15px rgba(245, 158, 11, 0.4) !important;
 }
 
 .swagger-ui .opblock.opblock-delete .opblock-summary-method { 
     background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
-    box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3) !important;
+    box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4) !important;
 }
 
-/* Enhanced path styling */
+/* Enhanced path with monospace font */
 .swagger-ui .opblock .opblock-summary-path { 
-    color: #e5e7eb !important; 
+    color: #e0e7ff !important; 
     font-weight: 600 !important;
     font-family: 'JetBrains Mono', 'Monaco', monospace !important;
-    font-size: 14px !important;
+    font-size: 15px !important;
     letter-spacing: -0.02em !important;
 }
 
-.swagger-ui .opblock .opblock-summary-path__deprecated {
-    text-decoration: line-through !important;
-    opacity: 0.6 !important;
+/* Streaming endpoint indicator with animation */
+@keyframes streamFlow {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
 }
 
-/* Enhanced description */
-.swagger-ui .opblock .opblock-summary-description { 
-    color: #9ca3af !important;
-    font-size: 13px !important;
-    margin-left: 12px !important;
-}
-
-/* Streaming indicator with animation */
 .swagger-ui .opblock.opblock-post[data-path*="conversation"] .opblock-summary:after,
 .swagger-ui .opblock.opblock-get[data-path*="conversation"] .opblock-summary:after,
 .swagger-ui .opblock.opblock-post[data-path*="test-comprehensive"] .opblock-summary:after {
-    content: "STREAMING" !important;
+    content: "⚡ STREAMING" !important;
     position: absolute !important;
     right: 20px !important;
     top: 50% !important;
     transform: translateY(-50%) !important;
     background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%) !important;
     color: white !important;
-    padding: 4px 10px !important;
+    padding: 5px 12px !important;
     border-radius: 20px !important;
-    font-size: 10px !important;
-    font-weight: 700 !important;
-    letter-spacing: 0.05em !important;
-    box-shadow: 0 2px 8px rgba(6, 182, 212, 0.3) !important;
+    font-size: 11px !important;
+    font-weight: 800 !important;
+    letter-spacing: 0.08em !important;
+    box-shadow: 0 4px 15px rgba(6, 182, 212, 0.4) !important;
+    overflow: hidden !important;
 }
 
-/* Premium input styling */
+.swagger-ui .opblock.opblock-post[data-path*="conversation"] .opblock-summary:after::before {
+    content: '' !important;
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent) !important;
+    animation: streamFlow 2s linear infinite !important;
+}
+
+/* Glassmorphism inputs */
 .swagger-ui input[type=text], 
 .swagger-ui input[type=password], 
 .swagger-ui input[type=email], 
@@ -534,320 +663,271 @@ body {
 .swagger-ui textarea, 
 .swagger-ui select {
     background: rgba(17, 24, 39, 0.6) !important;
+    backdrop-filter: blur(12px) saturate(180%) !important;
     border: 1px solid rgba(255, 255, 255, 0.1) !important;
     color: #ffffff !important;
-    border-radius: 8px !important;
-    padding: 12px 16px !important;
-    font-size: 14px !important;
-    transition: all 0.2s !important;
-    backdrop-filter: blur(10px) !important;
+    border-radius: 12px !important;
+    padding: 14px 18px !important;
+    font-size: 15px !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
 }
 
 .swagger-ui input:focus,
 .swagger-ui textarea:focus,
 .swagger-ui select:focus {
-    border-color: #7877c6 !important;
-    box-shadow: 
-        0 0 0 3px rgba(120, 119, 198, 0.1),
-        0 0 20px rgba(120, 119, 198, 0.2) !important;
-    outline: none !important;
+    border-color: #667eea !important;
     background: rgba(17, 24, 39, 0.8) !important;
+    box-shadow: 
+        0 0 0 4px rgba(102, 126, 234, 0.1),
+        0 0 40px rgba(102, 126, 234, 0.2) !important;
+    outline: none !important;
+    transform: translateY(-1px) !important;
 }
 
-/* Premium buttons */
+/* Animated gradient buttons */
+@keyframes buttonShine {
+    0% { background-position: 200% center; }
+    100% { background-position: -200% center; }
+}
+
 .swagger-ui .btn {
-    background: linear-gradient(135deg, #7877c6 0%, #5a67d8 100%) !important;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    background-size: 200% 100% !important;
     color: white !important;
     border: none !important;
-    border-radius: 8px !important;
-    padding: 10px 20px !important;
-    font-weight: 600 !important;
-    font-size: 14px !important;
+    border-radius: 12px !important;
+    padding: 12px 24px !important;
+    font-weight: 700 !important;
+    font-size: 15px !important;
     cursor: pointer !important;
-    transition: all 0.2s !important;
-    box-shadow: 
-        0 4px 12px rgba(120, 119, 198, 0.3),
-        inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3) !important;
     text-transform: none !important;
     letter-spacing: 0.02em !important;
-}
-
-.swagger-ui .btn:hover {
-    transform: translateY(-1px) !important;
-    box-shadow: 
-        0 6px 20px rgba(120, 119, 198, 0.4),
-        inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
-}
-
-.swagger-ui .btn:active {
-    transform: translateY(0) !important;
-}
-
-.swagger-ui .btn.execute {
-    background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
-    min-width: 120px !important;
-}
-
-.swagger-ui .btn.cancel {
-    background: rgba(75, 85, 99, 0.5) !important;
-    backdrop-filter: blur(10px) !important;
-}
-
-/* Premium response section */
-.swagger-ui .responses-wrapper {
-    background: rgba(17, 24, 39, 0.4) !important;
-    backdrop-filter: blur(10px) !important;
-    border: 1px solid rgba(255, 255, 255, 0.05) !important;
-    border-radius: 12px !important;
-    padding: 20px !important;
-    margin-top: 20px !important;
-}
-
-/* Enhanced response display for streaming */
-.swagger-ui .response-body {
-    background: #0d1117 !important;
-    border: 1px solid rgba(120, 119, 198, 0.2) !important;
-    border-radius: 8px !important;
-    padding: 16px !important;
-    margin-top: 12px !important;
     position: relative !important;
     overflow: hidden !important;
 }
 
-/* Streaming response formatter */
-.swagger-ui .response-body pre {
-    color: #e6edf3 !important;
-    font-family: 'JetBrains Mono', monospace !important;
-    font-size: 13px !important;
-    line-height: 1.6 !important;
-    white-space: pre-wrap !important;
-    word-break: break-word !important;
+.swagger-ui .btn::before {
+    content: '' !important;
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    background: linear-gradient(105deg, transparent 40%, rgba(255, 255, 255, 0.4) 50%, transparent 60%) !important;
+    background-size: 200% 100% !important;
+    animation: buttonShine 3s linear infinite !important;
 }
 
-/* Clean SSE output display */
-.swagger-ui .response-body .microlight {
-    display: block !important;
+.swagger-ui .btn:hover {
+    transform: translateY(-2px) scale(1.02) !important;
+    box-shadow: 
+        0 6px 20px rgba(102, 126, 234, 0.4),
+        0 0 40px rgba(102, 126, 234, 0.2) !important;
+    background-size: 100% 100% !important;
 }
 
-/* Format SSE data nicely */
-.swagger-ui .response-body pre:has-text("data:") {
-    background: #0d1117 !important;
-    padding: 12px !important;
-    border-radius: 6px !important;
+.swagger-ui .btn.execute {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+    background-size: 200% 100% !important;
+    min-width: 140px !important;
+    font-size: 16px !important;
 }
 
-/* Add visual separator for SSE chunks */
-.swagger-ui .response-body .hljs-string:has-text("data:") {
-    display: block !important;
-    margin-bottom: 8px !important;
-    padding-bottom: 8px !important;
-    border-bottom: 1px solid rgba(120, 119, 198, 0.1) !important;
+.swagger-ui .btn.execute:hover {
+    box-shadow: 
+        0 6px 20px rgba(16, 185, 129, 0.4),
+        0 0 40px rgba(16, 185, 129, 0.2) !important;
 }
 
-/* Response status colors */
-.swagger-ui .responses-table .response.response-200 .response-col_status,
-.swagger-ui .responses-table .response[data-code^="2"] .response-col_status {
-    color: #10b981 !important;
-    font-weight: 700 !important;
+/* Enhanced response section with glassmorphism */
+.swagger-ui .responses-wrapper {
+    background: rgba(17, 24, 39, 0.4) !important;
+    backdrop-filter: blur(16px) saturate(180%) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-radius: 16px !important;
+    padding: 24px !important;
+    margin-top: 24px !important;
 }
 
-.swagger-ui .responses-table .response[data-code^="4"] .response-col_status {
-    color: #f59e0b !important;
-    font-weight: 700 !important;
-}
-
-.swagger-ui .responses-table .response[data-code^="5"] .response-col_status {
-    color: #ef4444 !important;
-    font-weight: 700 !important;
-}
-
-/* Premium table styling */
+/* Premium tables with hover effects */
 .swagger-ui table {
     background: rgba(17, 24, 39, 0.4) !important;
-    backdrop-filter: blur(10px) !important;
-    border: 1px solid rgba(255, 255, 255, 0.05) !important;
-    border-radius: 8px !important;
+    backdrop-filter: blur(12px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-radius: 12px !important;
     overflow: hidden !important;
 }
 
 .swagger-ui table thead tr th {
-    background: rgba(31, 41, 55, 0.6) !important;
-    color: #7877c6 !important;
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(168, 85, 247, 0.2) 100%) !important;
+    color: #e0e7ff !important;
     font-weight: 700 !important;
-    padding: 12px 16px !important;
-    font-size: 13px !important;
+    padding: 16px 20px !important;
+    font-size: 14px !important;
     text-transform: uppercase !important;
-    letter-spacing: 0.05em !important;
+    letter-spacing: 0.08em !important;
     border-bottom: 1px solid rgba(255, 255, 255, 0.1) !important;
 }
 
+.swagger-ui table tbody tr {
+    transition: all 0.2s ease !important;
+}
+
+.swagger-ui table tbody tr:hover {
+    background: rgba(102, 126, 234, 0.1) !important;
+    transform: scale(1.01) !important;
+}
+
 .swagger-ui table tbody tr td {
-    padding: 12px 16px !important;
+    padding: 14px 20px !important;
     border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
-    color: #e5e7eb !important;
+    color: #e0e7ff !important;
 }
 
-.swagger-ui table tbody tr:hover td {
-    background: rgba(120, 119, 198, 0.05) !important;
-}
-
-/* Parameter sections */
-.swagger-ui .parameters-col_description {
-    color: #9ca3af !important;
-    font-size: 13px !important;
-}
-
-.swagger-ui .parameter__name {
-    color: #ffffff !important;
-    font-weight: 600 !important;
-    font-size: 14px !important;
-}
-
-.swagger-ui .parameter__type {
-    color: #7877c6 !important;
-    font-family: 'JetBrains Mono', monospace !important;
-    font-size: 12px !important;
-    background: rgba(120, 119, 198, 0.1) !important;
-    padding: 2px 6px !important;
-    border-radius: 4px !important;
-}
-
-.swagger-ui .parameter__in {
-    color: #6b7280 !important;
-    font-size: 11px !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.05em !important;
-}
-
-/* Required fields */
-.swagger-ui .required {
-    color: #ef4444 !important;
-    font-weight: 700 !important;
-}
-
-.swagger-ui .required:after {
-    content: " *" !important;
-    color: #ef4444 !important;
-}
-
-/* Code blocks */
-.swagger-ui .highlight-code pre,
-.swagger-ui pre {
-    background: #0d1117 !important;
-    border: 1px solid rgba(255, 255, 255, 0.1) !important;
-    border-radius: 8px !important;
-    padding: 16px !important;
-    font-family: 'JetBrains Mono', monospace !important;
-    font-size: 13px !important;
-    line-height: 1.5 !important;
-    color: #e6edf3 !important;
-}
-
-/* Markdown styling */
-.swagger-ui .markdown code {
-    background: rgba(120, 119, 198, 0.1) !important;
-    color: #7dd3fc !important;
-    padding: 2px 6px !important;
-    border-radius: 4px !important;
-    font-family: 'JetBrains Mono', monospace !important;
-    font-size: 13px !important;
-}
-
-/* Loading animation */
-.swagger-ui .loading-container {
-    padding: 40px !important;
-    text-align: center !important;
+/* Loading animation with gradient spinner */
+@keyframes gradientSpin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
 }
 
 .swagger-ui .loading-container:after {
-    content: "⚡" !important;
-    font-size: 32px !important;
-    animation: pulse 2s ease-in-out infinite !important;
+    content: "" !important;
+    width: 40px !important;
+    height: 40px !important;
+    border: 3px solid transparent !important;
+    border-top-color: #667eea !important;
+    border-right-color: #764ba2 !important;
+    border-bottom-color: #f093fb !important;
+    border-radius: 50% !important;
+    animation: gradientSpin 1s linear infinite !important;
+    display: inline-block !important;
 }
 
-@keyframes pulse {
-    0%, 100% { opacity: 0.3; transform: scale(1); }
-    50% { opacity: 1; transform: scale(1.1); }
-}
-
-/* Error states */
-.swagger-ui .errors-wrapper {
-    background: rgba(239, 68, 68, 0.1) !important;
-    border: 1px solid rgba(239, 68, 68, 0.3) !important;
-    border-radius: 8px !important;
-    padding: 16px !important;
-    margin: 16px 0 !important;
-}
-
-/* Copy button enhancement */
+/* Enhanced copy button */
 .swagger-ui .copy-to-clipboard {
-    background: rgba(120, 119, 198, 0.2) !important;
-    border: 1px solid rgba(120, 119, 198, 0.3) !important;
-    border-radius: 6px !important;
-    padding: 4px 8px !important;
-    transition: all 0.2s !important;
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.2) 0%, rgba(168, 85, 247, 0.2) 100%) !important;
+    border: 1px solid rgba(102, 126, 234, 0.3) !important;
+    border-radius: 8px !important;
+    padding: 6px 12px !important;
+    transition: all 0.3s ease !important;
 }
 
 .swagger-ui .copy-to-clipboard:hover {
-    background: rgba(120, 119, 198, 0.3) !important;
-    border-color: rgba(120, 119, 198, 0.5) !important;
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.3) 0%, rgba(168, 85, 247, 0.3) 100%) !important;
+    transform: translateY(-1px) !important;
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3) !important;
 }
 
-/* Scrollbar */
+/* Code blocks with syntax highlighting feel */
+.swagger-ui .highlight-code pre,
+.swagger-ui pre {
+    background: #0d1117 !important;
+    border: 1px solid rgba(102, 126, 234, 0.2) !important;
+    border-radius: 12px !important;
+    padding: 20px !important;
+    font-family: 'JetBrains Mono', monospace !important;
+    font-size: 14px !important;
+    line-height: 1.6 !important;
+    color: #e6edf3 !important;
+    box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+}
+
+/* Response status badges with glow */
+.swagger-ui .response-col_status {
+    font-weight: 800 !important;
+    padding: 4px 12px !important;
+    border-radius: 20px !important;
+    display: inline-block !important;
+}
+
+.swagger-ui .response[data-code^="2"] .response-col_status {
+    background: rgba(16, 185, 129, 0.2) !important;
+    color: #10b981 !important;
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.4) !important;
+}
+
+.swagger-ui .response[data-code^="4"] .response-col_status {
+    background: rgba(245, 158, 11, 0.2) !important;
+    color: #f59e0b !important;
+    box-shadow: 0 0 20px rgba(245, 158, 11, 0.4) !important;
+}
+
+.swagger-ui .response[data-code^="5"] .response-col_status {
+    background: rgba(239, 68, 68, 0.2) !important;
+    color: #ef4444 !important;
+    box-shadow: 0 0 20px rgba(239, 68, 68, 0.4) !important;
+}
+
+/* Fancy scrollbar */
 ::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+    width: 12px !important;
+    height: 12px !important;
 }
 
 ::-webkit-scrollbar-track {
-    background: rgba(17, 24, 39, 0.4);
+    background: rgba(17, 24, 39, 0.4) !important;
+    border-radius: 10px !important;
 }
 
 ::-webkit-scrollbar-thumb {
-    background: rgba(120, 119, 198, 0.3);
-    border-radius: 5px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    border-radius: 10px !important;
+    border: 2px solid rgba(17, 24, 39, 0.4) !important;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: rgba(120, 119, 198, 0.5);
+    background: linear-gradient(135deg, #764ba2 0%, #f093fb 100%) !important;
 }
 
-/* Mobile responsive */
-@media (max-width: 768px) {
-    .swagger-ui .info .title { font-size: 28px !important; }
-    .swagger-ui .opblock { margin-bottom: 12px !important; }
-    .swagger-ui .btn { padding: 8px 16px !important; font-size: 13px !important; }
+/* Floating action indicators */
+@keyframes float-indicator {
+    0%, 100% { transform: translateY(0) translateX(-50%); }
+    50% { transform: translateY(-10px) translateX(-50%); }
 }
 
-/* Hide download button in responses */
-.swagger-ui .download-contents-wrapper { display: none !important; }
-
-/* Better JSON syntax highlighting */
-.swagger-ui .renderedMarkdown pre {
-    background: #0d1117 !important;
-}
-
-.swagger-ui .renderedMarkdown code {
-    color: #7dd3fc !important;
-}
-
-/* Make streaming responses more readable */
-.swagger-ui .live-responses-table .response-col_description pre {
-    white-space: pre-wrap !important;
-    word-wrap: break-word !important;
-    max-width: 100% !important;
-}
-
-/* SSE Response Formatter - Makes streaming output beautiful */
-.swagger-ui .microlight span.hljs-string:contains("data:") {
-    display: block !important;
-    margin: 4px 0 !important;
-}
-
-/* Format the [DONE] marker */
-.swagger-ui .microlight:contains("[DONE]") {
-    color: #10b981 !important;
+.swagger-ui .opblock-summary:hover::after {
+    content: "Click to expand" !important;
+    position: absolute !important;
+    bottom: -25px !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    background: rgba(102, 126, 234, 0.9) !important;
+    color: white !important;
+    padding: 4px 12px !important;
+    border-radius: 20px !important;
+    font-size: 11px !important;
     font-weight: 600 !important;
+    animation: float-indicator 2s ease-in-out infinite !important;
+    pointer-events: none !important;
+    opacity: 0 !important;
+    transition: opacity 0.3s ease !important;
+}
+
+.swagger-ui .opblock-summary:hover:hover::after {
+    opacity: 1 !important;
+}
+
+/* Custom selection color */
+::selection {
+    background: rgba(102, 126, 234, 0.3) !important;
+    color: #ffffff !important;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .swagger-ui .info .title {
+        font-size: 32px !important;
+    }
+    
+    .swagger-ui .opblock-tag {
+        font-size: 22px !important;
+    }
+    
+    .swagger-ui .wrapper {
+        padding: 0 10px !important;
+    }
 }
 </style>
 """
@@ -877,36 +957,122 @@ tags_metadata = [
 
 # Initialize FastAPI with tags
 app = FastAPI(
-    title="Azure Copilot v2 API",
+    title="🚀 Azure CoPilot V2 - AI Powerhouse API",
     description="""
-## 🚀 AI-Powered Assistant API
+<div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 2px; border-radius: 16px; margin-bottom: 20px;">
+<div style="background: #0a0a0a; border-radius: 14px; padding: 30px;">
 
-A comprehensive FastAPI-based AI assistant service powered by Azure OpenAI.
+<h1 style="background: linear-gradient(135deg, #667eea 0%, #f093fb 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-size: 48px; margin: 0 0 20px 0; font-weight: 800;">
+⚡ Azure CoPilot V2
+</h1>
 
-### Core Features
-- 💬 **Conversational AI** with context awareness and streaming support
-- 📊 **Data Analysis** using pandas for CSV/Excel files  
-- 📄 **Document Processing** (PDF, DOCX, TXT, HTML)
-- 🖼️ **Image Analysis** and understanding
-- 📝 **Content Generation** with export capabilities
-- 🔍 **Review Extraction** and structured data mining
+<p style="font-size: 20px; color: #e0e7ff; margin-bottom: 30px; line-height: 1.6;">
+The <strong>ULTIMATE AI Assistant API</strong> that transforms your wildest automation dreams into reality! 
+Powered by cutting-edge Azure OpenAI technology and engineered for <em>blazing-fast performance</em>. 🔥
+</p>
 
-### Supported File Types
-- **Documents**: PDF, DOCX, DOC, TXT, MD, HTML, JSON
-- **Data**: CSV, XLSX, XLS
-- **Images**: JPG, JPEG, PNG, GIF, BMP, WEBP
+<div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin: 30px 0;">
 
-### Streaming Support
-Endpoints marked with **STREAMING** support Server-Sent Events (SSE) for real-time responses.
+<div style="background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 12px; padding: 20px;">
+<h3 style="color: #a78bfa; margin-top: 0;">🧠 AI Superpowers</h3>
+<ul style="color: #c7d2fe; list-style: none; padding: 0;">
+<li>✨ <strong>Real-time Streaming</strong> - Watch AI think in real-time!</li>
+<li>🎯 <strong>Context-Aware Conversations</strong> - Never repeat yourself</li>
+<li>🚄 <strong>Lightning-Fast Processing</strong> - Millisecond responses</li>
+<li>🌐 <strong>Multi-Modal Intelligence</strong> - Text, images, data, everything!</li>
+</ul>
+</div>
 
-### Rate Limits
-Default rate limits apply based on Azure OpenAI service quotas.
+<div style="background: rgba(236, 72, 153, 0.1); border: 1px solid rgba(236, 72, 153, 0.3); border-radius: 12px; padding: 20px;">
+<h3 style="color: #f9a8d4; margin-top: 0;">📊 Data Mastery</h3>
+<ul style="color: #fce7f3; list-style: none; padding: 0;">
+<li>🔍 <strong>Smart Data Analysis</strong> - Pandas-powered insights</li>
+<li>📈 <strong>Auto-Generated Reports</strong> - Excel, CSV, DOCX exports</li>
+<li>🎨 <strong>Review Mining</strong> - Extract gold from any document</li>
+<li>🤖 <strong>Synthetic Data Generation</strong> - Create perfect test data</li>
+</ul>
+</div>
+
+<div style="background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 12px; padding: 20px;">
+<h3 style="color: #86efac; margin-top: 0;">🎭 Creative Genius</h3>
+<ul style="color: #dcfce7; list-style: none; padding: 0;">
+<li>📝 <strong>Content Generation</strong> - Blog posts to business plans</li>
+<li>🖼️ <strong>Vision Understanding</strong> - Analyze any image</li>
+<li>🎪 <strong>Multi-File Magic</strong> - Process entire folders</li>
+<li>🌟 <strong>Custom Personas</strong> - AI that adapts to YOU</li>
+</ul>
+</div>
+
+<div style="background: rgba(251, 146, 60, 0.1); border: 1px solid rgba(251, 146, 60, 0.3); border-radius: 12px; padding: 20px;">
+<h3 style="color: #fed7aa; margin-top: 0;">⚡ Performance</h3>
+<ul style="color: #ffedd5; list-style: none; padding: 0;">
+<li>🚀 <strong>Enterprise Scale</strong> - Handle millions of requests</li>
+<li>🛡️ <strong>Battle-Tested</strong> - Production-ready reliability</li>
+<li>📡 <strong>SSE Streaming</strong> - Real-time event streams</li>
+<li>🔧 <strong>Auto-Scaling</strong> - Grows with your needs</li>
+</ul>
+</div>
+
+</div>
+
+<div style="background: linear-gradient(90deg, rgba(99, 102, 241, 0.2) 0%, rgba(236, 72, 153, 0.2) 100%); border-radius: 12px; padding: 20px; margin: 20px 0;">
+<h3 style="color: #e0e7ff; margin-top: 0;">🎯 Supported Formats</h3>
+<div style="display: flex; flex-wrap: wrap; gap: 10px;">
+<span style="background: rgba(99, 102, 241, 0.3); color: #c7d2fe; padding: 6px 12px; border-radius: 20px; font-size: 14px;">📄 PDF</span>
+<span style="background: rgba(99, 102, 241, 0.3); color: #c7d2fe; padding: 6px 12px; border-radius: 20px; font-size: 14px;">📊 Excel</span>
+<span style="background: rgba(99, 102, 241, 0.3); color: #c7d2fe; padding: 6px 12px; border-radius: 20px; font-size: 14px;">📝 Word</span>
+<span style="background: rgba(236, 72, 153, 0.3); color: #fce7f3; padding: 6px 12px; border-radius: 20px; font-size: 14px;">🖼️ Images</span>
+<span style="background: rgba(236, 72, 153, 0.3); color: #fce7f3; padding: 6px 12px; border-radius: 20px; font-size: 14px;">📋 CSV</span>
+<span style="background: rgba(236, 72, 153, 0.3); color: #fce7f3; padding: 6px 12px; border-radius: 20px; font-size: 14px;">🔤 TXT</span>
+<span style="background: rgba(34, 197, 94, 0.3); color: #dcfce7; padding: 6px 12px; border-radius: 20px; font-size: 14px;">📐 JSON</span>
+<span style="background: rgba(34, 197, 94, 0.3); color: #dcfce7; padding: 6px 12px; border-radius: 20px; font-size: 14px;">🌐 HTML</span>
+<span style="background: rgba(34, 197, 94, 0.3); color: #dcfce7; padding: 6px 12px; border-radius: 20px; font-size: 14px;">📑 Markdown</span>
+</div>
+</div>
+
+<div style="text-align: center; margin-top: 30px;">
+<p style="color: #a78bfa; font-size: 18px; margin: 0;">
+Ready to revolutionize your workflow? <strong>Let's build something AMAZING together!</strong> 🚀
+</p>
+</div>
+
+</div>
+</div>
     """,
-    version="1.0.0",
-    docs_url=None,  # We'll serve custom docs
-    redoc_url=None,  # We'll serve custom redoc
-    openapi_url="/openapi.json",
-    openapi_tags=tags_metadata  # ← CORRECT: Pass tags during initialization
+    version="2.0.0",
+    
+    openapi_tags=[
+        {
+            "name": "🎯 Core AI",
+            "description": "**Main AI operations** - The heart of the system! These endpoints power conversations, completions, and intelligent processing."
+        },
+        {
+            "name": "💬 Chat Operations",
+            "description": "**Real-time conversations** with streaming support! Build interactive AI experiences with context awareness."
+        },
+        {
+            "name": "📊 Data Processing",
+            "description": "**Transform your data** into insights! Extract, analyze, and generate structured data with AI precision."
+        },
+        {
+            "name": "📁 File Operations",
+            "description": "**File management** made intelligent! Upload, process, and download files with AI enhancement."
+        },
+        {
+            "name": "🏥 System",
+            "description": "**Health monitoring** and system diagnostics. Keep your AI running at peak performance!"
+        }
+    ],
+    servers=[
+        {
+            "url": "https://copilotv2.azurewebsites.net",
+            "description": "🌟 Production Server - Lightning Fast!"
+        },
+        {
+            "url": "http://localhost:8080",
+            "description": "🛠️ Development Server - For Testing"
+        }
+    ]
 )
 
 # Custom OpenAPI schema function
@@ -919,7 +1085,7 @@ def custom_openapi():
         version=app.version,
         description=app.description,
         routes=app.routes,
-        tags=tags_metadata  # ← Also pass tags here for consistency
+        tags=tags_metadata
     )
     
     # Fix file upload parameters in the schema
@@ -932,51 +1098,137 @@ def custom_openapi():
                         schema = content["multipart/form-data"].get("schema", {})
                         properties = schema.get("properties", {})
                         
-                        # Fix file upload fields
+                        # Create a new properties dict to avoid modifying during iteration
+                        new_properties = {}
+                        
                         for prop_name, prop_value in properties.items():
-                            if "items" in prop_value and "$ref" in prop_value.get("items", {}):
-                                # This is likely a file upload field
-                                if "#/components/schemas/UploadFile" in prop_value["items"]["$ref"]:
-                                    properties[prop_name] = {
-                                        "type": "array",
-                                        "items": {
-                                            "type": "string",
-                                            "format": "binary"
+                            # Check if this is a file-related field
+                            is_file_field = False
+                            
+                            # Handle different schema structures
+                            if isinstance(prop_value, dict):
+                                # Check for anyOf with array type (optional array of files)
+                                if "anyOf" in prop_value:
+                                    for option in prop_value["anyOf"]:
+                                        if isinstance(option, dict) and option.get("type") == "array":
+                                            items = option.get("items", {})
+                                            if "$ref" in items and "UploadFile" in items["$ref"]:
+                                                is_file_field = True
+                                                # Optional array of files
+                                                new_properties[prop_name] = {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "string",
+                                                        "format": "binary"
+                                                    },
+                                                    "description": prop_value.get("description", "Upload files")
+                                                }
+                                                break
+                                
+                                # Check for array with file items
+                                elif prop_value.get("type") == "array":
+                                    items = prop_value.get("items", {})
+                                    if "$ref" in items and "UploadFile" in items["$ref"]:
+                                        is_file_field = True
+                                        # Required array of files
+                                        new_properties[prop_name] = {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "string",
+                                                "format": "binary"
+                                            },
+                                            "description": prop_value.get("description", "Upload files")
                                         }
+                                
+                                # Check for single file upload
+                                elif "$ref" in prop_value and "UploadFile" in prop_value["$ref"]:
+                                    is_file_field = True
+                                    # Single file
+                                    new_properties[prop_name] = {
+                                        "type": "string",
+                                        "format": "binary",
+                                        "description": prop_value.get("description", "Upload file")
                                     }
-                            elif "$ref" in prop_value and "#/components/schemas/UploadFile" in prop_value["$ref"]:
-                                # Single file upload
-                                properties[prop_name] = {
-                                    "type": "string",
-                                    "format": "binary"
-                                }
+                            
+                            # If not a file field, keep original
+                            if not is_file_field:
+                                new_properties[prop_name] = prop_value
+                        
+                        # Update the schema with fixed properties
+                        schema["properties"] = new_properties
+                        
+                        # Also check if there are required fields that need adjustment
+                        if "required" in schema:
+                            # Keep required fields as is - the schema already handles this correctly
+                            pass
     
-    # Add streaming response documentation
+    # Add enhanced streaming response documentation
     streaming_paths = ["/conversation", "/test-comprehensive"]
     
     for path in streaming_paths:
         if path in openapi_schema.get("paths", {}):
             for method in openapi_schema["paths"][path]:
                 if "responses" in openapi_schema["paths"][path][method]:
-                    # Add streaming response example
+                    # Add comprehensive streaming response documentation
                     openapi_schema["paths"][path][method]["responses"]["200"] = {
-                        "description": "Streaming response via Server-Sent Events",
+                        "description": "Streaming response via Server-Sent Events (SSE) or NDJSON",
                         "content": {
                             "text/event-stream": {
                                 "schema": {
                                     "type": "string",
-                                    "example": 'data: {"type": "update", "message": "Processing..."}\ndata: {"type": "result", "data": {...}}\ndata: [DONE]\n'
+                                    "example": 'data: {"id": "chatcmpl-xxx", "object": "chat.completion.chunk", "created": 1234567890, "model": "gpt-4", "choices": [{"index": 0, "delta": {"content": "Hello"}, "finish_reason": null}]}\ndata: {"id": "chatcmpl-xxx", "object": "chat.completion.chunk", "created": 1234567890, "model": "gpt-4", "choices": [{"index": 0, "delta": {"content": " world!"}, "finish_reason": null}]}\ndata: [DONE]\n',
+                                    "description": "Server-Sent Events stream with chat completion chunks"
                                 }
                             },
                             "application/x-ndjson": {
                                 "schema": {
                                     "type": "string", 
-                                    "example": '{"type": "update", "timestamp": "2024-01-01T00:00:00Z", "message": "Test started"}\n{"type": "result", "timestamp": "2024-01-01T00:00:10Z", "data": {...}}\n'
+                                    "example": '{"type": "test_started", "timestamp": "2024-01-01T00:00:00Z", "data": {"test_name": "concurrent_users", "parameters": {"users": 5}}}\n{"type": "progress", "timestamp": "2024-01-01T00:00:05Z", "data": {"completed": 2, "total": 5, "message": "Testing concurrent user 2..."}}\n{"type": "test_completed", "timestamp": "2024-01-01T00:00:10Z", "data": {"status": "passed", "summary": "All tests completed successfully"}}\n',
+                                    "description": "Newline-delimited JSON stream for real-time updates"
                                 }
                             }
                         }
                     }
     
+    # Add detailed examples for conversation endpoint
+    conversation_endpoints = ["/conversation", "/chat"]
+    for endpoint in conversation_endpoints:
+        if endpoint in openapi_schema.get("paths", {}):
+            for method in ["get", "post"]:
+                if method in openapi_schema["paths"][endpoint]:
+                    operation = openapi_schema["paths"][endpoint][method]
+                    
+                    # Enhance description with usage examples
+                    current_desc = operation.get("description", "")
+                    enhanced_desc = current_desc + """
+
+**Conversation Modes:**
+
+1. **Session-based with Assistant & Thread:**
+   - `session`: Valid thread ID from /initiate-chat
+   - `assistant`: Assistant ID
+   - `prompt`: Your message
+   
+2. **Invalid Thread Recovery:**
+   - System automatically creates new thread if invalid ID provided
+   - Returns new thread ID in response
+
+3. **Context-only Mode (Stateless):**
+   - `context`: User context or persona
+   - `prompt`: Your message
+   - No session/assistant needed
+
+4. **File-enhanced Mode (POST only):**
+   - Include files with your query
+   - System analyzes files in context
+
+**Response Format:**
+- `/conversation`: SSE stream with real-time chunks
+- `/chat`: Complete JSON response after processing"""
+                    
+                    operation["description"] = enhanced_desc
+    
+    # Cache the schema
     app.openapi_schema = openapi_schema
     return app.openapi_schema
 
@@ -987,12 +1239,13 @@ app.openapi = custom_openapi
 async def custom_swagger_ui_html():
     """
     SUPER AWESOME Feature-rich custom Swagger UI with:
-    - Real-time streaming visualization
-    - Live connection status
-    - Response analytics
+    - Real-time streaming visualization with EventSource
+    - Live connection status monitoring
+    - Response analytics and timing
     - Copy/Export functionality
     - Keyboard shortcuts
-    - And much more!
+    - Enhanced conversation mode documentation
+    - Raw/Parsed mode toggle
     """
     return HTMLResponse(
         content=f"""
@@ -1005,7 +1258,7 @@ async def custom_swagger_ui_html():
             <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
             {CUSTOM_SWAGGER_CSS}
             <style>
-            /* SUPER AWESOME FEATURES STYLING */
+            /* SUPER AWESOME FEATURES STYLING - ALL EXISTING FEATURES PRESERVED */
             
             /* Floating Feature Panel */
             .awesome-features {{
@@ -1044,6 +1297,11 @@ async def custom_swagger_ui_html():
                 box-shadow: 0 4px 12px rgba(120, 119, 198, 0.3);
             }}
             
+            .feature-btn.active {{
+                background: rgba(120, 119, 198, 0.5);
+                border-color: #7877c6;
+            }}
+            
             /* Live Connection Status */
             .connection-status {{
                 position: fixed;
@@ -1066,67 +1324,290 @@ async def custom_swagger_ui_html():
                 width: 8px;
                 height: 8px;
                 border-radius: 50%;
-                animation: pulse 2s infinite;
-            }}
-            
-            .status-dot.connected {{
                 background: #10b981;
-                box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+                animation: pulse-dot 2s infinite;
             }}
             
-            .status-dot.streaming {{
-                background: #3b82f6;
-                box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
-                animation: pulse 0.5s infinite;
+            @keyframes pulse-dot {{
+                0%, 100% {{ opacity: 1; transform: scale(1); }}
+                50% {{ opacity: 0.6; transform: scale(1.2); }}
             }}
             
-            @keyframes pulse {{
-                0% {{ transform: scale(1); opacity: 1; }}
-                50% {{ transform: scale(1.2); opacity: 0.8; }}
-                100% {{ transform: scale(1); opacity: 1; }}
+            /* Toast Notifications */
+            @keyframes slideUp {{
+                from {{ transform: translateY(100px); opacity: 0; }}
+                to {{ transform: translateY(0); opacity: 1; }}
             }}
             
-            /* Enhanced Streaming Response Container */
+            @keyframes slideDown {{
+                from {{ transform: translateY(0); opacity: 1; }}
+                to {{ transform: translateY(100px); opacity: 0; }}
+            }}
+            
+            /* REAL-TIME STREAMING VIEWER */
+            .streaming-viewer {{
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                width: 80%;
+                max-width: 800px;
+                max-height: 80vh;
+                background: rgba(17, 24, 39, 0.98);
+                backdrop-filter: blur(20px);
+                border: 1px solid rgba(120, 119, 198, 0.3);
+                border-radius: 16px;
+                padding: 24px;
+                box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+                z-index: 10001;
+                display: none;
+                flex-direction: column;
+            }}
+            
+            .streaming-header {{
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 20px;
+                padding-bottom: 16px;
+                border-bottom: 1px solid rgba(120, 119, 198, 0.2);
+            }}
+            
+            .streaming-title {{
+                color: #7dd3fc;
+                font-size: 18px;
+                font-weight: 600;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }}
+            
+            .streaming-close {{
+                background: rgba(239, 68, 68, 0.2);
+                border: 1px solid rgba(239, 68, 68, 0.3);
+                color: #ef4444;
+                padding: 6px 12px;
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 12px;
+                transition: all 0.2s;
+            }}
+            
+            .streaming-close:hover {{
+                background: rgba(239, 68, 68, 0.3);
+            }}
+            
+            .streaming-controls {{
+                display: flex;
+                gap: 8px;
+                margin-bottom: 16px;
+            }}
+            
+            .streaming-content {{
+                flex: 1;
+                overflow-y: auto;
+                background: rgba(0, 0, 0, 0.3);
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 8px;
+                padding: 16px;
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 13px;
+            }}
+            
+            .stream-chunk {{
+                margin-bottom: 8px;
+                padding: 8px;
+                background: rgba(16, 185, 129, 0.1);
+                border: 1px solid rgba(16, 185, 129, 0.2);
+                border-radius: 6px;
+                word-break: break-word;
+                animation: chunkAppear 0.3s ease-out;
+            }}
+            
+            @keyframes chunkAppear {{
+                from {{ opacity: 0; transform: translateY(10px); }}
+                to {{ opacity: 1; transform: translateY(0); }}
+            }}
+            
+            .stream-chunk.raw {{
+                background: rgba(59, 130, 246, 0.1);
+                border-color: rgba(59, 130, 246, 0.2);
+                white-space: pre-wrap;
+            }}
+            
+            .chunk-header {{
+                font-size: 11px;
+                color: #9ca3af;
+                margin-bottom: 4px;
+                display: flex;
+                justify-content: space-between;
+            }}
+            
+            .chunk-content {{
+                color: #e6edf3;
+                line-height: 1.5;
+            }}
+            
+            .accumulated-message {{
+                background: rgba(16, 185, 129, 0.1);
+                border: 1px solid rgba(16, 185, 129, 0.3);
+                border-radius: 8px;
+                padding: 16px;
+                margin-top: 16px;
+            }}
+            
+            .accumulated-message h5 {{
+                color: #10b981;
+                margin: 0 0 12px 0;
+                font-size: 14px;
+                font-weight: 600;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }}
+            
+            .accumulated-content {{
+                color: #e6edf3;
+                line-height: 1.6;
+                font-size: 14px;
+                white-space: pre-wrap;
+                word-break: break-word;
+            }}
+            
+            /* Streaming Test Button */
+            .stream-test-btn {{
+                background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 12px;
+                font-weight: 600;
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                margin-left: 12px;
+                transition: all 0.2s;
+            }}
+            
+            .stream-test-btn:hover {{
+                transform: translateY(-1px);
+                box-shadow: 0 4px 12px rgba(6, 182, 212, 0.3);
+            }}
+            
+            /* Enhanced Response Container */
             .streaming-response-container {{
-                background: linear-gradient(135deg, #0d1117 0%, #161b22 100%);
+                background: rgba(17, 24, 39, 0.8);
                 border: 1px solid rgba(120, 119, 198, 0.3);
                 border-radius: 12px;
                 padding: 20px;
-                margin: 12px 0;
+                margin-top: 16px;
                 font-family: 'JetBrains Mono', monospace;
+            }}
+            
+            .response-header {{
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 16px;
+                padding-bottom: 12px;
+                border-bottom: 1px solid rgba(120, 119, 198, 0.2);
+            }}
+            
+            .response-title {{
+                color: #7dd3fc;
+                font-size: 16px;
+                font-weight: 600;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }}
+            
+            .response-controls {{
+                display: flex;
+                gap: 8px;
+            }}
+            
+            .control-btn {{
+                background: rgba(120, 119, 198, 0.2);
+                border: 1px solid rgba(120, 119, 198, 0.3);
+                color: #e5e7eb;
+                padding: 4px 8px;
+                border-radius: 6px;
+                cursor: pointer;
                 font-size: 12px;
-                line-height: 1.6;
-                color: #e6edf3;
-                overflow: hidden;
+                transition: all 0.2s;
+            }}
+            
+            .control-btn:hover {{
+                background: rgba(120, 119, 198, 0.3);
+            }}
+            
+            .control-btn.active {{
+                background: #7877c6;
+                color: white;
+            }}
+            
+            /* Stream Event Styling */
+            .stream-event {{
+                background: rgba(0, 0, 0, 0.3);
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 8px;
+                padding: 12px;
+                margin-bottom: 8px;
                 position: relative;
+                overflow: hidden;
             }}
             
-            .streaming-response-container::before {{
-                content: '';
-                position: absolute;
-                top: 0;
-                left: 0;
-                right: 0;
-                height: 3px;
-                background: linear-gradient(90deg, #7877c6 0%, #3b82f6 50%, #06b6d4 100%);
-                animation: shimmer 2s infinite;
+            .stream-event.type-content {{
+                border-color: rgba(16, 185, 129, 0.3);
+                background: rgba(16, 185, 129, 0.05);
             }}
             
-            @keyframes shimmer {{
-                0% {{ transform: translateX(-100%); }}
-                100% {{ transform: translateX(100%); }}
+            .stream-event.type-complete {{
+                border-color: rgba(59, 130, 246, 0.3);
+                background: rgba(59, 130, 246, 0.05);
+            }}
+            
+            .event-header {{
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 8px;
+                font-size: 11px;
+                color: #9ca3af;
+            }}
+            
+            .event-type {{
+                background: rgba(120, 119, 198, 0.2);
+                padding: 2px 6px;
+                border-radius: 4px;
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+            }}
+            
+            .event-timestamp {{
+                font-family: 'JetBrains Mono', monospace;
+                opacity: 0.7;
+            }}
+            
+            .event-content {{
+                color: #e6edf3;
+                line-height: 1.5;
+                word-break: break-word;
             }}
             
             /* Response Analytics */
             .response-analytics {{
-                background: rgba(120, 119, 198, 0.1);
-                border: 1px solid rgba(120, 119, 198, 0.2);
+                background: rgba(0, 0, 0, 0.2);
                 border-radius: 8px;
                 padding: 12px;
-                margin: 12px 0;
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-                gap: 12px;
+                margin-bottom: 16px;
+                display: flex;
+                gap: 20px;
+                flex-wrap: wrap;
             }}
             
             .analytics-item {{
@@ -1143,569 +1624,825 @@ async def custom_swagger_ui_html():
             }}
             
             .analytics-value {{
-                font-size: 16px;
-                font-weight: 600;
-                color: #7dd3fc;
-            }}
-            
-            /* Streaming Event with Enhanced Styling */
-            .streaming-event {{
-                margin: 16px 0;
-                padding: 16px;
-                background: rgba(120, 119, 198, 0.05);
-                border-radius: 8px;
-                border-left: 4px solid;
-                position: relative;
-                transition: all 0.3s;
-            }}
-            
-            .streaming-event:hover {{
-                background: rgba(120, 119, 198, 0.08);
-                transform: translateX(4px);
-            }}
-            
-            .streaming-event.type-start {{
-                border-left-color: #10b981;
-            }}
-            
-            .streaming-event.type-progress {{
-                border-left-color: #3b82f6;
-            }}
-            
-            .streaming-event.type-complete {{
-                border-left-color: #a78bfa;
-            }}
-            
-            .streaming-event.type-error {{
-                border-left-color: #ef4444;
-            }}
-            
-            /* Copy Button for Events */
-            .copy-event-btn {{
-                position: absolute;
-                top: 8px;
-                right: 8px;
-                background: rgba(120, 119, 198, 0.2);
-                border: 1px solid rgba(120, 119, 198, 0.3);
-                border-radius: 6px;
-                padding: 4px 8px;
-                cursor: pointer;
-                opacity: 0;
-                transition: all 0.2s;
-                font-size: 11px;
-            }}
-            
-            .streaming-event:hover .copy-event-btn {{
-                opacity: 1;
-            }}
-            
-            .copy-event-btn:hover {{
-                background: rgba(120, 119, 198, 0.4);
-            }}
-            
-            /* SSE Data Visualization */
-            .sse-visualization {{
-                display: grid;
-                grid-template-columns: auto 1fr;
-                gap: 12px;
-                align-items: start;
-                background: rgba(17, 24, 39, 0.4);
-                padding: 12px;
-                border-radius: 6px;
-                margin: 8px 0;
-            }}
-            
-            .sse-label {{
-                color: #7dd3fc;
-                font-weight: 600;
-                font-size: 11px;
-                text-transform: uppercase;
-                letter-spacing: 0.05em;
-            }}
-            
-            .sse-content {{
-                color: #e6edf3;
-                word-break: break-word;
-            }}
-            
-            /* Message Accumulator */
-            .message-accumulator {{
-                background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(59, 130, 246, 0.1) 100%);
-                border: 1px solid rgba(16, 185, 129, 0.3);
-                border-radius: 8px;
-                padding: 16px;
-                margin-top: 16px;
-                position: relative;
-                overflow: hidden;
-            }}
-            
-            .message-accumulator::before {{
-                content: '✨ Complete Message';
-                position: absolute;
-                top: 8px;
-                left: 16px;
-                font-size: 12px;
-                font-weight: 600;
-                color: #10b981;
-                text-transform: uppercase;
-                letter-spacing: 0.05em;
-            }}
-            
-            .accumulated-text {{
-                margin-top: 24px;
-                font-size: 14px;
-                line-height: 1.6;
-                color: #e6edf3;
-            }}
-            
-            /* Keyboard Shortcuts Modal */
-            .shortcuts-modal {{
-                display: none;
-                position: fixed;
-                top: 50%;
-                left: 50%;
-                transform: translate(-50%, -50%);
-                background: rgba(17, 24, 39, 0.98);
-                backdrop-filter: blur(20px);
-                border: 1px solid rgba(120, 119, 198, 0.3);
-                border-radius: 12px;
-                padding: 24px;
-                box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-                z-index: 10000;
-                max-width: 500px;
-                max-height: 80vh;
-                overflow-y: auto;
-            }}
-            
-            .shortcuts-modal h3 {{
-                color: #7dd3fc;
-                margin-bottom: 16px;
-                font-size: 18px;
-            }}
-            
-            .shortcut-item {{
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                padding: 8px 0;
-                border-bottom: 1px solid rgba(120, 119, 198, 0.1);
-            }}
-            
-            .shortcut-key {{
-                background: rgba(120, 119, 198, 0.2);
-                padding: 4px 8px;
-                border-radius: 4px;
-                font-family: 'JetBrains Mono', monospace;
-                font-size: 12px;
-                color: #7dd3fc;
-            }}
-            
-            /* Response Timer */
-            .response-timer {{
-                position: absolute;
-                top: 16px;
-                right: 16px;
-                background: rgba(59, 130, 246, 0.1);
-                border: 1px solid rgba(59, 130, 246, 0.3);
-                border-radius: 20px;
-                padding: 4px 12px;
-                font-size: 11px;
-                color: #3b82f6;
-                font-weight: 600;
-                display: flex;
-                align-items: center;
-                gap: 6px;
-            }}
-            
-            .timer-icon {{
-                animation: rotate 2s linear infinite;
-            }}
-            
-            @keyframes rotate {{
-                from {{ transform: rotate(0deg); }}
-                to {{ transform: rotate(360deg); }}
+                font-size: 20px;
+                font-weight: 700;
+                color: #7877c6;
             }}
             
             /* Export Options */
             .export-options {{
-                position: absolute;
-                top: 8px;
-                right: 40px;
                 display: flex;
-                gap: 4px;
-                opacity: 0;
-                transition: opacity 0.2s;
-            }}
-            
-            .streaming-response-container:hover .export-options {{
-                opacity: 1;
+                gap: 8px;
+                margin-top: 12px;
             }}
             
             .export-btn {{
                 background: rgba(120, 119, 198, 0.2);
                 border: 1px solid rgba(120, 119, 198, 0.3);
-                border-radius: 4px;
-                padding: 4px 8px;
-                cursor: pointer;
-                font-size: 11px;
                 color: #e5e7eb;
+                padding: 6px 12px;
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 12px;
                 transition: all 0.2s;
+                display: flex;
+                align-items: center;
+                gap: 6px;
             }}
             
             .export-btn:hover {{
-                background: rgba(120, 119, 198, 0.4);
+                background: rgba(120, 119, 198, 0.3);
                 transform: translateY(-1px);
             }}
             
-            /* Enhanced File Upload with Preview */
-            .file-upload-enhanced {{
-                position: relative;
-                margin: 12px 0;
+            /* Raw JSON Display */
+            .raw-json {{
+                background: #0d1117;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 8px;
+                padding: 16px;
+                overflow-x: auto;
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 13px;
+                line-height: 1.5;
+                color: #e6edf3;
             }}
             
-            .file-preview {{
-                background: rgba(120, 119, 198, 0.05);
-                border: 1px solid rgba(120, 119, 198, 0.2);
+            /* Formatted JSON Display */
+            .formatted-json {{
+                background: #0d1117;
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 8px;
+                padding: 16px;
+                overflow-x: auto;
+            }}
+            
+            .json-key {{
+                color: #7dd3fc;
+                font-weight: 600;
+            }}
+            
+            .json-string {{
+                color: #a5f3fc;
+            }}
+            
+            .json-number {{
+                color: #f9a8d4;
+            }}
+            
+            .json-boolean {{
+                color: #c084fc;
+            }}
+            
+            .json-null {{
+                color: #6b7280;
+            }}
+            
+            /* Conversation Mode Examples */
+            .mode-examples {{
+                background: rgba(59, 130, 246, 0.1);
+                border: 1px solid rgba(59, 130, 246, 0.3);
+                border-radius: 8px;
+                padding: 16px;
+                margin: 16px 0;
+            }}
+            
+            .mode-examples h4 {{
+                color: #3b82f6;
+                margin: 0 0 12px 0;
+                font-size: 14px;
+                font-weight: 600;
+            }}
+            
+            .example-item {{
+                background: rgba(0, 0, 0, 0.2);
                 border-radius: 6px;
-                padding: 8px;
-                margin-top: 8px;
-                display: none;
+                padding: 12px;
+                margin-bottom: 8px;
             }}
             
-            .file-preview.active {{
-                display: block;
+            .example-title {{
+                color: #7dd3fc;
+                font-weight: 600;
+                font-size: 13px;
+                margin-bottom: 4px;
             }}
             
-            .file-info {{
-                display: flex;
-                align-items: center;
-                gap: 8px;
+            .example-code {{
+                font-family: 'JetBrains Mono', monospace;
                 font-size: 12px;
-                color: #9ca3af;
-            }}
-            
-            .file-icon {{
-                font-size: 16px;
+                color: #e6edf3;
+                line-height: 1.4;
             }}
             
             /* Fullscreen Mode */
-            .fullscreen-response {{
-                position: fixed;
-                top: 0;
-                left: 0;
-                right: 0;
-                bottom: 0;
-                background: rgba(17, 24, 39, 0.98);
-                backdrop-filter: blur(20px);
-                z-index: 10001;
-                padding: 40px;
-                overflow-y: auto;
-                display: none;
+            .fullscreen {{
+                position: fixed !important;
+                top: 0 !important;
+                left: 0 !important;
+                right: 0 !important;
+                bottom: 0 !important;
+                z-index: 10000 !important;
+                background: #0a0a0a !important;
+                padding: 20px !important;
+                overflow: auto !important;
             }}
             
-            .fullscreen-response.active {{
-                display: block;
+            /* Loading Animation */
+            .loading-spinner {{
+                display: inline-block;
+                width: 16px;
+                height: 16px;
+                border: 2px solid rgba(120, 119, 198, 0.3);
+                border-top-color: #7877c6;
+                border-radius: 50%;
+                animation: spin 0.8s linear infinite;
             }}
             
-            .fullscreen-close {{
-                position: fixed;
-                top: 20px;
-                right: 20px;
-                background: rgba(239, 68, 68, 0.2);
-                border: 1px solid rgba(239, 68, 68, 0.3);
-                border-radius: 8px;
-                padding: 8px 16px;
-                cursor: pointer;
-                color: #ef4444;
-                transition: all 0.2s;
+            @keyframes spin {{
+                to {{ transform: rotate(360deg); }}
             }}
             
-            .fullscreen-close:hover {{
-                background: rgba(239, 68, 68, 0.3);
-                transform: scale(1.05);
+            /* Streaming Status */
+            .streaming-status {{
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                padding: 8px 12px;
+                background: rgba(6, 182, 212, 0.1);
+                border: 1px solid rgba(6, 182, 212, 0.3);
+                border-radius: 6px;
+                font-size: 12px;
+                color: #06b6d4;
+            }}
+            
+            .streaming-indicator {{
+                width: 8px;
+                height: 8px;
+                background: #06b6d4;
+                border-radius: 50%;
+                animation: pulse-stream 1s infinite;
+            }}
+            
+            @keyframes pulse-stream {{
+                0% {{ opacity: 1; transform: scale(1); }}
+                50% {{ opacity: 0.5; transform: scale(1.5); }}
+                100% {{ opacity: 1; transform: scale(1); }}
             }}
             </style>
-            <script>
-            // 🚀 SUPER AWESOME FEATURES IMPLEMENTATION
+        </head>
+        <body>
+            <div id="swagger-ui"></div>
             
-            // Global state for awesome features
+            <!-- Connection Status -->
+            <div class="connection-status">
+                <div class="status-dot"></div>
+                <span>API Connected</span>
+            </div>
+            
+            <!-- Awesome Features Panel -->
+            <div class="awesome-features">
+                <button class="feature-btn" onclick="toggleDarkMode()" title="Toggle dark mode">
+                    <i class="fas fa-moon"></i> Dark
+                </button>
+                <button class="feature-btn" id="rawModeBtn" onclick="toggleRawMode()" title="Toggle raw/parsed view">
+                    <i class="fas fa-code"></i> Raw
+                </button>
+                <button class="feature-btn" onclick="toggleAnimations()" title="Toggle animations">
+                    <i class="fas fa-magic"></i> Animate
+                </button>
+                <button class="feature-btn" onclick="showKeyboardShortcuts()" title="Keyboard shortcuts">
+                    <i class="fas fa-keyboard"></i> Keys
+                </button>
+                <button class="feature-btn" onclick="exportAllResponses()" title="Export all responses">
+                    <i class="fas fa-download"></i> Export
+                </button>
+            </div>
+            
+            <!-- Real-time Streaming Viewer -->
+            <div id="streamingViewer" class="streaming-viewer">
+                <div class="streaming-header">
+                    <div class="streaming-title">
+                        <i class="fas fa-stream"></i> Real-time Stream Viewer
+                    </div>
+                    <button class="streaming-close" onclick="closeStreamingViewer()">
+                        <i class="fas fa-times"></i> Close
+                    </button>
+                </div>
+                <div class="streaming-controls">
+                    <button class="control-btn" id="streamRawBtn" onclick="toggleStreamRaw()">
+                        <i class="fas fa-code"></i> Raw
+                    </button>
+                    <button class="control-btn" onclick="clearStreamContent()">
+                        <i class="fas fa-trash"></i> Clear
+                    </button>
+                    <button class="control-btn" onclick="exportStreamContent()">
+                        <i class="fas fa-download"></i> Export
+                    </button>
+                    <div class="streaming-status" id="streamingStatus" style="display: none;">
+                        <div class="streaming-indicator"></div>
+                        <span>Streaming...</span>
+                    </div>
+                </div>
+                <div class="streaming-content" id="streamingContent"></div>
+                <div id="accumulatedMessageContainer"></div>
+            </div>
+            
+            <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+            <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-standalone-preset.js"></script>
+            <script>
+            // 🎯 Global State
             const awesomeState = {{
-                streamingActive: false,
-                responseStartTime: null,
-                eventCount: 0,
+                darkMode: true,
+                rawMode: false,
+                streamRawMode: false,
+                animations: true,
+                responses: [],
                 accumulatedMessage: '',
-                connectionStatus: 'connected',
-                shortcuts: {{
-                    'Ctrl+K': 'Show keyboard shortcuts',
-                    'Ctrl+E': 'Export current response',
-                    'Ctrl+F': 'Toggle fullscreen',
-                    'Ctrl+C': 'Copy response',
-                    'Ctrl+/': 'Focus search',
-                    'Escape': 'Close modals'
-                }}
+                streamBuffer: [],
+                conversationHistory: [],
+                currentEventSource: null,
+                streamingActive: false
             }};
             
-            // 🎯 SSE Parser for /conversation endpoint
-            function parseSSEResponse(text) {{
-                if (!text || typeof text !== 'string') return null;
+            // 🎨 Swagger UI Configuration
+            window.onload = function() {{
+                window.ui = SwaggerUIBundle({{
+                    url: "/openapi.json",
+                    dom_id: '#swagger-ui',
+                    deepLinking: true,
+                    presets: [
+                        SwaggerUIBundle.presets.apis,
+                        SwaggerUIStandalonePreset
+                    ],
+                    plugins: [
+                        SwaggerUIBundle.plugins.DownloadUrl,
+                        EnhanceConversationDocs,
+                        StreamingEndpointEnhancer
+                    ],
+                    layout: "StandaloneLayout",
+                    defaultModelsExpandDepth: -1,
+                    displayRequestDuration: true,
+                    filter: true,
+                    persistAuthorization: true,
+                    onComplete: function() {{
+                        console.log("🚀 Azure CoPilot V2 API loaded!");
+                        enhanceStreamingResponses();
+                        addConversationExamples();
+                        setupKeyboardShortcuts();
+                        monitorApiCalls();
+                        addStreamTestButtons();
+                    }}
+                }});
                 
-                const events = [];
+                // 🔥 Check API health
+                checkApiHealth();
+            }};
+            
+            // 🚀 Plugin to enhance streaming endpoints
+            function StreamingEndpointEnhancer() {{
+                return {{
+                    wrapComponents: {{
+                        ResponseBody: (Original, system) => (props) => {{
+                            const isStreamingEndpoint = (
+                                props.path?.includes('/conversation') || 
+                                props.path?.includes('/test-comprehensive')
+                            ) && props.method === 'post';
+                            
+                            if (isStreamingEndpoint && props.content?.includes('data:')) {{
+                                // This is a streaming response
+                                setTimeout(() => {{
+                                    enhanceStreamingDisplay(props);
+                                }}, 100);
+                            }}
+                            
+                            return system.React.createElement(Original, props);
+                        }}
+                    }}
+                }};
+            }}
+            
+            // 📚 Plugin to enhance conversation documentation
+            function EnhanceConversationDocs() {{
+                return {{
+                    wrapComponents: {{
+                        Response: (Original, system) => (props) => {{
+                            const isConversationEndpoint = props.path?.includes('/conversation') || 
+                                                          props.path?.includes('/chat');
+                            if (isConversationEndpoint) {{
+                                addConversationModeDocumentation(props);
+                            }}
+                            return system.React.createElement(Original, props);
+                        }}
+                    }}
+                }};
+            }}
+            
+            // 🎯 Add real-time stream test buttons
+            function addStreamTestButtons() {{
+                // Add test buttons to streaming endpoints
+                const observer = new MutationObserver((mutations) => {{
+                    mutations.forEach((mutation) => {{
+                        mutation.addedNodes.forEach((node) => {{
+                            if (node.nodeType === 1) {{
+                                const executeBtn = node.querySelector?.('.btn.execute');
+                                if (executeBtn) {{
+                                    const opblock = executeBtn.closest('.opblock');
+                                    const path = opblock?.querySelector('.opblock-summary-path')?.textContent;
+                                    
+                                    if (path && (path.includes('/conversation') || path.includes('/test-comprehensive'))) {{
+                                        if (!opblock.querySelector('.stream-test-btn')) {{
+                                            const streamBtn = document.createElement('button');
+                                            streamBtn.className = 'stream-test-btn';
+                                            streamBtn.innerHTML = '<i class="fas fa-play"></i> Test Real-time Stream';
+                                            streamBtn.onclick = () => testRealTimeStream(opblock);
+                                            executeBtn.parentElement.appendChild(streamBtn);
+                                        }}
+                                    }}
+                                }}
+                            }}
+                        }});
+                    }});
+                }});
+                
+                observer.observe(document.body, {{
+                    childList: true,
+                    subtree: true
+                }});
+            }}
+            
+            // 🚀 Test real-time streaming
+            function testRealTimeStream(opblock) {{
+                const path = opblock.querySelector('.opblock-summary-path')?.textContent;
+                const method = opblock.querySelector('.opblock-summary-method')?.textContent?.toLowerCase();
+                
+                // Get form data
+                const formData = new FormData();
+                const inputs = opblock.querySelectorAll('input, textarea, select');
+                
+                inputs.forEach(input => {{
+                    const paramName = input.getAttribute('data-param-name') || input.name;
+                    if (paramName && input.value) {{
+                        formData.append(paramName, input.value);
+                    }}
+                }});
+                
+                // Open streaming viewer
+                openStreamingViewer();
+                
+                // Start streaming
+                if (path.includes('/conversation')) {{
+                    startConversationStream(formData);
+                }} else if (path.includes('/test-comprehensive')) {{
+                    startTestStream(formData);
+                }}
+            }}
+            
+            // 🎯 Start conversation streaming
+            function startConversationStream(formData) {{
+                // Close any existing stream
+                if (awesomeState.currentEventSource) {{
+                    awesomeState.currentEventSource.close();
+                }}
+                
+                // Build query string
+                const params = new URLSearchParams();
+                for (let [key, value] of formData.entries()) {{
+                    params.append(key, value);
+                }}
+                
+                const url = `/conversation?${{params.toString()}}`;
+                const eventSource = new EventSource(url);
+                awesomeState.currentEventSource = eventSource;
+                awesomeState.streamingActive = true;
+                awesomeState.accumulatedMessage = '';
+                
+                // Show streaming status
+                document.getElementById('streamingStatus').style.display = 'flex';
+                
+                eventSource.onmessage = (event) => {{
+                    if (event.data === '[DONE]') {{
+                        eventSource.close();
+                        awesomeState.streamingActive = false;
+                        document.getElementById('streamingStatus').style.display = 'none';
+                        showAccumulatedMessage();
+                        return;
+                    }}
+                    
+                    try {{
+                        const data = JSON.parse(event.data);
+                        if (data.choices?.[0]?.delta?.content) {{
+                            const content = data.choices[0].delta.content;
+                            awesomeState.accumulatedMessage += content;
+                            
+                            // Add chunk to display
+                            addStreamChunk(content, event.data);
+                        }}
+                    }} catch (e) {{
+                        // Handle non-JSON data
+                        addStreamChunk(event.data, event.data, true);
+                    }}
+                }};
+                
+                eventSource.onerror = (error) => {{
+                    console.error('Stream error:', error);
+                    eventSource.close();
+                    awesomeState.streamingActive = false;
+                    document.getElementById('streamingStatus').style.display = 'none';
+                    showToast('Stream connection error', 'error');
+                }};
+            }}
+            
+            // 🎯 Add stream chunk to display
+            function addStreamChunk(content, rawData, isRaw = false) {{
+                const container = document.getElementById('streamingContent');
+                const chunk = document.createElement('div');
+                chunk.className = awesomeState.streamRawMode ? 'stream-chunk raw' : 'stream-chunk';
+                
+                if (awesomeState.streamRawMode) {{
+                    chunk.innerHTML = `
+                        <div class="chunk-header">
+                            <span>Raw Data</span>
+                            <span>${{new Date().toLocaleTimeString()}}</span>
+                        </div>
+                        <div class="chunk-content">${{escapeHtml('data: ' + rawData)}}</div>
+                    `;
+                }} else {{
+                    chunk.innerHTML = `
+                        <div class="chunk-header">
+                            <span>Chunk #${{container.children.length + 1}}</span>
+                            <span>${{new Date().toLocaleTimeString()}}</span>
+                        </div>
+                        <div class="chunk-content">${{escapeHtml(content)}}</div>
+                    `;
+                }}
+                
+                container.appendChild(chunk);
+                container.scrollTop = container.scrollHeight;
+            }}
+            
+            // 🎯 Show accumulated message
+            function showAccumulatedMessage() {{
+                if (!awesomeState.accumulatedMessage) return;
+                
+                const container = document.getElementById('accumulatedMessageContainer');
+                container.innerHTML = `
+                    <div class="accumulated-message">
+                        <h5><i class="fas fa-comment-alt"></i> Complete Message</h5>
+                        <div class="accumulated-content">${{escapeHtml(awesomeState.accumulatedMessage)}}</div>
+                    </div>
+                `;
+            }}
+            
+            // 🎯 Streaming viewer controls
+            function openStreamingViewer() {{
+                document.getElementById('streamingViewer').style.display = 'flex';
+                clearStreamContent();
+            }}
+            
+            function closeStreamingViewer() {{
+                document.getElementById('streamingViewer').style.display = 'none';
+                if (awesomeState.currentEventSource) {{
+                    awesomeState.currentEventSource.close();
+                    awesomeState.currentEventSource = null;
+                }}
+            }}
+            
+            function toggleStreamRaw() {{
+                awesomeState.streamRawMode = !awesomeState.streamRawMode;
+                document.getElementById('streamRawBtn').classList.toggle('active');
+            }}
+            
+            function clearStreamContent() {{
+                document.getElementById('streamingContent').innerHTML = '';
+                document.getElementById('accumulatedMessageContainer').innerHTML = '';
+                awesomeState.accumulatedMessage = '';
+            }}
+            
+            function exportStreamContent() {{
+                const content = {{
+                    raw: Array.from(document.querySelectorAll('.stream-chunk')).map(el => el.textContent),
+                    accumulated: awesomeState.accumulatedMessage,
+                    timestamp: new Date().toISOString()
+                }};
+                
+                const blob = new Blob([JSON.stringify(content, null, 2)], {{ type: 'application/json' }});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `stream-content-${{new Date().toISOString()}}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+                
+                showToast('Stream content exported!');
+            }}
+            
+            // 📝 Add conversation mode documentation
+            function addConversationModeDocumentation(props) {{
+                setTimeout(() => {{
+                    const operationEl = document.querySelector(`[data-path="${{props.path}}"]`);
+                    if (operationEl && !operationEl.querySelector('.mode-examples')) {{
+                        const descEl = operationEl.querySelector('.opblock-description-wrapper');
+                        if (descEl) {{
+                            const examplesHtml = `
+                                <div class="mode-examples">
+                                    <h4>🎯 Conversation Modes & Examples</h4>
+                                    
+                                    <div class="example-item">
+                                        <div class="example-title">1️⃣ Session-Based Mode (with Assistant & Thread)</div>
+                                        <div class="example-code">
+session=thread_abc123
+assistant=asst_def456
+prompt="Analyze the uploaded data"
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="example-item">
+                                        <div class="example-title">2️⃣ Invalid Thread Recovery</div>
+                                        <div class="example-code">
+session=invalid_thread_id  // System creates new thread
+assistant=asst_def456
+prompt="Start fresh analysis"
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="example-item">
+                                        <div class="example-title">3️⃣ Context-Only Mode (Stateless)</div>
+                                        <div class="example-code">
+context="I'm a data scientist"
+prompt="Generate sample dataset"
+// No session or assistant needed
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="example-item">
+                                        <div class="example-title">4️⃣ File-Enhanced Mode</div>
+                                        <div class="example-code">
+session=thread_abc123
+assistant=asst_def456
+files=[spreadsheet.xlsx, report.pdf]
+prompt="Compare these documents"
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="example-item">
+                                        <div class="example-title">5️⃣ Raw Streaming Response Format</div>
+                                        <div class="example-code">
+// Toggle Raw Mode to see actual SSE format:
+data: {{"id": "chatcmpl-xxx", "object": "chat.completion.chunk", "choices": [{{"delta": {{"content": "Hello"}}, "index": 0}}]}}
+
+data: {{"id": "chatcmpl-xxx", "object": "chat.completion.chunk", "choices": [{{"delta": {{"content": " world"}}, "index": 0}}]}}
+
+data: [DONE]
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                            descEl.insertAdjacentHTML('beforeend', examplesHtml);
+                        }}
+                    }}
+                }}, 100);
+            }}
+            
+            // 🚀 Enhance streaming response displays
+            function enhanceStreamingResponses() {{
+                // Monitor for new responses
+                const observer = new MutationObserver((mutations) => {{
+                    mutations.forEach((mutation) => {{
+                        mutation.addedNodes.forEach((node) => {{
+                            if (node.nodeType === 1 && node.classList?.contains('response-body')) {{
+                                setTimeout(() => formatStreamingResponse(node), 100);
+                            }}
+                        }});
+                    }});
+                }});
+                
+                observer.observe(document.body, {{
+                    childList: true,
+                    subtree: true
+                }});
+            }}
+            
+            // 🎯 Toggle Raw Mode
+            function toggleRawMode() {{
+                awesomeState.rawMode = !awesomeState.rawMode;
+                const btn = document.getElementById('rawModeBtn');
+                btn.classList.toggle('active');
+                
+                // Re-format all visible responses
+                document.querySelectorAll('.response-body').forEach(el => {{
+                    formatStreamingResponse(el);
+                }});
+                
+                showToast(awesomeState.rawMode ? 'Raw mode enabled' : 'Parsed mode enabled');
+            }}
+            
+            // 🎨 Format streaming response based on mode
+            function formatStreamingResponse(element) {{
+                if (!element || !element.textContent) return;
+                
+                const text = element.textContent.trim();
+                if (!text) return;
+                
+                let formattedHTML = '';
+                
+                // Detect response type
+                if (text.includes('data:') && (text.includes('[DONE]') || text.includes('chat.completion'))) {{
+                    // SSE format
+                    formattedHTML = awesomeState.rawMode ? 
+                        formatRawSSEResponse(text) : 
+                        formatParsedSSEResponse(text);
+                }} else if (text.includes('"type":') && text.includes('"timestamp":')) {{
+                    // NDJSON format
+                    formattedHTML = awesomeState.rawMode ?
+                        formatRawNDJSONResponse(text) :
+                        formatParsedNDJSONResponse(text);
+                }} else {{
+                    // Regular JSON
+                    try {{
+                        const json = JSON.parse(text);
+                        formattedHTML = `
+                            <div class="streaming-response-container">
+                                <h4 style="color: #7dd3fc; margin-bottom: 16px;">📋 JSON Response</h4>
+                                <div class="formatted-json">${{formatJSON(json)}}</div>
+                            </div>
+                        `;
+                    }} catch {{
+                        formattedHTML = `<div class="raw-json">${{escapeHtml(text)}}</div>`;
+                    }}
+                }}
+                
+                element.innerHTML = formattedHTML;
+            }}
+            
+            // 📊 Format Raw SSE Response
+            function formatRawSSEResponse(text) {{
+                return `
+                    <div class="streaming-response-container">
+                        <div class="response-header">
+                            <div class="response-title">
+                                <i class="fas fa-stream"></i> Raw SSE Stream
+                            </div>
+                            <div class="response-controls">
+                                <button class="control-btn" onclick="copyToClipboard(\`${{escapeHtml(text)}}\`)">
+                                    <i class="fas fa-copy"></i> Copy
+                                </button>
+                            </div>
+                        </div>
+                        <div class="raw-json">${{escapeHtml(text)}}</div>
+                    </div>
+                `;
+            }}
+            
+            // 🎯 Format Parsed SSE Response
+            function formatParsedSSEResponse(text) {{
+                const events = parseSSEResponse(text);
+                let accumulatedContent = '';
+                
+                let html = `
+                    <div class="streaming-response-container">
+                        <div class="response-header">
+                            <div class="response-title">
+                                <i class="fas fa-comments"></i> Parsed Conversation Stream
+                            </div>
+                            <div class="response-controls">
+                                <button class="control-btn" onclick="exportResponse('json')">
+                                    <i class="fas fa-download"></i> Export
+                                </button>
+                            </div>
+                        </div>
+                `;
+                
+                // Analytics
+                const contentEvents = events.filter(e => e.data && e.data.includes('delta'));
+                const totalEvents = events.length;
+                
+                html += `
+                    <div class="response-analytics">
+                        <div class="analytics-item">
+                            <span class="analytics-label">Total Events</span>
+                            <span class="analytics-value">${{totalEvents}}</span>
+                        </div>
+                        <div class="analytics-item">
+                            <span class="analytics-label">Content Chunks</span>
+                            <span class="analytics-value">${{contentEvents.length}}</span>
+                        </div>
+                        <div class="analytics-item">
+                            <span class="analytics-label">Stream Status</span>
+                            <span class="analytics-value">${{events.some(e => e.data === '[DONE]') ? 'Complete' : 'Partial'}}</span>
+                        </div>
+                    </div>
+                `;
+                
+                // Process events
+                events.forEach((event, index) => {{
+                    if (event.data === '[DONE]') {{
+                        html += `
+                            <div class="stream-event type-complete">
+                                <div class="event-header">
+                                    <span class="event-type">COMPLETE</span>
+                                    <span class="event-timestamp">Event #${{index + 1}}</span>
+                                </div>
+                                <div class="event-content">Stream completed successfully</div>
+                            </div>
+                        `;
+                    }} else if (event.data) {{
+                        try {{
+                            const parsed = JSON.parse(event.data);
+                            if (parsed.choices?.[0]?.delta?.content) {{
+                                const content = parsed.choices[0].delta.content;
+                                accumulatedContent += content;
+                                
+                                html += `
+                                    <div class="stream-event type-content">
+                                        <div class="event-header">
+                                            <span class="event-type">CONTENT</span>
+                                            <span class="event-timestamp">Chunk #${{index + 1}}</span>
+                                        </div>
+                                        <div class="event-content">${{escapeHtml(content)}}</div>
+                                    </div>
+                                `;
+                            }}
+                        }} catch (e) {{
+                            // Handle parse errors
+                        }}
+                    }}
+                }});
+                
+                // Show accumulated message
+                if (accumulatedContent) {{
+                    html += `
+                        <div class="accumulated-message">
+                            <h5><i class="fas fa-comment-alt"></i> Complete Message</h5>
+                            <div class="accumulated-content">${{escapeHtml(accumulatedContent)}}</div>
+                        </div>
+                    `;
+                }}
+                
+                html += '</div>';
+                return html;
+            }}
+            
+            // 🔧 Parse SSE Response (with proper empty line handling)
+            function parseSSEResponse(text) {{
                 const lines = text.split('\\n');
+                const events = [];
                 let currentEvent = {{}};
                 
                 lines.forEach(line => {{
                     if (line.startsWith('data: ')) {{
-                        const data = line.substring(6);
-                        
-                        if (data === '[DONE]') {{
-                            events.push({{
-                                type: 'complete',
-                                data: '[DONE]',
-                                message: 'Stream completed'
-                            }});
-                        }} else {{
-                            try {{
-                                const json = JSON.parse(data);
-                                
-                                // Handle OpenAI streaming format
-                                if (json.choices && json.choices[0]) {{
-                                    const choice = json.choices[0];
-                                    
-                                    if (choice.delta && choice.delta.content) {{
-                                        awesomeState.accumulatedMessage += choice.delta.content;
-                                        events.push({{
-                                            type: 'content',
-                                            data: json,
-                                            content: choice.delta.content,
-                                            accumulated: awesomeState.accumulatedMessage
-                                        }});
-                                    }} else if (choice.delta && choice.delta.role) {{
-                                        events.push({{
-                                            type: 'role',
-                                            data: json,
-                                            role: choice.delta.role
-                                        }});
-                                    }}
-                                }}
-                            }} catch (e) {{
-                                events.push({{
-                                    type: 'raw',
-                                    data: data
-                                }});
-                            }}
-                        }}
-                    }} else if (line.startsWith('event: ')) {{
-                        currentEvent.eventType = line.substring(7);
+                        currentEvent.data = line.substring(6);
+                        events.push({{...currentEvent}});
+                        currentEvent = {{}};
                     }} else if (line.startsWith('id: ')) {{
                         currentEvent.id = line.substring(4);
+                    }} else if (line.startsWith('event: ')) {{
+                        currentEvent.event = line.substring(7);
                     }}
                 }});
                 
                 return events;
             }}
             
-            // 🎨 Enhanced SSE Response Formatter
-            function formatSSEResponse(text) {{
-                awesomeState.accumulatedMessage = ''; // Reset accumulator
-                const events = parseSSEResponse(text);
-                
-                if (!events || events.length === 0) return text;
-                
-                let html = '<div class="streaming-response-container">';
-                
-                // Header with analytics
-                html += `
-                    <div class="response-analytics">
-                        <div class="analytics-item">
-                            <span class="analytics-label">Events</span>
-                            <span class="analytics-value">${{events.length}}</span>
-                        </div>
-                        <div class="analytics-item">
-                            <span class="analytics-label">Type</span>
-                            <span class="analytics-value">SSE Stream</span>
-                        </div>
-                        <div class="analytics-item">
-                            <span class="analytics-label">Endpoint</span>
-                            <span class="analytics-value">/conversation</span>
-                        </div>
-                    </div>
-                `;
-                
-                // Export options
-                html += `
-                    <div class="export-options">
-                        <button class="export-btn" onclick="exportResponse('json')">
-                            <i class="fas fa-download"></i> JSON
-                        </button>
-                        <button class="export-btn" onclick="exportResponse('text')">
-                            <i class="fas fa-file-alt"></i> Text
-                        </button>
-                        <button class="export-btn" onclick="toggleFullscreen(this)">
-                            <i class="fas fa-expand"></i> Fullscreen
-                        </button>
-                    </div>
-                `;
-                
-                html += '<h4 style="color: #7dd3fc; margin-bottom: 16px;">⚡ Server-Sent Events Stream</h4>';
-                
-                // Process each event
-                events.forEach((event, index) => {{
-                    const eventClass = event.type === 'complete' ? 'type-complete' : 
-                                      event.type === 'content' ? 'type-progress' : 'type-start';
-                    
-                    html += `<div class="streaming-event ${{eventClass}}">`;
-                    html += `<button class="copy-event-btn" onclick="copyEvent(${{index}})">
-                                <i class="fas fa-copy"></i> Copy
-                             </button>`;
-                    
-                    html += `<div class="streaming-event-header">`;
-                    html += `<span>${{getEventIcon(event.type)}} Event #${{index + 1}}</span>`;
-                    html += `<span style="background: rgba(120, 119, 198, 0.2); padding: 2px 8px; border-radius: 4px; font-size: 11px;">
-                                ${{event.type.toUpperCase()}}
-                             </span>`;
-                    html += `</div>`;
-                    
-                    if (event.type === 'content') {{
-                        html += `<div class="sse-visualization">`;
-                        html += `<span class="sse-label">Delta:</span>`;
-                        html += `<span class="sse-content">${{escapeHtml(event.content)}}</span>`;
-                        html += `</div>`;
-                    }}
-                    
-                    if (event.data !== '[DONE]') {{
-                        html += `<div class="streaming-event-body">`;
-                        html += `<div class="formatted-json">${{formatJSON(event.data)}}</div>`;
-                        html += `</div>`;
-                    }}
-                    
-                    html += `</div>`;
-                }});
-                
-                // Show accumulated message
-                if (awesomeState.accumulatedMessage) {{
-                    html += `
-                        <div class="message-accumulator">
-                            <div class="accumulated-text">
-                                ${{escapeHtml(awesomeState.accumulatedMessage)}}
+            // 📊 Format NDJSON responses
+            function formatRawNDJSONResponse(text) {{
+                return `
+                    <div class="streaming-response-container">
+                        <div class="response-header">
+                            <div class="response-title">
+                                <i class="fas fa-bars"></i> Raw NDJSON Stream
                             </div>
                         </div>
-                    `;
-                }}
-                
-                html += '</div>';
-                
-                return html;
+                        <div class="raw-json">${{escapeHtml(text)}}</div>
+                    </div>
+                `;
             }}
             
-            // 📊 NDJSON Parser for /test-comprehensive
-            function formatNDJSONResponse(text) {{
-                if (!text || typeof text !== 'string') return text;
-                
-                const lines = text.split('\\n').filter(line => line.trim());
-                if (lines.length === 0) return text;
-                
-                let html = '<div class="streaming-response-container">';
-                
-                // Calculate analytics
-                const eventTypes = {{}};
-                lines.forEach(line => {{
-                    try {{
-                        const json = JSON.parse(line);
-                        if (json.type) {{
-                            eventTypes[json.type] = (eventTypes[json.type] || 0) + 1;
-                        }}
-                    }} catch (e) {{}}
-                }});
-                
-                // Header with analytics
-                html += `
-                    <div class="response-analytics">
-                        <div class="analytics-item">
-                            <span class="analytics-label">Total Events</span>
-                            <span class="analytics-value">${{lines.length}}</span>
+            function formatParsedNDJSONResponse(text) {{
+                const lines = text.trim().split('\\n');
+                let html = `
+                    <div class="streaming-response-container">
+                        <div class="response-header">
+                            <div class="response-title">
+                                <i class="fas fa-tasks"></i> Test Results Stream
+                            </div>
                         </div>
-                        <div class="analytics-item">
-                            <span class="analytics-label">Format</span>
-                            <span class="analytics-value">NDJSON</span>
-                        </div>
-                        <div class="analytics-item">
-                            <span class="analytics-label">Event Types</span>
-                            <span class="analytics-value">${{Object.keys(eventTypes).length}}</span>
-                        </div>
-                    </div>
                 `;
                 
-                // Export options
-                html += `
-                    <div class="export-options">
-                        <button class="export-btn" onclick="exportResponse('json')">
-                            <i class="fas fa-download"></i> JSON
-                        </button>
-                        <button class="export-btn" onclick="exportResponse('csv')">
-                            <i class="fas fa-table"></i> CSV
-                        </button>
-                        <button class="export-btn" onclick="toggleFullscreen(this)">
-                            <i class="fas fa-expand"></i> Fullscreen
-                        </button>
-                    </div>
-                `;
-                
-                html += '<h4 style="color: #7dd3fc; margin-bottom: 16px;">📊 Streaming Test Results (NDJSON)</h4>';
-                
-                // Timer if test is running
-                const hasStartEvent = lines.some(line => line.includes('test_suite_started'));
-                const hasEndEvent = lines.some(line => line.includes('test_suite_completed'));
-                
-                if (hasStartEvent && !hasEndEvent) {{
-                    html += `<div class="response-timer">
-                                <i class="fas fa-clock timer-icon"></i>
-                                <span>Test Running...</span>
-                             </div>`;
-                }}
-                
-                // Process each line
                 lines.forEach((line, index) => {{
-                    if (line.trim()) {{
-                        try {{
-                            const json = JSON.parse(line);
-                            const eventClass = json.type === 'test_suite_completed' ? 'type-complete' :
-                                             json.type === 'error' ? 'type-error' :
-                                             json.type === 'test_suite_started' ? 'type-start' : 'type-progress';
-                            
-                            html += `<div class="streaming-event ${{eventClass}}">`;
-                            html += `<button class="copy-event-btn" onclick="copyEvent(${{index}})">
-                                        <i class="fas fa-copy"></i> Copy
-                                     </button>`;
-                            
-                            html += `<div class="streaming-event-header">`;
-                            html += `<span>${{getEventIcon(json.type)}} Event #${{index + 1}}</span>`;
-                            
-                            if (json.type) {{
-                                html += `<span style="background: rgba(120, 119, 198, 0.2); padding: 2px 8px; border-radius: 4px; font-size: 11px;">
-                                            ${{json.type}}
-                                         </span>`;
-                            }}
-                            
-                            if (json.timestamp) {{
-                                const time = new Date(json.timestamp).toLocaleTimeString();
-                                html += `<span style="color: #6b7280; font-size: 11px; margin-left: auto;">
-                                            <i class="fas fa-clock"></i> ${{time}}
-                                         </span>`;
-                            }}
-                            
-                            html += `</div>`;
-                            html += `<div class="streaming-event-body">`;
-                            html += `<div class="formatted-json">${{formatJSON(json)}}</div>`;
-                            html += `</div>`;
-                            html += `</div>`;
-                        }} catch (e) {{
-                            // Not JSON, show as raw
-                            html += `<div class="streaming-event">`;
-                            html += `<div class="streaming-event-body">`;
-                            html += `<pre>${{escapeHtml(line)}}</pre>`;
-                            html += `</div>`;
-                            html += `</div>`;
-                        }}
+                    try {{
+                        const event = JSON.parse(line);
+                        html += `
+                            <div class="stream-event">
+                                <div class="event-header">
+                                    <span class="event-type">${{event.type || 'UPDATE'}}</span>
+                                    <span class="event-timestamp">${{event.timestamp || `Line ${{index + 1}}`}}</span>
+                                </div>
+                                <div class="event-content">${{formatJSON(event.data || event)}}</div>
+                            </div>
+                        `;
+                    }} catch {{
+                        // Skip invalid lines
                     }}
                 }});
                 
@@ -1713,104 +2450,44 @@ async def custom_swagger_ui_html():
                 return html;
             }}
             
-            // 🎨 JSON Syntax Highlighter
+            // 🎨 Format JSON with syntax highlighting
             function formatJSON(obj) {{
-                const json = JSON.stringify(obj, null, 2);
-                return json
+                return JSON.stringify(obj, null, 2)
                     .replace(/"([^"]+)":/g, '<span class="json-key">"$1":</span>')
                     .replace(/: "([^"]*)"/g, ': <span class="json-string">"$1"</span>')
-                    .replace(/: (\\d+\\.?\\d*)/g, ': <span class="json-number">$1</span>')
+                    .replace(/: ([0-9.]+)/g, ': <span class="json-number">$1</span>')
                     .replace(/: (true|false)/g, ': <span class="json-boolean">$1</span>')
-                    .replace(/: null/g, ': <span style="color: #ef4444;">null</span>')
-                    .replace(/(\\[|\\]|\\{{|\\}})/g, '<span style="color: #6b7280;">$1</span>');
+                    .replace(/: null/g, ': <span class="json-null">null</span>');
             }}
             
-            // 🔧 Utility Functions
+            // 🛡️ HTML Escape
             function escapeHtml(text) {{
                 const div = document.createElement('div');
                 div.textContent = text;
                 return div.innerHTML;
             }}
             
-            function getEventIcon(type) {{
-                const icons = {{
-                    'test_suite_started': '🚀',
-                    'test_suite_completed': '✅',
-                    'test_progress': '⏳',
-                    'test_update': '📝',
-                    'test_result': '📊',
-                    'error': '❌',
-                    'warning': '⚠️',
-                    'info': 'ℹ️',
-                    'final_results': '🏁',
-                    'update': '🔄',
-                    'result': '✨',
-                    'content': '💬',
-                    'complete': '🎉',
-                    'role': '👤',
-                    'raw': '📄'
-                }};
-                return icons[type] || '📌';
+            // 📋 Copy to clipboard
+            function copyToClipboard(text) {{
+                navigator.clipboard.writeText(text).then(() => {{
+                    showToast('Copied to clipboard!');
+                }});
             }}
             
-            // 📋 Copy Functions
-            function copyEvent(index) {{
-                // Implementation for copying specific event
-                showToast('Event copied to clipboard!');
-            }}
-            
-            function copyResponse() {{
-                // Implementation for copying entire response
-                showToast('Response copied to clipboard!');
-            }}
-            
-            // 📤 Export Functions
-            function exportResponse(format) {{
-                const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-                const filename = `response-${{timestamp}}.${{format}}`;
-                
-                // Implementation for exporting response
-                showToast(`Exporting as ${{format.toUpperCase()}}...`);
-            }}
-            
-            // 🖥️ Fullscreen Toggle
-            function toggleFullscreen(button) {{
-                const container = button.closest('.streaming-response-container');
-                const fullscreenDiv = document.getElementById('fullscreen-response') || createFullscreenDiv();
-                
-                fullscreenDiv.innerHTML = container.innerHTML;
-                fullscreenDiv.classList.add('active');
-                
-                // Add close button
-                const closeBtn = document.createElement('button');
-                closeBtn.className = 'fullscreen-close';
-                closeBtn.innerHTML = '<i class="fas fa-times"></i> Close Fullscreen';
-                closeBtn.onclick = () => fullscreenDiv.classList.remove('active');
-                fullscreenDiv.appendChild(closeBtn);
-            }}
-            
-            function createFullscreenDiv() {{
-                const div = document.createElement('div');
-                div.id = 'fullscreen-response';
-                div.className = 'fullscreen-response';
-                document.body.appendChild(div);
-                return div;
-            }}
-            
-            // 🍞 Toast Notifications
-            function showToast(message) {{
+            // 🎯 Show toast notification
+            function showToast(message, type = 'success') {{
                 const toast = document.createElement('div');
                 toast.style.cssText = `
                     position: fixed;
                     bottom: 20px;
                     left: 50%;
                     transform: translateX(-50%);
-                    background: rgba(17, 24, 39, 0.95);
-                    border: 1px solid rgba(120, 119, 198, 0.3);
-                    color: #e5e7eb;
+                    background: ${{type === 'error' ? '#dc2626' : '#10b981'}};
+                    color: white;
                     padding: 12px 24px;
                     border-radius: 8px;
-                    font-size: 13px;
+                    font-size: 14px;
+                    font-weight: 500;
                     z-index: 10000;
                     animation: slideUp 0.3s ease-out;
                 `;
@@ -1823,382 +2500,187 @@ async def custom_swagger_ui_html():
                 }}, 3000);
             }}
             
-            // 🎯 Main Response Formatter
-            function formatStreamingResponse(element) {{
-                if (!element || !element.textContent) return;
-                
-                const text = element.textContent.trim();
-                if (!text) return;
-                
-                let formattedHTML = '';
-                
-                // Detect and format based on response type
-                if (text.includes('data:') && (text.includes('[DONE]') || text.includes('chat.completion') || text.includes('delta'))) {{
-                    // SSE format for /conversation endpoint
-                    formattedHTML = formatSSEResponse(text);
-                }} else if (text.includes('"type":') && text.includes('"timestamp":')) {{
-                    // NDJSON format for /test-comprehensive endpoint
-                    formattedHTML = formatNDJSONResponse(text);
-                }} else {{
-                    // Try to parse as regular JSON
-                    try {{
-                        const json = JSON.parse(text);
-                        formattedHTML = `
-                            <div class="streaming-response-container">
-                                <h4 style="color: #7dd3fc; margin-bottom: 16px;">📋 JSON Response</h4>
-                                <div class="formatted-json">${{formatJSON(json)}}</div>
-                            </div>
-                        `;
-                    }} catch (e) {{
-                        // Not JSON, leave as-is
-                        return;
-                    }}
-                }}
-                
-                if (formattedHTML && formattedHTML !== text) {{
-                    element.innerHTML = formattedHTML;
-                    element.classList.add('formatted-streaming-response');
-                }}
-            }}
-            
-            // ⌨️ Keyboard Shortcuts
+            // ⌨️ Keyboard shortcuts
             function setupKeyboardShortcuts() {{
                 document.addEventListener('keydown', (e) => {{
                     if (e.ctrlKey || e.metaKey) {{
                         switch(e.key) {{
                             case 'k':
                                 e.preventDefault();
-                                showShortcutsModal();
+                                document.querySelector('.swagger-ui input[type="text"]')?.focus();
+                                break;
+                            case 'r':
+                                e.preventDefault();
+                                toggleRawMode();
                                 break;
                             case 'e':
                                 e.preventDefault();
-                                exportResponse('json');
+                                exportAllResponses();
                                 break;
-                            case 'f':
+                            case 's':
                                 e.preventDefault();
-                                const responseContainer = document.querySelector('.streaming-response-container');
-                                if (responseContainer) {{
-                                    toggleFullscreen(responseContainer);
+                                if (document.getElementById('streamingViewer').style.display === 'flex') {{
+                                    closeStreamingViewer();
+                                }} else {{
+                                    openStreamingViewer();
                                 }}
-                                break;
-                            case '/':
-                                e.preventDefault();
-                                document.querySelector('.swagger-ui .search input')?.focus();
                                 break;
                         }}
                     }} else if (e.key === 'Escape') {{
-                        // Close any open modals
-                        document.querySelector('.shortcuts-modal')?.remove();
-                        document.querySelector('.fullscreen-response.active')?.classList.remove('active');
+                        if (document.getElementById('streamingViewer').style.display === 'flex') {{
+                            closeStreamingViewer();
+                        }}
                     }}
                 }});
             }}
             
-            function showShortcutsModal() {{
-                const modal = document.createElement('div');
-                modal.className = 'shortcuts-modal';
-                modal.style.display = 'block';
-                
-                let shortcutsHTML = '<h3>⌨️ Keyboard Shortcuts</h3>';
-                Object.entries(awesomeState.shortcuts).forEach(([key, desc]) => {{
-                    shortcutsHTML += `
-                        <div class="shortcut-item">
-                            <span>${{desc}}</span>
-                            <span class="shortcut-key">${{key}}</span>
-                        </div>
-                    `;
-                }});
-                
-                modal.innerHTML = shortcutsHTML;
-                document.body.appendChild(modal);
-                
-                modal.onclick = (e) => {{
-                    if (e.target === modal) {{
-                        modal.remove();
-                    }}
-                }};
-            }}
-            
-            // 📊 Connection Status Monitor
-            function setupConnectionStatus() {{
-                const statusDiv = document.createElement('div');
-                statusDiv.className = 'connection-status';
-                statusDiv.innerHTML = `
-                    <div class="status-dot connected"></div>
-                    <span>API Connected</span>
-                `;
-                document.body.appendChild(statusDiv);
-                
-                // Update status based on API calls
-                const originalFetch = window.fetch;
-                window.fetch = async function(...args) {{
-                    statusDiv.querySelector('.status-dot').className = 'status-dot streaming';
-                    statusDiv.querySelector('span').textContent = 'Streaming...';
-                    
-                    try {{
-                        const response = await originalFetch(...args);
+            // 📊 Monitor API calls
+            function monitorApiCalls() {{
+                let originalFetch = window.fetch;
+                window.fetch = function(...args) {{
+                    const startTime = Date.now();
+                    return originalFetch.apply(this, args).then(response => {{
+                        const endTime = Date.now();
+                        const duration = endTime - startTime;
                         
-                        setTimeout(() => {{
-                            statusDiv.querySelector('.status-dot').className = 'status-dot connected';
-                            statusDiv.querySelector('span').textContent = 'API Connected';
-                        }}, 500);
+                        // Update connection status
+                        const statusEl = document.querySelector('.connection-status span');
+                        if (statusEl) {{
+                            statusEl.textContent = `API Connected (${{duration}}ms)`;
+                        }}
                         
                         return response;
-                    }} catch (error) {{
-                        statusDiv.querySelector('.status-dot').style.background = '#ef4444';
-                        statusDiv.querySelector('span').textContent = 'Connection Error';
-                        throw error;
-                    }}
+                    }});
                 }};
             }}
             
-            // 🎨 Add Awesome Features Panel
-            function addAwesomeFeaturesPanel() {{
-                const panel = document.createElement('div');
-                panel.className = 'awesome-features';
-                panel.innerHTML = `
-                    <button class="feature-btn" onclick="showShortcutsModal()">
-                        <i class="fas fa-keyboard"></i> Shortcuts
-                    </button>
-                    <button class="feature-btn" onclick="toggleTheme()">
-                        <i class="fas fa-moon"></i> Theme
-                    </button>
-                    <button class="feature-btn" onclick="clearAllResponses()">
-                        <i class="fas fa-trash"></i> Clear
-                    </button>
-                    <button class="feature-btn" onclick="showStats()">
-                        <i class="fas fa-chart-bar"></i> Stats
-                    </button>
-                `;
-                document.body.appendChild(panel);
-            }}
-            
-            // Additional awesome features
-            function toggleTheme() {{
-                document.body.classList.toggle('light-theme');
-                showToast('Theme toggled!');
-            }}
-            
-            function clearAllResponses() {{
-                document.querySelectorAll('.formatted-streaming-response').forEach(el => {{
-                    el.classList.remove('formatted-streaming-response');
-                    el.textContent = '';
-                }});
-                showToast('All responses cleared!');
-            }}
-            
-            function showStats() {{
-                const stats = {{
-                    'Total Requests': document.querySelectorAll('.opblock-summary-control:not([aria-expanded="false"])').length,
-                    'Streaming Endpoints': document.querySelectorAll('.streaming-endpoint-indicator').length,
-                    'Active Connections': 1
-                }};
-                
-                alert('API Statistics:\\n' + Object.entries(stats).map(([k, v]) => `${{k}}: ${{v}}`).join('\\n'));
-            }}
-            </script>
-        </head>
-        <body>
-            <style>
-            /* Animation keyframes */
-            @keyframes slideUp {{
-                from {{ transform: translate(-50%, 100%); opacity: 0; }}
-                to {{ transform: translate(-50%, 0); opacity: 1; }}
-            }}
-            
-            @keyframes slideDown {{
-                from {{ transform: translate(-50%, 0); opacity: 1; }}
-                to {{ transform: translate(-50%, 100%); opacity: 0; }}
-            }}
-            </style>
-            
-            <div id="swagger-ui"></div>
-            <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
-            <script>
-            const ui = SwaggerUIBundle({{
-                url: '/openapi.json',
-                dom_id: '#swagger-ui',
-                presets: [
-                    SwaggerUIBundle.presets.apis,
-                    SwaggerUIBundle.SwaggerUIStandalonePreset
-                ],
-                plugins: [
-                    SwaggerUIBundle.plugins.DownloadUrl
-                ],
-                layout: "BaseLayout",
-                deepLinking: true,
-                showExtensions: true,
-                showCommonExtensions: true,
-                tryItOutEnabled: true,
-                supportedSubmitMethods: ['get', 'post', 'put', 'delete', 'patch'],
-                validatorUrl: null,
-                onComplete: function() {{
-                    console.log('🚀 SUPER AWESOME Swagger UI loaded!');
+            // 🏥 Check API health
+            async function checkApiHealth() {{
+                try {{
+                    const response = await fetch('/health');
+                    const data = await response.json();
                     
-                    // Remove models section
-                    const modelsSection = document.querySelector('.models');
-                    if (modelsSection) {{
-                        modelsSection.style.display = 'none';
+                    const statusDot = document.querySelector('.status-dot');
+                    if (data.status === 'healthy') {{
+                        statusDot.style.background = '#10b981';
+                    }} else {{
+                        statusDot.style.background = '#f59e0b';
                     }}
-                    
-                    // Initialize all awesome features
-                    markStreamingEndpoints();
-                    setupResponseFormatter();
-                    enhanceFileInputs();
-                    setupKeyboardShortcuts();
-                    setupConnectionStatus();
-                    addAwesomeFeaturesPanel();
-                    
-                    console.log('✨ All awesome features initialized!');
-                }},
-                responseInterceptor: function(response) {{
-                    // Track response metrics
-                    if (response && response.ok) {{
-                        awesomeState.eventCount++;
-                    }}
-                    return response;
+                }} catch (error) {{
+                    const statusDot = document.querySelector('.status-dot');
+                    statusDot.style.background = '#ef4444';
                 }}
-            }});
-            
-            // 🔥 Mark streaming endpoints with enhanced badges
-            function markStreamingEndpoints() {{
-                const streamingPaths = ['/conversation', '/test-comprehensive'];
-                
-                const observer = new MutationObserver(function(mutations) {{
-                    document.querySelectorAll('.opblock').forEach(block => {{
-                        const path = block.getAttribute('data-path');
-                        if (path && streamingPaths.some(p => path.includes(p))) {{
-                            if (!block.querySelector('.streaming-endpoint-indicator')) {{
-                                const summary = block.querySelector('.opblock-summary');
-                                if (summary) {{
-                                    const indicator = document.createElement('span');
-                                    indicator.className = 'streaming-endpoint-indicator';
-                                    indicator.innerHTML = '<i class="fas fa-bolt"></i> STREAMING';
-                                    summary.appendChild(indicator);
-                                    
-                                    // Add hover effect
-                                    indicator.onmouseover = () => {{
-                                        indicator.innerHTML = '<i class="fas fa-bolt"></i> SSE/NDJSON';
-                                    }};
-                                    indicator.onmouseout = () => {{
-                                        indicator.innerHTML = '<i class="fas fa-bolt"></i> STREAMING';
-                                    }};
-                                }}
-                            }}
-                        }}
-                    }});
-                }});
-                
-                observer.observe(document.body, {{
-                    childList: true,
-                    subtree: true
-                }});
             }}
             
-            // 📡 Enhanced response formatter with real-time updates
-            function setupResponseFormatter() {{
-                // Check for responses frequently
-                setInterval(function() {{
-                    document.querySelectorAll('.response-body pre').forEach(pre => {{
-                        if (!pre.classList.contains('formatted-streaming-response')) {{
-                            formatStreamingResponse(pre);
-                        }}
-                    }});
-                }}, 250); // Faster checking for better UX
-                
-                // Mutation observer for immediate formatting
-                const observer = new MutationObserver(function(mutations) {{
-                    mutations.forEach(function(mutation) {{
-                        if (mutation.type === 'childList') {{
-                            mutation.addedNodes.forEach(node => {{
-                                if (node.nodeType === 1) {{
-                                    const pres = node.querySelectorAll('.response-body pre');
-                                    pres.forEach(pre => {{
-                                        if (!pre.classList.contains('formatted-streaming-response')) {{
-                                            // Add loading animation while formatting
-                                            pre.style.opacity = '0.5';
-                                            setTimeout(() => {{
-                                                formatStreamingResponse(pre);
-                                                pre.style.opacity = '1';
-                                            }}, 100);
-                                        }}
-                                    }});
-                                }}
-                            }});
-                        }}
-                    }});
+            // 📥 Export all responses
+            function exportAllResponses() {{
+                const responses = Array.from(document.querySelectorAll('.response-body')).map(el => {{
+                    return {{
+                        endpoint: el.closest('.opblock')?.querySelector('.opblock-summary-path')?.textContent,
+                        method: el.closest('.opblock')?.querySelector('.opblock-summary-method')?.textContent,
+                        content: el.textContent
+                    }};
                 }});
                 
-                observer.observe(document.body, {{
-                    childList: true,
-                    subtree: true
-                }});
+                const blob = new Blob([JSON.stringify(responses, null, 2)], {{ type: 'application/json' }});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `api-responses-${{new Date().toISOString()}}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+                
+                showToast('Exported all responses!');
             }}
             
-            // 📁 Enhanced file inputs with drag & drop
-            function enhanceFileInputs() {{
-                setInterval(function() {{
-                    document.querySelectorAll('input[type="file"]').forEach(input => {{
-                        if (!input.classList.contains('enhanced')) {{
-                            input.classList.add('enhanced');
-                            
-                            const wrapper = document.createElement('div');
-                            wrapper.className = 'file-upload-enhanced';
-                            input.parentNode.insertBefore(wrapper, input);
-                            wrapper.appendChild(input);
-                            
-                            // Add file preview
-                            const preview = document.createElement('div');
-                            preview.className = 'file-preview';
-                            wrapper.appendChild(preview);
-                            
-                            input.addEventListener('change', function(e) {{
-                                if (e.target.files.length > 0) {{
-                                    const file = e.target.files[0];
-                                    preview.innerHTML = `
-                                        <div class="file-info">
-                                            <span class="file-icon">📄</span>
-                                            <span>${{file.name}}</span>
-                                            <span style="margin-left: auto;">${{(file.size / 1024).toFixed(2)}} KB</span>
-                                        </div>
-                                    `;
-                                    preview.classList.add('active');
-                                }}
-                            }});
-                            
-                            // Enhanced drag and drop
-                            input.addEventListener('dragover', function(e) {{
-                                e.preventDefault();
-                                this.style.borderColor = '#7877c6';
-                                this.style.backgroundColor = 'rgba(120, 119, 198, 0.1)';
-                                this.style.transform = 'scale(1.02)';
-                            }});
-                            
-                            input.addEventListener('dragleave', function(e) {{
-                                e.preventDefault();
-                                this.style.borderColor = 'rgba(120, 119, 198, 0.5)';
-                                this.style.backgroundColor = 'rgba(17, 24, 39, 0.6)';
-                                this.style.transform = 'scale(1)';
-                            }});
-                            
-                            input.addEventListener('drop', function(e) {{
-                                e.preventDefault();
-                                this.style.borderColor = 'rgba(120, 119, 198, 0.5)';
-                                this.style.backgroundColor = 'rgba(17, 24, 39, 0.6)';
-                                this.style.transform = 'scale(1)';
-                                showToast('File dropped successfully!');
-                            }});
-                        }}
-                    }});
-                }}, 1000);
+            // 🎯 Show keyboard shortcuts
+            function showKeyboardShortcuts() {{
+                const shortcuts = `
+                    <div style="background: rgba(17, 24, 39, 0.95); color: white; padding: 20px; border-radius: 8px;">
+                        <h3 style="margin-top: 0; color: #7877c6;">⌨️ Keyboard Shortcuts</h3>
+                        <p><strong>Ctrl/Cmd + K</strong> - Focus search</p>
+                        <p><strong>Ctrl/Cmd + R</strong> - Toggle raw mode</p>
+                        <p><strong>Ctrl/Cmd + E</strong> - Export responses</p>
+                        <p><strong>Ctrl/Cmd + S</strong> - Toggle streaming viewer</p>
+                        <p><strong>Esc</strong> - Close dialogs</p>
+                    </div>
+                `;
+                
+                const modal = document.createElement('div');
+                modal.style.cssText = `
+                    position: fixed;
+                    top: 50%;
+                    left: 50%;
+                    transform: translate(-50%, -50%);
+                    z-index: 10000;
+                    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+                `;
+                modal.innerHTML = shortcuts;
+                document.body.appendChild(modal);
+                
+                const closeModal = (e) => {{
+                    if (e.key === 'Escape' || e.type === 'click') {{
+                        modal.remove();
+                        document.removeEventListener('keydown', closeModal);
+                        document.removeEventListener('click', closeModal);
+                    }}
+                }};
+                
+                setTimeout(() => {{
+                    document.addEventListener('keydown', closeModal);
+                    document.addEventListener('click', closeModal);
+                }}, 100);
             }}
             
-            window.ui = ui;
-            console.log('🎉 Welcome to the SUPER AWESOME Swagger UI!');
+            // 🌙 Toggle animations
+            function toggleAnimations() {{
+                awesomeState.animations = !awesomeState.animations;
+                document.body.style.setProperty('--animation-duration', awesomeState.animations ? '0.3s' : '0s');
+                showToast(awesomeState.animations ? 'Animations enabled' : 'Animations disabled');
+            }}
+            
+            // Placeholder for dark mode toggle (already dark by default)
+            function toggleDarkMode() {{
+                showToast('Already in dark mode - the best mode! 🌙');
+            }}
+            
+            // Export response helper
+            function exportResponse(format) {{
+                const responses = document.querySelectorAll('.response-body');
+                if (responses.length === 0) {{
+                    showToast('No responses to export', 'error');
+                    return;
+                }}
+                
+                const lastResponse = responses[responses.length - 1];
+                const content = lastResponse.textContent;
+                
+                const blob = new Blob([content], {{ type: format === 'json' ? 'application/json' : 'text/plain' }});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `response-${{new Date().toISOString()}}.${{format === 'json' ? 'json' : 'txt'}}`;
+                a.click();
+                URL.revokeObjectURL(url);
+                
+                showToast('Response exported!');
+            }}
+            
+            // Toggle fullscreen
+            function toggleFullscreen(element) {{
+                const container = element.closest('.streaming-response-container');
+                if (container) {{
+                    container.classList.toggle('fullscreen');
+                }}
+            }}
+            
+            // Auto-refresh connection status
+            setInterval(checkApiHealth, 30000);
             </script>
         </body>
         </html>
-        """
+        """,
+        status_code=200
     )
 # Serve custom ReDoc
 @app.get("/redoc", include_in_schema=False)
@@ -7676,6 +8158,7 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
                 response.headers["X-Accel-Buffering"] = "no"
                 response.headers["Cache-Control"] = "no-cache"
                 response.headers["Connection"] = "keep-alive"
+                response.headers["X-Content-Type-Options"] = "nosniff"
                 return response
             else:
                 # Non-streaming response
@@ -9105,7 +9588,48 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
                 logging.error(f"Error releasing thread lock: {release_e}")
 @app.get("/conversation",
          summary="Stream Chat Messages (GET)",
-         description="Chat with AI using Server-Sent Events (SSE) for real-time streaming responses. Use POST endpoint to include files.",
+         description="""Chat with AI using Server-Sent Events (SSE) for real-time streaming responses.
+
+**⚡ STREAMING ENDPOINT** - Returns responses via Server-Sent Events
+
+## Usage Modes:
+
+### 1️⃣ **Stateful Mode** (with session & assistant)
+Use when you have an existing chat session:
+```
+/conversation?session=thread_abc123&assistant=asst_xyz789&prompt=Hello
+```
+- Maintains conversation history
+- Uses vector stores for context
+- Supports file uploads from the session
+
+### 2️⃣ **Stateless Mode** (with context)
+Use for one-off queries without session management:
+```
+/conversation?context=You are a data analyst&prompt=Analyze this trend
+```
+- No session required
+- Context defines AI behavior
+- Fresh conversation each time
+
+### 3️⃣ **Invalid Thread Handling**
+If you provide an invalid thread ID:
+- Falls back to stateless mode automatically
+- Creates a temporary conversation
+- Returns a warning in headers
+
+### 📄 **File Support** (POST method only)
+- Use POST endpoint to include files
+- Files are processed and included in context
+- Supports multiple files simultaneously
+
+### Response Format:
+```
+data: {"id": "chatcmpl-xyz", "object": "chat.completion.chunk", "choices": [{"delta": {"content": "Hello"}}]}
+data: {"id": "chatcmpl-xyz", "object": "chat.completion.chunk", "choices": [{"delta": {"content": " world"}}]}
+data: [DONE]
+```
+""",
          tags=["Chat Operations"],
          response_class=StreamingResponse)
 async def conversation_get(
@@ -9118,7 +9642,42 @@ async def conversation_get(
     return await process_conversation(session, prompt, assistant, stream_output=True, context=context, files=None)
 @app.post("/conversation",
           summary="Stream Chat Messages (POST)",
-          description="Chat with AI using Server-Sent Events (SSE) with file upload support.",
+          description="""Chat with AI using Server-Sent Events (SSE) with file upload support.
+
+**⚡ STREAMING ENDPOINT** - Returns responses via Server-Sent Events
+
+## Enhanced Features with Files:
+
+### 📁 **File Upload Support**
+- Upload multiple files with your query
+- Supports: PDF, DOCX, TXT, CSV, XLSX, Images
+- Files are analyzed and included in AI context
+
+### Example Scenarios:
+
+1. **Analyze Documents**:
+   - Upload: `contract.pdf`
+   - Prompt: "Summarize the key terms"
+
+2. **Compare Files**:
+   - Upload: `report1.xlsx`, `report2.xlsx`
+   - Prompt: "Compare the revenue figures"
+
+3. **Image Analysis**:
+   - Upload: `screenshot.png`
+   - Prompt: "What's shown in this image?"
+
+### Usage Modes (same as GET):
+- **Stateful**: With session & assistant IDs
+- **Stateless**: With context parameter
+- **Fallback**: Invalid thread → stateless mode
+
+### File Processing:
+- Text extraction from documents
+- Data parsing from spreadsheets
+- OCR for images
+- Automatic format detection
+""",
           tags=["Chat Operations"],
           response_class=StreamingResponse)
 async def conversation_post(
@@ -9136,8 +9695,48 @@ async def conversation_post(
 @app.get("/chat",
          response_model=ChatResponse,
          summary="Chat (GET)",
-         description="Chat with AI and receive complete responses. Use POST endpoint to include files.",
+         description="""Chat with AI and receive complete responses (non-streaming).
+
+## Usage Modes:
+
+### 1️⃣ **Stateful Mode** (with session & assistant)
+```
+/chat?session=thread_abc123&assistant=asst_xyz789&prompt=Hello
+```
+- Returns complete response after processing
+- Maintains conversation history
+- Good for short queries
+
+### 2️⃣ **Stateless Mode** (with context)
+```
+/chat?context=You are a helpful assistant&prompt=Explain quantum physics
+```
+- One-shot responses
+- No history maintained
+- Context defines behavior
+
+### 3️⃣ **Error Handling**
+- Invalid session: Falls back to stateless
+- Missing assistant: Returns error
+- Empty prompt: Returns error
+
+### When to Use:
+- ✅ Short responses needed
+- ✅ Integration with systems that don't support SSE
+- ✅ Simple Q&A interactions
+- ❌ Long responses (use /conversation instead)
+
+### Response Format:
+```json
+{
+  "response": "Complete AI response here",
+  "session": "thread_abc123",
+  "assistant": "asst_xyz789"
+}
+```
+""",
          tags=["Chat Operations"])
+
 async def chat_get(
     session: Optional[str] = Query(default=None, description="Session ID"),
     prompt: Optional[str] = Query(default=None, description="User message"),
@@ -9151,7 +9750,48 @@ async def chat_get(
 @app.post("/chat",
           response_model=ChatResponse,
           summary="Chat (POST)",
-          description="Chat with AI and receive complete responses with file upload support.",
+          description="""Chat with AI and receive complete responses with file upload support.
+
+## File Upload Features:
+
+### 📄 **Supported Files**
+- Documents: PDF, DOCX, TXT, MD
+- Data: CSV, XLSX, XLS
+- Images: JPG, PNG, GIF
+- Code: JSON, HTML, XML
+
+### Example Use Cases:
+
+1. **Document Q&A**:
+   ```
+   Files: manual.pdf
+   Prompt: "What's the installation process?"
+   ```
+
+2. **Data Analysis**:
+   ```
+   Files: sales.csv
+   Prompt: "What's the average order value?"
+   ```
+
+3. **Multi-file Comparison**:
+   ```
+   Files: [q1.xlsx, q2.xlsx, q3.xlsx]
+   Prompt: "Compare quarterly performance"
+   ```
+
+### Processing Details:
+- Files extracted and parsed
+- Content included in AI context
+- Automatic format detection
+- Error handling for unsupported formats
+
+### Best Practices:
+- Keep files under 10MB
+- Use clear, specific prompts
+- Reference files by name in prompts
+- Check response for file processing errors
+""",
           tags=["Chat Operations"])
 async def chat_post(
     session: Optional[str] = Form(default=None, description="Session ID"),
@@ -9438,7 +10078,7 @@ Remember: Output ONLY the JSON structure with ALL {rows_to_generate} rows."""
         user_content = []
         user_content.append({"type": "text", "text": enhanced_prompt})
         
-        if files:
+        if files is not None and len(files) > 0:
             for file in files:
                 if not file.filename:
                     continue
