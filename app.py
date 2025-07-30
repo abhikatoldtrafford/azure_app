@@ -8,7 +8,7 @@ from fastapi.openapi.utils import get_openapi
 from fastapi import Depends
 from pydantic import BaseModel, Field
 from openai import AzureOpenAI
-from typing import Optional, List, Dict, Any, Tuple, AsyncGenerator, Union
+from typing import Optional, List, Dict, Any, Tuple, AsyncGenerator, Union, Annotated
 import os
 import io
 from datetime import datetime
@@ -1140,7 +1140,43 @@ def custom_openapi():
                                         "title": "Files"
                                     }
                                 }
+                            elif path == "/upload-file":
+                                # Define explicit schema for /upload-file POST
+                                new_properties = {
+                                    "file": {
+                                        "type": "string",
+                                        "format": "binary",
+                                        "description": "File to upload",
+                                        "title": "File"
+                                    },
+                                    "assistant": {
+                                        "type": "string",
+                                        "description": "Assistant ID to attach file to",
+                                        "example": "asst_abc123",
+                                        "title": "Assistant"
+                                    },
+                                    "session": {
+                                        "type": "string",
+                                        "description": "Session ID for context (optional)",
+                                        "example": "thread_xyz789",
+                                        "title": "Session"
+                                    },
+                                    "context": {
+                                        "type": "string",
+                                        "description": "File context description (optional)",
+                                        "example": "This is Q4 2023 financial data",
+                                        "title": "Context"
+                                    },
+                                    "prompt": {
+                                        "type": "string",
+                                        "description": "Specific prompt for image analysis (optional)",
+                                        "example": "What objects are in this image?",
+                                        "title": "Prompt"
+                                    }
+                                }
                                 
+                                # Update the required fields
+                                schema["required"] = ["file", "assistant"]
                             elif path == "/chat":
                                 # Define explicit schema for /chat POST
                                 new_properties = {
@@ -8265,7 +8301,7 @@ def update_operation_status(operation_id: str, status: str, progress: float, mes
 Creates thread and vector store for context.""",
           tags=["Chat Operations"])
 async def initiate_chat(
-    file: Optional[UploadFile] = File(None, description="Initial file to process"),
+    file: Optional[UploadFile] = File(default=None, description="Initial file to process"),  # Changed File(None) to File(default=None)
     context: Optional[str] = Form(None, description="User context or persona")
 ):
     """
@@ -8275,7 +8311,6 @@ async def initiate_chat(
     - file (optional): Initial file to process
     - context (optional): User context or persona
     """
-
     client = create_client()
     logging.info("Initiating new chat session...")
 
@@ -8626,7 +8661,7 @@ async def co_pilot(
           tags=["File Operations"])
 async def upload_file(
     request: Request,
-    file: UploadFile = Form(..., description="File to upload"),
+    file: UploadFile = File(..., description="File to upload"),  # Changed from Form(...) to File(...)
     assistant: str = Form(..., description="Assistant ID to attach file to")
 ):
     """
