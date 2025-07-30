@@ -1101,116 +1101,344 @@ def custom_openapi():
                         # Create a new properties dict to avoid modifying during iteration
                         new_properties = {}
                         
-                        for prop_name, prop_value in properties.items():
-                            # Check if this is a file-related field
-                            is_file_field = False
-                            
-                            # Enhanced file field detection
-                            if prop_name in ["file", "files"]:
-                                is_file_field = True
-                            elif isinstance(prop_value, dict):
-                                # Check anyOf structure for file fields
-                                if "anyOf" in prop_value:
-                                    for option in prop_value.get("anyOf", []):
-                                        if isinstance(option, dict):
-                                            # Check for binary format
-                                            if option.get("format") == "binary":
-                                                is_file_field = True
-                                                break
-                                            # Check for array of binaries
-                                            if option.get("type") == "array":
-                                                items = option.get("items", {})
-                                                if items.get("format") == "binary":
-                                                    is_file_field = True
-                                                    break
-                                            # Check for UploadFile type reference
-                                            if "$ref" in option and "UploadFile" in option["$ref"]:
-                                                is_file_field = True
-                                                break
-                            
-                            # Handle file fields
-                            if is_file_field:
-                                if prop_name == "file":
-                                    # Single file upload
-                                    new_properties[prop_name] = {
+                        # ENHANCED: Add specific schemas for known POST endpoints
+                        if method == "post":
+                            if path == "/conversation":
+                                # Define explicit schema for /conversation POST
+                                new_properties = {
+                                    "session": {
                                         "type": "string",
-                                        "format": "binary",
-                                        "description": prop_value.get("description", "File to upload")
-                                    }
-                                elif prop_name == "files":
-                                    # Multiple file upload
-                                    new_properties[prop_name] = {
+                                        "description": "Session ID from /initiate-chat",
+                                        "example": "thread_abc123",
+                                        "title": "Session"
+                                    },
+                                    "prompt": {
+                                        "type": "string", 
+                                        "description": "User message",
+                                        "example": "Hello, can you help me analyze this data?",
+                                        "title": "Prompt"
+                                    },
+                                    "assistant": {
+                                        "type": "string",
+                                        "description": "Assistant ID",
+                                        "example": "asst_xyz789",
+                                        "title": "Assistant"
+                                    },
+                                    "context": {
+                                        "type": "string",
+                                        "description": "Additional context for stateless mode",
+                                        "example": "You are a data analyst",
+                                        "title": "Context"
+                                    },
+                                    "files": {
                                         "type": "array",
                                         "items": {
                                             "type": "string",
                                             "format": "binary"
                                         },
-                                        "description": prop_value.get("description", "Files to upload")
+                                        "description": "Multiple files to analyze with the query",
+                                        "title": "Files"
                                     }
+                                }
+                                
+                            elif path == "/chat":
+                                # Define explicit schema for /chat POST
+                                new_properties = {
+                                    "session": {
+                                        "type": "string",
+                                        "description": "Session ID",
+                                        "example": "thread_abc123",
+                                        "title": "Session"
+                                    },
+                                    "prompt": {
+                                        "type": "string",
+                                        "description": "User message", 
+                                        "example": "What insights can you provide?",
+                                        "title": "Prompt"
+                                    },
+                                    "assistant": {
+                                        "type": "string",
+                                        "description": "Assistant ID",
+                                        "example": "asst_xyz789",
+                                        "title": "Assistant"
+                                    },
+                                    "context": {
+                                        "type": "string",
+                                        "description": "Additional context",
+                                        "example": "Focus on financial metrics",
+                                        "title": "Context"
+                                    },
+                                    "files": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string",
+                                            "format": "binary"
+                                        },
+                                        "description": "Multiple files to analyze with the query",
+                                        "title": "Files"
+                                    }
+                                }
+                                
+                            elif path == "/completion":
+                                # Define explicit schema for /completion POST
+                                new_properties = {
+                                    "prompt": {
+                                        "type": "string",
+                                        "description": "The prompt/question to send to the AI",
+                                        "example": "Explain quantum computing in simple terms",
+                                        "title": "Prompt"
+                                    },
+                                    "model": {
+                                        "type": "string",
+                                        "description": "AI model to use",
+                                        "default": "gpt-4.1-mini",
+                                        "enum": ["gpt-4o", "gpt-4", "gpt-4.1", "gpt-4.1-mini"],
+                                        "example": "gpt-4.1-mini",
+                                        "title": "Model"
+                                    },
+                                    "temperature": {
+                                        "type": "number",
+                                        "description": "Creativity level (0-1)",
+                                        "default": 0.3,
+                                        "minimum": 0,
+                                        "maximum": 1,
+                                        "example": 0.3,
+                                        "title": "Temperature"
+                                    },
+                                    "max_tokens": {
+                                        "type": "integer",
+                                        "description": "Maximum response length",
+                                        "default": 2000,
+                                        "example": 2000,
+                                        "title": "Max Tokens"
+                                    },
+                                    "context": {
+                                        "type": "string",
+                                        "description": "System context or personality",
+                                        "example": "You are a helpful assistant",
+                                        "title": "Context"
+                                    },
+                                    "file": {
+                                        "type": "string",
+                                        "format": "binary",
+                                        "description": "Optional file for context",
+                                        "title": "File"
+                                    }
+                                }
+                                
+                            elif path == "/initiate-chat":
+                                # Define explicit schema for /initiate-chat POST
+                                new_properties = {
+                                    "file": {
+                                        "type": "string",
+                                        "format": "binary",
+                                        "description": "Initial file to process",
+                                        "title": "File"
+                                    },
+                                    "context": {
+                                        "type": "string",
+                                        "description": "User context or persona",
+                                        "example": "I am a data analyst working with sales data",
+                                        "title": "Context"
+                                    }
+                                }
+                                
+                            elif path == "/test-comprehensive":
+                                # Define explicit schema for /test-comprehensive POST
+                                new_properties = {
+                                    "test_mode": {
+                                        "type": "string",
+                                        "description": "Test mode",
+                                        "default": "all",
+                                        "enum": ["all", "long_thread", "concurrent", "same_thread", "scaling", "tools"],
+                                        "title": "Test Mode"
+                                    },
+                                    "test_duration": {
+                                        "type": "integer",
+                                        "description": "Test duration in seconds",
+                                        "default": 60,
+                                        "minimum": 10,
+                                        "maximum": 300,
+                                        "title": "Test Duration"
+                                    },
+                                    "concurrent_users": {
+                                        "type": "integer",
+                                        "description": "Number of concurrent users",
+                                        "default": 5,
+                                        "minimum": 1,
+                                        "maximum": 20,
+                                        "title": "Concurrent Users"
+                                    },
+                                    "messages_per_thread": {
+                                        "type": "integer",
+                                        "description": "Messages for long thread test",
+                                        "default": 60,
+                                        "minimum": 10,
+                                        "maximum": 200,
+                                        "title": "Messages Per Thread"
+                                    },
+                                    "verbose": {
+                                        "type": "boolean",
+                                        "description": "Include detailed logs",
+                                        "default": True,
+                                        "title": "Verbose"
+                                    }
+                                }
+                            
                             else:
-                                # Handle non-file fields - clean up anyOf structures
-                                if isinstance(prop_value, dict) and "anyOf" in prop_value:
-                                    # Extract base type and properties
-                                    base_type = None
-                                    base_props = {}
-                                    description = prop_value.get("description", "")
-                                    title = prop_value.get("title", "")
+                                # For other POST endpoints, use the existing logic
+                                for prop_name, prop_value in properties.items():
+                                    # Check if this is a file-related field
+                                    is_file_field = False
                                     
-                                    # Analyze anyOf options
-                                    for option in prop_value["anyOf"]:
-                                        if isinstance(option, dict) and option.get("type") != "null":
-                                            base_type = option.get("type")
-                                            # Copy all properties except type
-                                            for key, value in option.items():
-                                                if key not in ["type", "description", "title"]:
-                                                    base_props[key] = value
-                                            break
+                                    # Enhanced file field detection (PRESERVED FROM ORIGINAL)
+                                    if prop_name in ["file", "files"]:
+                                        is_file_field = True
+                                    elif isinstance(prop_value, dict):
+                                        # Check anyOf structure for file fields
+                                        if "anyOf" in prop_value:
+                                            for option in prop_value.get("anyOf", []):
+                                                if isinstance(option, dict):
+                                                    items = option.get("items", {})
+                                                    if isinstance(items, dict) and items.get("format") == "binary":
+                                                        is_file_field = True
+                                                        break
                                     
-                                    if base_type:
-                                        # Reconstruct cleaner schema
-                                        new_prop = {"type": base_type}
-                                        new_prop.update(base_props)
-                                        
-                                        # Add metadata
-                                        if description:
-                                            new_prop["description"] = description
-                                        if title:
-                                            new_prop["title"] = title
-                                        
-                                        # Set appropriate defaults based on field name and type
-                                        if "default" not in new_prop:
-                                            # Special handling for specific fields
-                                            if prop_name == "temperature":
-                                                new_prop["default"] = 0.7
-                                            elif prop_name == "max_tokens":
-                                                new_prop["default"] = 4096
-                                            elif prop_name == "max_retries":
-                                                new_prop["default"] = 3
-                                            elif prop_name == "rows_to_generate":
-                                                new_prop["default"] = 30
-                                            elif prop_name == "model":
-                                                new_prop["default"] = "gpt-4o-mini"
-                                            elif base_type == "string":
-                                                new_prop["default"] = ""
-                                            elif base_type == "integer":
-                                                new_prop["default"] = 0
-                                            elif base_type == "number":
-                                                new_prop["default"] = 0.0
-                                            elif base_type == "boolean":
-                                                new_prop["default"] = False
-                                        
-                                        new_properties[prop_name] = new_prop
+                                    # Process the field based on type
+                                    if is_file_field:
+                                        if prop_name == "file":
+                                            new_properties[prop_name] = {
+                                                "type": "string",
+                                                "format": "binary",
+                                                "description": prop_value.get("description", "File to upload"),
+                                                "title": prop_value.get("title", "File")
+                                            }
+                                        else:  # files
+                                            new_properties[prop_name] = {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "string",
+                                                    "format": "binary"
+                                                },
+                                                "description": prop_value.get("description", "Files to upload"),
+                                                "title": prop_value.get("title", "Files")
+                                            }
                                     else:
-                                        # Fallback if we can't determine type
-                                        new_properties[prop_name] = prop_value
+                                        # Handle non-file fields - clean up anyOf structures (PRESERVED FROM ORIGINAL)
+                                        if isinstance(prop_value, dict) and "anyOf" in prop_value:
+                                            # Extract base type and properties
+                                            base_type = None
+                                            base_props = {}
+                                            description = prop_value.get("description", "")
+                                            title = prop_value.get("title", "")
+                                            
+                                            # Analyze anyOf options
+                                            for option in prop_value["anyOf"]:
+                                                if isinstance(option, dict) and option.get("type") != "null":
+                                                    base_type = option.get("type")
+                                                    # Copy all properties except type
+                                                    for key, value in option.items():
+                                                        if key not in ["type", "description", "title"]:
+                                                            base_props[key] = value
+                                                    break
+                                            
+                                            if base_type:
+                                                # Reconstruct cleaner schema
+                                                new_prop = {"type": base_type}
+                                                new_prop.update(base_props)
+                                                
+                                                # Add metadata
+                                                if description:
+                                                    new_prop["description"] = description
+                                                if title:
+                                                    new_prop["title"] = title
+                                                    
+                                                new_properties[prop_name] = new_prop
+                                            else:
+                                                # Fallback if we can't determine type
+                                                new_properties[prop_name] = prop_value
+                                        else:
+                                            # Keep simple types as-is
+                                            new_properties[prop_name] = prop_value
+                        
+                        else:
+                            # For GET and other methods, use existing logic (PRESERVED FROM ORIGINAL)
+                            for prop_name, prop_value in properties.items():
+                                # Check if this is a file-related field
+                                is_file_field = False
+                                
+                                # Enhanced file field detection
+                                if prop_name in ["file", "files"]:
+                                    is_file_field = True
+                                elif isinstance(prop_value, dict):
+                                    # Check anyOf structure for file fields
+                                    if "anyOf" in prop_value:
+                                        for option in prop_value.get("anyOf", []):
+                                            if isinstance(option, dict):
+                                                items = option.get("items", {})
+                                                if isinstance(items, dict) and items.get("format") == "binary":
+                                                    is_file_field = True
+                                                    break
+                                
+                                # Process the field based on type
+                                if is_file_field:
+                                    if prop_name == "file":
+                                        new_properties[prop_name] = {
+                                            "type": "string",
+                                            "format": "binary",
+                                            "description": prop_value.get("description", "File to upload")
+                                        }
+                                    else:  # files
+                                        new_properties[prop_name] = {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "string",
+                                                "format": "binary"
+                                            },
+                                            "description": prop_value.get("description", "Files to upload")
+                                        }
                                 else:
-                                    # Keep simple types as-is
-                                    new_properties[prop_name] = prop_value
+                                    # Handle non-file fields - clean up anyOf structures
+                                    if isinstance(prop_value, dict) and "anyOf" in prop_value:
+                                        # Extract base type and properties
+                                        base_type = None
+                                        base_props = {}
+                                        description = prop_value.get("description", "")
+                                        title = prop_value.get("title", "")
+                                        
+                                        # Analyze anyOf options
+                                        for option in prop_value["anyOf"]:
+                                            if isinstance(option, dict) and option.get("type") != "null":
+                                                base_type = option.get("type")
+                                                # Copy all properties except type
+                                                for key, value in option.items():
+                                                    if key not in ["type", "description", "title"]:
+                                                        base_props[key] = value
+                                                break
+                                        
+                                        if base_type:
+                                            # Reconstruct cleaner schema
+                                            new_prop = {"type": base_type}
+                                            new_prop.update(base_props)
+                                            
+                                            # Add metadata
+                                            if description:
+                                                new_prop["description"] = description
+                                            if title:
+                                                new_prop["title"] = title
+                                                
+                                            new_properties[prop_name] = new_prop
+                                        else:
+                                            # Fallback if we can't determine type
+                                            new_properties[prop_name] = prop_value
+                                    else:
+                                        # Keep simple types as-is
+                                        new_properties[prop_name] = prop_value
                         
                         # Update schema with fixed properties
                         schema["properties"] = new_properties
                         
-                        # Also check if there are required fields that need adjustment
+                        # Also check if there are required fields that need adjustment (PRESERVED FROM ORIGINAL)
                         if "required" in schema:
                             # Keep required fields as is - the schema already handles this correctly
                             pass
@@ -1288,7 +1516,6 @@ def custom_openapi():
 # Override the default OpenAPI function
 app.openapi = custom_openapi
 # Serve custom Swagger UI with our CSS
-
 @app.get("/docs", include_in_schema=False)
 async def custom_swagger_ui_html():
     """
@@ -2736,500 +2963,1352 @@ data: [DONE]
         """,
         status_code=200
     )
-async def validate_file_uploads(files: Optional[List[UploadFile]]) -> Optional[List[UploadFile]]:
-    """Validate and clean file uploads from form data."""
-    if not files:
-        return None
-    
-    valid_files = []
-    for file in files:
-        # Skip invalid entries (empty strings from Swagger UI)
-        if not file or not hasattr(file, 'filename'):
-            continue
-            
-        # Skip files with empty or whitespace-only names
-        if not file.filename or not file.filename.strip():
-            continue
-            
-        # This is a valid file
-        valid_files.append(file)
-    
-    return valid_files if valid_files else None
-
 # Serve custom ReDoc
 @app.get("/redoc", include_in_schema=False)
 async def redoc_html():
-    """Serve ReDoc with enhanced dark mode theme"""
+    """Serve ReDoc with advanced beautiful dark mode theme"""
     return HTMLResponse(
         content=f"""
         <!DOCTYPE html>
-        <html>
+        <html lang="en">
         <head>
-            <title>{app.title} - ReDoc</title>
+            <title>{app.title} - API Documentation</title>
             <meta charset="utf-8"/>
             <meta name="viewport" content="width=device-width, initial-scale=1">
-            <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+            <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
             <style>
-                /* Base styles */
+                /* CSS Variables for Advanced Theme */
+                :root {{
+                    /* Premium Dark Color Palette */
+                    --bg-primary: #050505;
+                    --bg-secondary: #0a0a0a;
+                    --bg-tertiary: #0f0f0f;
+                    --bg-elevated: #141414;
+                    --bg-overlay: rgba(5, 5, 5, 0.85);
+                    
+                    /* Advanced Gradients */
+                    --gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    --gradient-secondary: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+                    --gradient-success: linear-gradient(135deg, #13ce66 0%, #0891b2 100%);
+                    --gradient-warning: linear-gradient(135deg, #ffc82c 0%, #f59e0b 100%);
+                    --gradient-danger: linear-gradient(135deg, #ff6b6b 0%, #c92a2a 100%);
+                    --gradient-info: linear-gradient(135deg, #4ecdc4 0%, #44a8b3 100%);
+                    
+                    /* Text Colors with Hierarchy */
+                    --text-primary: #ffffff;
+                    --text-secondary: #e0e0e0;
+                    --text-tertiary: #a0a0a0;
+                    --text-muted: #6b7280;
+                    --text-disabled: #4b5563;
+                    
+                    /* Accent Colors */
+                    --accent-primary: #667eea;
+                    --accent-secondary: #764ba2;
+                    --accent-hover: #818cf8;
+                    --accent-active: #4f46e5;
+                    
+                    /* Semantic Colors */
+                    --color-success: #10b981;
+                    --color-warning: #f59e0b;
+                    --color-error: #ef4444;
+                    --color-info: #3b82f6;
+                    
+                    /* Borders and Shadows */
+                    --border-subtle: rgba(255, 255, 255, 0.06);
+                    --border-default: rgba(255, 255, 255, 0.1);
+                    --border-strong: rgba(255, 255, 255, 0.2);
+                    --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.3);
+                    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+                    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+                    --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.6);
+                    --shadow-glow: 0 0 24px rgba(102, 126, 234, 0.4);
+                    
+                    /* Animation Timings */
+                    --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+                    --transition-base: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+                    --transition-slow: 350ms cubic-bezier(0.4, 0, 0.2, 1);
+                    --transition-spring: 500ms cubic-bezier(0.68, -0.55, 0.265, 1.55);
+                }}
+                
+                /* Global Styles */
+                * {{
+                    box-sizing: border-box;
+                    scrollbar-width: thin;
+                    scrollbar-color: var(--accent-primary) var(--bg-tertiary);
+                }}
+                
+                html {{
+                    font-size: 16px;
+                    -webkit-font-smoothing: antialiased;
+                    -moz-osx-font-smoothing: grayscale;
+                    text-rendering: optimizeLegibility;
+                }}
+                
                 body {{
                     margin: 0;
                     padding: 0;
-                    background: #0a0a0a;
+                    background: var(--bg-primary);
+                    color: var(--text-secondary);
                     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                    line-height: 1.6;
+                    font-weight: 400;
+                    overflow-x: hidden;
                 }}
                 
-                /* ReDoc container */
-                #redoc-container {{
-                    background: #0a0a0a;
-                }}
-                
-                /* Custom scrollbar */
+                /* Beautiful Scrollbar */
                 ::-webkit-scrollbar {{
                     width: 12px;
                     height: 12px;
                 }}
                 
                 ::-webkit-scrollbar-track {{
-                    background: rgba(255, 255, 255, 0.05);
-                    border-radius: 6px;
+                    background: var(--bg-tertiary);
+                    border-radius: 10px;
+                    margin: 5px;
                 }}
                 
                 ::-webkit-scrollbar-thumb {{
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                    border-radius: 6px;
-                    border: 2px solid #0a0a0a;
+                    background: var(--gradient-primary);
+                    border-radius: 10px;
+                    border: 3px solid var(--bg-primary);
+                    transition: all var(--transition-base);
                 }}
                 
                 ::-webkit-scrollbar-thumb:hover {{
-                    background: linear-gradient(135deg, #764ba2 0%, #f093fb 100%);
+                    background: var(--gradient-secondary);
+                    border-width: 2px;
                 }}
                 
-                /* Enhanced dark mode overrides */
-                .menu-content {{
-                    background: #0f0f0f !important;
-                    border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+                /* Selection Styling */
+                ::selection {{
+                    background: rgba(102, 126, 234, 0.3);
+                    color: var(--text-primary);
                 }}
                 
-                /* API info section */
-                .api-info h1 {{
-                    background: linear-gradient(135deg, #667eea 0%, #f093fb 100%);
-                    -webkit-background-clip: text;
-                    -webkit-text-fill-color: transparent;
-                    background-clip: text;
-                    font-weight: 800;
-                    letter-spacing: -0.02em;
+                /* Redoc Container Overrides */
+                #redoc-container {{
+                    background: var(--bg-primary) !important;
+                    min-height: 100vh;
                 }}
                 
-                /* Menu items */
-                .menu-item-depth-0 > .menu-item-header {{
-                    background: rgba(102, 126, 234, 0.08) !important;
-                    border-radius: 8px;
-                    margin: 4px 8px;
-                    transition: all 0.2s ease;
+                /* Force Dark Mode on All Redoc Elements */
+                [role="main"],
+                .api-content,
+                .api-info,
+                .operation-area,
+                .scrollbar-container,
+                .redoc-wrap,
+                div[data-section],
+                .api-content > div {{
+                    background: var(--bg-primary) !important;
+                    color: var(--text-secondary) !important;
                 }}
                 
-                .menu-item-depth-0 > .menu-item-header:hover {{
-                    background: rgba(102, 126, 234, 0.15) !important;
-                    transform: translateX(2px);
-                }}
-                
-                .menu-item.active > .menu-item-header {{
-                    background: linear-gradient(135deg, rgba(102, 126, 234, 0.2) 0%, rgba(168, 85, 247, 0.2) 100%) !important;
-                    border-left: 3px solid #667eea !important;
-                }}
-                
-                /* Operation blocks */
-                .operation-type {{
-                    border-radius: 6px !important;
-                    font-weight: 700 !important;
-                    padding: 4px 12px !important;
-                    font-size: 12px !important;
-                    text-transform: uppercase !important;
-                    letter-spacing: 0.05em !important;
-                }}
-                
-                /* HTTP method colors with gradients */
-                .get .operation-type {{
-                    background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
-                    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3) !important;
-                }}
-                
-                .post .operation-type {{
-                    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
-                    box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3) !important;
-                }}
-                
-                .put .operation-type {{
-                    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%) !important;
-                    box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3) !important;
-                }}
-                
-                .delete .operation-type {{
-                    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
-                    box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3) !important;
-                }}
-                
-                /* Code blocks */
-                pre {{
-                    background: #0d1117 !important;
-                    border: 1px solid rgba(102, 126, 234, 0.2) !important;
-                    border-radius: 10px !important;
-                    padding: 16px !important;
-                    font-family: 'JetBrains Mono', 'Monaco', monospace !important;
-                    font-size: 13px !important;
-                    line-height: 1.6 !important;
-                    box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.3) !important;
-                }}
-                
-                code {{
-                    font-family: 'JetBrains Mono', 'Monaco', monospace !important;
-                    background: rgba(102, 126, 234, 0.15) !important;
-                    padding: 2px 6px !important;
-                    border-radius: 4px !important;
-                    font-size: 13px !important;
-                }}
-                
-                /* Response examples */
-                .responses-wrapper {{
-                    background: rgba(255, 255, 255, 0.02) !important;
-                    border: 1px solid rgba(255, 255, 255, 0.08) !important;
-                    border-radius: 12px !important;
-                    padding: 16px !important;
-                    margin-top: 16px !important;
-                }}
-                
-                /* Status codes */
-                .response-code {{
-                    font-weight: 700 !important;
-                    padding: 4px 12px !important;
-                    border-radius: 20px !important;
-                    font-size: 13px !important;
-                }}
-                
-                .response-code-2xx {{
-                    background: rgba(16, 185, 129, 0.2) !important;
-                    color: #10b981 !important;
-                    box-shadow: 0 0 12px rgba(16, 185, 129, 0.3) !important;
-                }}
-                
-                .response-code-4xx {{
-                    background: rgba(245, 158, 11, 0.2) !important;
-                    color: #f59e0b !important;
-                    box-shadow: 0 0 12px rgba(245, 158, 11, 0.3) !important;
-                }}
-                
-                .response-code-5xx {{
-                    background: rgba(239, 68, 68, 0.2) !important;
-                    color: #ef4444 !important;
-                    box-shadow: 0 0 12px rgba(239, 68, 68, 0.3) !important;
-                }}
-                
-                /* Parameters table */
-                table {{
-                    background: rgba(255, 255, 255, 0.03) !important;
-                    border: 1px solid rgba(255, 255, 255, 0.08) !important;
-                    border-radius: 10px !important;
-                    overflow: hidden !important;
-                }}
-                
-                th {{
-                    background: rgba(102, 126, 234, 0.1) !important;
-                    font-weight: 600 !important;
-                    text-transform: uppercase !important;
-                    font-size: 12px !important;
-                    letter-spacing: 0.05em !important;
-                    color: #a5b4fc !important;
-                }}
-                
-                td {{
-                    border-color: rgba(255, 255, 255, 0.06) !important;
-                }}
-                
-                tr:hover {{
-                    background: rgba(102, 126, 234, 0.05) !important;
-                }}
-                
-                /* Badges and labels */
-                .param-required {{
-                    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
-                    color: white !important;
-                    padding: 2px 8px !important;
-                    border-radius: 12px !important;
-                    font-size: 11px !important;
-                    font-weight: 700 !important;
-                    text-transform: uppercase !important;
-                    letter-spacing: 0.05em !important;
-                }}
-                
-                .param-type {{
-                    color: #a5b4fc !important;
-                    font-family: 'JetBrains Mono', monospace !important;
-                    font-size: 12px !important;
-                    background: rgba(165, 180, 252, 0.1) !important;
-                    padding: 2px 8px !important;
-                    border-radius: 4px !important;
-                }}
-                
-                /* Try it out button */
-                button {{
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-                    border: none !important;
-                    border-radius: 8px !important;
-                    padding: 8px 20px !important;
-                    font-weight: 600 !important;
-                    transition: all 0.3s ease !important;
-                    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3) !important;
-                }}
-                
-                button:hover {{
-                    transform: translateY(-2px) !important;
-                    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4) !important;
-                }}
-                
-                /* Search box */
-                .search-box input {{
-                    background: rgba(255, 255, 255, 0.05) !important;
-                    border: 1px solid rgba(102, 126, 234, 0.3) !important;
-                    border-radius: 8px !important;
-                    padding: 10px 16px !important;
-                    color: white !important;
-                    font-size: 14px !important;
-                    transition: all 0.3s ease !important;
-                }}
-                
-                .search-box input:focus {{
-                    background: rgba(255, 255, 255, 0.08) !important;
-                    border-color: #667eea !important;
-                    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2) !important;
-                }}
-                
-                /* Loading animation */
-                .loading:before {{
-                    border-color: #667eea transparent #667eea transparent !important;
-                }}
-                
-                /* Section headers */
-                h2, h3, h4 {{
-                    color: #e0e7ff !important;
-                    font-weight: 700 !important;
-                    letter-spacing: -0.02em !important;
-                }}
-                
-                /* Links */
-                a {{
-                    color: #a5b4fc !important;
-                    text-decoration: none !important;
-                    transition: color 0.2s ease !important;
-                }}
-                
-                a:hover {{
-                    color: #c7d2fe !important;
-                    text-decoration: underline !important;
-                }}
-                
-                /* Right panel background */
-                .sc-hKgILt {{
-                    background: #0d0d0d !important;
-                }}
-                
-                /* Operation summary */
-                .sc-eCssSg {{
-                    color: #e0e7ff !important;
-                    font-size: 16px !important;
-                    font-weight: 600 !important;
-                }}
-                
-                /* Description text */
-                .sc-jSgupP {{
-                    color: #a3a3a3 !important;
-                    line-height: 1.6 !important;
-                }}
-                
-                /* Make streaming endpoints stand out */
-                [data-section-id*="conversation"] .menu-item-header,
-                [data-section-id*="test-comprehensive"] .menu-item-header {{
+                /* API Info Section - Hero Style */
+                .api-info {{
+                    padding: 60px 40px !important;
+                    background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%) !important;
+                    border-bottom: 1px solid var(--border-subtle);
                     position: relative;
                     overflow: hidden;
                 }}
                 
-                [data-section-id*="conversation"] .menu-item-header:after,
-                [data-section-id*="test-comprehensive"] .menu-item-header:after {{
-                    content: "⚡";
+                .api-info::before {{
+                    content: '';
                     position: absolute;
-                    right: 16px;
-                    top: 50%;
-                    transform: translateY(-50%);
-                    font-size: 16px;
-                    animation: pulse 2s ease-in-out infinite;
+                    top: -50%;
+                    left: -50%;
+                    width: 200%;
+                    height: 200%;
+                    background: radial-gradient(circle, rgba(102, 126, 234, 0.1) 0%, transparent 70%);
+                    animation: pulse 15s ease-in-out infinite;
                 }}
                 
                 @keyframes pulse {{
-                    0%, 100% {{ opacity: 0.6; }}
-                    50% {{ opacity: 1; }}
+                    0%, 100% {{ transform: scale(1); opacity: 0.8; }}
+                    50% {{ transform: scale(1.1); opacity: 0.4; }}
                 }}
                 
-                /* Enhanced tag styling */
-                .sc-dlfnbm {{
-                    background: linear-gradient(135deg, rgba(102, 126, 234, 0.15) 0%, rgba(168, 85, 247, 0.15) 100%) !important;
-                    border: 1px solid rgba(102, 126, 234, 0.3) !important;
-                    border-radius: 16px !important;
-                    padding: 4px 12px !important;
-                    font-size: 12px !important;
+                .api-info h1 {{
+                    font-size: 3.5rem !important;
+                    font-weight: 900 !important;
+                    background: var(--gradient-primary);
+                    -webkit-background-clip: text;
+                    -webkit-text-fill-color: transparent;
+                    background-clip: text;
+                    letter-spacing: -0.02em;
+                    margin-bottom: 16px !important;
+                    animation: gradientShift 8s ease infinite;
+                    position: relative;
+                    z-index: 1;
+                }}
+                
+                @keyframes gradientShift {{
+                    0%, 100% {{ filter: hue-rotate(0deg); }}
+                    50% {{ filter: hue-rotate(30deg); }}
+                }}
+                
+                .api-info .markdown p {{
+                    font-size: 1.125rem !important;
+                    color: var(--text-tertiary) !important;
+                    max-width: 800px;
+                    line-height: 1.8;
+                    position: relative;
+                    z-index: 1;
+                }}
+                
+                /* Sidebar Menu - Modern Design */
+                .menu-content {{
+                    background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%) !important;
+                    border-right: 1px solid var(--border-subtle) !important;
+                    padding: 20px 0 !important;
+                    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.1) !important;
+                }}
+                
+                /* Menu Items with Hover Effects */
+                .menu-item {{
+                    margin: 2px 12px !important;
+                    border-radius: 10px !important;
+                    transition: all var(--transition-base) !important;
+                }}
+                
+                .menu-item-header {{
+                    padding: 10px 16px !important;
+                    border-radius: 10px !important;
+                    transition: all var(--transition-base) !important;
+                    position: relative !important;
+                    overflow: hidden !important;
+                }}
+                
+                .menu-item-header::before {{
+                    content: '';
+                    position: absolute;
+                    top: 0;
+                    left: -100%;
+                    width: 100%;
+                    height: 100%;
+                    background: var(--gradient-primary);
+                    opacity: 0.1;
+                    transition: left var(--transition-base);
+                }}
+                
+                .menu-item-header:hover {{
+                    background: rgba(102, 126, 234, 0.1) !important;
+                    transform: translateX(4px);
+                    color: var(--text-primary) !important;
+                }}
+                
+                .menu-item-header:hover::before {{
+                    left: 0;
+                }}
+                
+                .menu-item.active > .menu-item-header {{
+                    background: rgba(102, 126, 234, 0.15) !important;
+                    color: var(--text-primary) !important;
                     font-weight: 600 !important;
-                    color: #a5b4fc !important;
+                    box-shadow: inset 3px 0 0 var(--accent-primary);
+                }}
+                
+                /* Menu Item Labels */
+                .menu-item-label {{
+                    color: var(--text-tertiary) !important;
+                    font-size: 0.875rem !important;
+                    transition: color var(--transition-fast) !important;
+                }}
+                
+                .menu-item-header:hover .menu-item-label {{
+                    color: var(--text-primary) !important;
+                }}
+                
+                /* Operation Sections */
+                .operation-block {{
+                    margin: 40px 0 !important;
+                    padding: 32px !important;
+                    background: var(--bg-secondary) !important;
+                    border: 1px solid var(--border-subtle) !important;
+                    border-radius: 16px !important;
+                    transition: all var(--transition-base) !important;
+                    position: relative !important;
+                    overflow: hidden !important;
+                }}
+                
+                .operation-block:hover {{
+                    border-color: var(--border-default) !important;
+                    box-shadow: var(--shadow-lg) !important;
+                    transform: translateY(-2px);
+                }}
+                
+                /* HTTP Method Badges - Premium Style */
+                .http-verb {{
+                    padding: 6px 16px !important;
+                    border-radius: 20px !important;
+                    font-weight: 700 !important;
+                    font-size: 0.75rem !important;
+                    letter-spacing: 0.05em !important;
+                    text-transform: uppercase !important;
+                    display: inline-flex !important;
+                    align-items: center !important;
+                    gap: 6px !important;
+                    position: relative !important;
+                    overflow: hidden !important;
+                    transition: all var(--transition-base) !important;
+                }}
+                
+                /* HTTP Method Specific Styles */
+                .get .http-verb {{
+                    background: var(--gradient-success) !important;
+                    color: white !important;
+                    box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4) !important;
+                }}
+                
+                .post .http-verb {{
+                    background: var(--gradient-info) !important;
+                    color: white !important;
+                    box-shadow: 0 4px 14px rgba(59, 130, 246, 0.4) !important;
+                }}
+                
+                .put .http-verb {{
+                    background: var(--gradient-warning) !important;
+                    color: white !important;
+                    box-shadow: 0 4px 14px rgba(245, 158, 11, 0.4) !important;
+                }}
+                
+                .delete .http-verb {{
+                    background: var(--gradient-danger) !important;
+                    color: white !important;
+                    box-shadow: 0 4px 14px rgba(239, 68, 68, 0.4) !important;
+                }}
+                
+                .http-verb::after {{
+                    content: '';
+                    position: absolute;
+                    top: -50%;
+                    left: -50%;
+                    width: 200%;
+                    height: 200%;
+                    background: linear-gradient(45deg, transparent 30%, rgba(255, 255, 255, 0.3) 50%, transparent 70%);
+                    transform: rotate(45deg) translateX(-100%);
+                    transition: transform 0.6s;
+                }}
+                
+                .http-verb:hover::after {{
+                    transform: rotate(45deg) translateX(100%);
+                }}
+                
+                /* Endpoint Path Styling */
+                .operation-endpoint {{
+                    font-family: 'JetBrains Mono', monospace !important;
+                    font-size: 0.9rem !important;
+                    color: var(--text-secondary) !important;
+                    background: var(--bg-tertiary) !important;
+                    padding: 12px 20px !important;
+                    border-radius: 8px !important;
+                    border: 1px solid var(--border-subtle) !important;
+                    margin: 16px 0 !important;
+                    display: flex !important;
+                    align-items: center !important;
+                    gap: 12px !important;
+                    transition: all var(--transition-base) !important;
+                }}
+                
+                .operation-endpoint:hover {{
+                    border-color: var(--accent-primary) !important;
+                    box-shadow: 0 0 0 1px var(--accent-primary) !important;
+                }}
+                
+                /* Headers with Style */
+                h1, h2, h3, h4, h5, h6 {{
+                    color: var(--text-primary) !important;
+                    font-weight: 700 !important;
+                    letter-spacing: -0.02em !important;
+                    margin-top: 2em !important;
+                    margin-bottom: 1em !important;
+                }}
+                
+                h2 {{
+                    font-size: 2rem !important;
+                    position: relative !important;
+                    padding-bottom: 12px !important;
+                }}
+                
+                h2::after {{
+                    content: '';
+                    position: absolute;
+                    bottom: 0;
+                    left: 0;
+                    width: 60px;
+                    height: 4px;
+                    background: var(--gradient-primary);
+                    border-radius: 2px;
+                }}
+                
+                h3 {{
+                    font-size: 1.5rem !important;
+                    color: var(--text-secondary) !important;
+                }}
+                
+                /* Paragraphs and Text */
+                p {{
+                    color: var(--text-tertiary) !important;
+                    line-height: 1.8 !important;
+                    margin: 1em 0 !important;
+                }}
+                
+                /* Links with Animations */
+                a {{
+                    color: var(--accent-primary) !important;
+                    text-decoration: none !important;
+                    position: relative !important;
+                    transition: color var(--transition-fast) !important;
+                }}
+                
+                a::after {{
+                    content: '';
+                    position: absolute;
+                    bottom: -2px;
+                    left: 0;
+                    width: 0;
+                    height: 2px;
+                    background: var(--gradient-primary);
+                    transition: width var(--transition-base);
+                }}
+                
+                a:hover {{
+                    color: var(--accent-hover) !important;
+                }}
+                
+                a:hover::after {{
+                    width: 100%;
+                }}
+                
+                /* Code Blocks - Premium Styling */
+                pre {{
+                    background: linear-gradient(135deg, #0d1117 0%, #161b22 100%) !important;
+                    border: 1px solid var(--border-default) !important;
+                    border-radius: 12px !important;
+                    padding: 24px !important;
+                    overflow-x: auto !important;
+                    position: relative !important;
+                    box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+                }}
+                
+                pre::before {{
+                    content: '';
+                    position: absolute;
+                    top: 12px;
+                    right: 12px;
+                    width: 12px;
+                    height: 12px;
+                    background: #ff5f56;
+                    border-radius: 50%;
+                    box-shadow: 20px 0 0 #ffbd2e, 40px 0 0 #27c93f;
+                }}
+                
+                code {{
+                    font-family: 'JetBrains Mono', 'Monaco', 'Consolas', monospace !important;
+                    font-size: 0.875rem !important;
+                    line-height: 1.7 !important;
+                    color: #e6edf3 !important;
+                }}
+                
+                /* Inline Code */
+                :not(pre) > code {{
+                    background: rgba(102, 126, 234, 0.15) !important;
+                    color: var(--accent-primary) !important;
+                    padding: 2px 8px !important;
+                    border-radius: 6px !important;
+                    font-size: 0.875em !important;
+                    font-weight: 500 !important;
+                    border: 1px solid rgba(102, 126, 234, 0.3) !important;
+                }}
+                
+                /* Tables - Modern Design */
+                table {{
+                    width: 100% !important;
+                    border-collapse: separate !important;
+                    border-spacing: 0 !important;
+                    background: var(--bg-secondary) !important;
+                    border-radius: 12px !important;
+                    overflow: hidden !important;
+                    box-shadow: var(--shadow-md) !important;
+                    margin: 24px 0 !important;
+                }}
+                
+                thead {{
+                    background: var(--gradient-primary) !important;
+                }}
+                
+                th {{
+                    padding: 16px 20px !important;
+                    text-align: left !important;
+                    font-weight: 600 !important;
+                    color: white !important;
+                    font-size: 0.875rem !important;
+                    text-transform: uppercase !important;
+                    letter-spacing: 0.05em !important;
+                }}
+                
+                tbody tr {{
+                    transition: all var(--transition-fast) !important;
+                }}
+                
+                tbody tr:hover {{
+                    background: rgba(102, 126, 234, 0.05) !important;
+                }}
+                
+                td {{
+                    padding: 14px 20px !important;
+                    color: var(--text-secondary) !important;
+                    border-top: 1px solid var(--border-subtle) !important;
+                }}
+                
+                /* Parameter Tables */
+                .param-name {{
+                    color: var(--accent-primary) !important;
+                    font-family: 'JetBrains Mono', monospace !important;
+                    font-weight: 600 !important;
+                }}
+                
+                .param-type {{
+                    color: var(--color-success) !important;
+                    font-family: 'JetBrains Mono', monospace !important;
+                    font-size: 0.85em !important;
+                }}
+                
+                .param-required {{
+                    color: var(--color-error) !important;
+                    font-weight: 600 !important;
+                    font-size: 0.75rem !important;
+                    text-transform: uppercase !important;
+                    letter-spacing: 0.05em !important;
+                }}
+                
+                /* Response Examples */
+                .responses-wrapper {{
+                    background: var(--bg-secondary) !important;
+                    border: 1px solid var(--border-subtle) !important;
+                    border-radius: 12px !important;
+                    padding: 24px !important;
+                    margin: 24px 0 !important;
+                }}
+                
+                .response-code {{
+                    display: inline-flex !important;
+                    align-items: center !important;
+                    gap: 8px !important;
+                    padding: 6px 16px !important;
+                    border-radius: 20px !important;
+                    font-weight: 700 !important;
+                    font-size: 0.875rem !important;
+                    transition: all var(--transition-base) !important;
+                }}
+                
+                .response-code-2xx {{
+                    background: rgba(16, 185, 129, 0.15) !important;
+                    color: var(--color-success) !important;
+                    border: 1px solid rgba(16, 185, 129, 0.3) !important;
+                }}
+                
+                .response-code-4xx {{
+                    background: rgba(245, 158, 11, 0.15) !important;
+                    color: var(--color-warning) !important;
+                    border: 1px solid rgba(245, 158, 11, 0.3) !important;
+                }}
+                
+                .response-code-5xx {{
+                    background: rgba(239, 68, 68, 0.15) !important;
+                    color: var(--color-error) !important;
+                    border: 1px solid rgba(239, 68, 68, 0.3) !important;
+                }}
+                
+                /* Tabs */
+                .react-tabs__tab-list {{
+                    border-bottom: 2px solid var(--border-subtle) !important;
+                    margin-bottom: 24px !important;
+                }}
+                
+                .react-tabs__tab {{
+                    background: transparent !important;
+                    border: none !important;
+                    color: var(--text-tertiary) !important;
+                    padding: 12px 24px !important;
+                    font-weight: 500 !important;
+                    position: relative !important;
+                    transition: all var(--transition-base) !important;
+                    cursor: pointer !important;
+                }}
+                
+                .react-tabs__tab:hover {{
+                    color: var(--text-secondary) !important;
+                }}
+                
+                .react-tabs__tab--selected {{
+                    color: var(--text-primary) !important;
+                }}
+                
+                .react-tabs__tab--selected::after {{
+                    content: '';
+                    position: absolute;
+                    bottom: -2px;
+                    left: 0;
+                    right: 0;
+                    height: 3px;
+                    background: var(--gradient-primary);
+                    border-radius: 3px 3px 0 0;
+                    animation: slideIn var(--transition-base);
+                }}
+                
+                @keyframes slideIn {{
+                    from {{ transform: scaleX(0); }}
+                    to {{ transform: scaleX(1); }}
+                }}
+                
+                /* Buttons - Modern Style */
+                button {{
+                    background: var(--gradient-primary) !important;
+                    color: white !important;
+                    border: none !important;
+                    padding: 10px 24px !important;
+                    border-radius: 8px !important;
+                    font-weight: 600 !important;
+                    font-size: 0.875rem !important;
+                    cursor: pointer !important;
+                    transition: all var(--transition-base) !important;
+                    position: relative !important;
+                    overflow: hidden !important;
+                    text-transform: uppercase !important;
+                    letter-spacing: 0.05em !important;
+                }}
+                
+                button:hover {{
+                    transform: translateY(-2px) !important;
+                    box-shadow: 0 8px 16px rgba(102, 126, 234, 0.4) !important;
+                }}
+                
+                button:active {{
+                    transform: translateY(0) !important;
+                }}
+                
+                button::before {{
+                    content: '';
+                    position: absolute;
+                    top: 50%;
+                    left: 50%;
+                    width: 0;
+                    height: 0;
+                    background: rgba(255, 255, 255, 0.3);
+                    border-radius: 50%;
+                    transform: translate(-50%, -50%);
+                    transition: width 0.6s, height 0.6s;
+                }}
+                
+                button:active::before {{
+                    width: 300px;
+                    height: 300px;
+                }}
+                
+                /* Input Fields */
+                input, textarea, select {{
+                    background: var(--bg-tertiary) !important;
+                    color: var(--text-primary) !important;
+                    border: 2px solid var(--border-subtle) !important;
+                    border-radius: 8px !important;
+                    padding: 12px 16px !important;
+                    font-size: 0.875rem !important;
+                    transition: all var(--transition-base) !important;
+                    width: 100% !important;
+                }}
+                
+                input:focus, textarea:focus, select:focus {{
+                    outline: none !important;
+                    border-color: var(--accent-primary) !important;
+                    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1) !important;
+                }}
+                
+                input::placeholder, textarea::placeholder {{
+                    color: var(--text-disabled) !important;
+                }}
+                
+                /* Search Box */
+                .search-box {{
+                    position: relative !important;
+                }}
+                
+                .search-box input {{
+                    padding-left: 40px !important;
+                    background: var(--bg-elevated) !important;
+                }}
+                
+                .search-box::before {{
+                    content: '🔍';
+                    position: absolute;
+                    left: 12px;
+                    top: 50%;
+                    transform: translateY(-50%);
+                    color: var(--text-tertiary);
+                }}
+                
+                /* Loading States */
+                .loading {{
+                    display: inline-block !important;
+                    width: 20px !important;
+                    height: 20px !important;
+                    border: 3px solid var(--border-default) !important;
+                    border-radius: 50% !important;
+                    border-top-color: var(--accent-primary) !important;
+                    animation: spin 1s ease-in-out infinite !important;
+                }}
+                
+                @keyframes spin {{
+                    to {{ transform: rotate(360deg); }}
+                }}
+                
+                /* Tooltips */
+                .tooltip {{
+                    position: relative !important;
+                }}
+                
+                .tooltip::after {{
+                    content: attr(data-tooltip);
+                    position: absolute;
+                    bottom: 100%;
+                    left: 50%;
+                    transform: translateX(-50%) translateY(-8px);
+                    background: var(--bg-elevated);
+                    color: var(--text-primary);
+                    padding: 8px 12px;
+                    border-radius: 6px;
+                    font-size: 0.75rem;
+                    white-space: nowrap;
+                    opacity: 0;
+                    pointer-events: none;
+                    transition: all var(--transition-base);
+                    box-shadow: var(--shadow-lg);
+                    border: 1px solid var(--border-default);
+                }}
+                
+                .tooltip:hover::after {{
+                    opacity: 1;
+                    transform: translateX(-50%) translateY(-12px);
+                }}
+                
+                /* Badges */
+                .badge {{
+                    display: inline-flex !important;
+                    align-items: center !important;
+                    gap: 4px !important;
+                    padding: 4px 12px !important;
+                    background: var(--gradient-primary) !important;
+                    color: white !important;
+                    border-radius: 16px !important;
+                    font-size: 0.75rem !important;
+                    font-weight: 600 !important;
+                    text-transform: uppercase !important;
+                    letter-spacing: 0.05em !important;
+                }}
+                
+                /* Security Scheme */
+                .security-details {{
+                    background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(239, 68, 68, 0.1) 100%) !important;
+                    border: 1px solid rgba(245, 158, 11, 0.3) !important;
+                    border-radius: 12px !important;
+                    padding: 20px !important;
+                    margin: 20px 0 !important;
+                }}
+                
+                .security-details h3 {{
+                    color: var(--color-warning) !important;
+                    display: flex !important;
+                    align-items: center !important;
+                    gap: 8px !important;
+                }}
+                
+                .security-details h3::before {{
+                    content: '🔒';
+                    font-size: 1.2em;
+                }}
+                
+                /* Right Panel Code Examples */
+                .right-panel {{
+                    background: var(--bg-secondary) !important;
+                    border-left: 1px solid var(--border-subtle) !important;
+                }}
+                
+                .code-sample {{
+                    margin: 20px !important;
+                    border-radius: 12px !important;
+                    overflow: hidden !important;
+                    box-shadow: var(--shadow-md) !important;
+                }}
+                
+                .code-sample-header {{
+                    background: var(--bg-elevated) !important;
+                    padding: 12px 20px !important;
+                    border-bottom: 1px solid var(--border-subtle) !important;
+                    display: flex !important;
+                    justify-content: space-between !important;
+                    align-items: center !important;
+                }}
+                
+                .code-sample-title {{
+                    color: var(--text-secondary) !important;
+                    font-weight: 600 !important;
+                    font-size: 0.875rem !important;
+                }}
+                
+                .copy-button {{
+                    background: transparent !important;
+                    border: 1px solid var(--border-default) !important;
+                    color: var(--text-tertiary) !important;
+                    padding: 4px 12px !important;
+                    border-radius: 6px !important;
+                    font-size: 0.75rem !important;
+                    cursor: pointer !important;
+                    transition: all var(--transition-fast) !important;
+                }}
+                
+                .copy-button:hover {{
+                    border-color: var(--accent-primary) !important;
+                    color: var(--accent-primary) !important;
+                    background: rgba(102, 126, 234, 0.1) !important;
+                }}
+                
+                /* Expandable Sections */
+                .expandable {{
+                    border: 1px solid var(--border-subtle) !important;
+                    border-radius: 8px !important;
+                    margin: 12px 0 !important;
+                    overflow: hidden !important;
+                    transition: all var(--transition-base) !important;
+                }}
+                
+                .expandable-header {{
+                    background: var(--bg-elevated) !important;
+                    padding: 16px 20px !important;
+                    cursor: pointer !important;
+                    display: flex !important;
+                    justify-content: space-between !important;
+                    align-items: center !important;
+                    transition: all var(--transition-fast) !important;
+                }}
+                
+                .expandable-header:hover {{
+                    background: rgba(102, 126, 234, 0.05) !important;
+                }}
+                
+                .expandable-arrow {{
+                    transition: transform var(--transition-base) !important;
+                    color: var(--text-tertiary) !important;
+                }}
+                
+                .expandable.expanded .expandable-arrow {{
+                    transform: rotate(180deg) !important;
+                }}
+                
+                .expandable-content {{
+                    padding: 20px !important;
+                    background: var(--bg-secondary) !important;
+                    border-top: 1px solid var(--border-subtle) !important;
+                }}
+                
+                /* Tags/Labels */
+                .tag {{
+                    display: inline-flex !important;
+                    align-items: center !important;
+                    gap: 6px !important;
+                    background: rgba(102, 126, 234, 0.1) !important;
+                    color: var(--accent-primary) !important;
+                    padding: 6px 16px !important;
+                    border-radius: 20px !important;
+                    font-size: 0.8rem !important;
+                    font-weight: 600 !important;
+                    border: 1px solid rgba(102, 126, 234, 0.3) !important;
+                    transition: all var(--transition-fast) !important;
+                }}
+                
+                .tag:hover {{
+                    background: rgba(102, 126, 234, 0.2) !important;
+                    transform: translateY(-1px) !important;
+                    box-shadow: 0 4px 8px rgba(102, 126, 234, 0.2) !important;
+                }}
+                
+                /* Error Messages */
+                .error-message {{
+                    background: rgba(239, 68, 68, 0.1) !important;
+                    border: 1px solid rgba(239, 68, 68, 0.3) !important;
+                    color: var(--color-error) !important;
+                    padding: 16px 20px !important;
+                    border-radius: 8px !important;
+                    margin: 16px 0 !important;
+                    display: flex !important;
+                    align-items: center !important;
+                    gap: 12px !important;
+                }}
+                
+                .error-message::before {{
+                    content: '⚠️';
+                    font-size: 1.2em;
+                }}
+                
+                /* Success Messages */
+                .success-message {{
+                    background: rgba(16, 185, 129, 0.1) !important;
+                    border: 1px solid rgba(16, 185, 129, 0.3) !important;
+                    color: var(--color-success) !important;
+                    padding: 16px 20px !important;
+                    border-radius: 8px !important;
+                    margin: 16px 0 !important;
+                    display: flex !important;
+                    align-items: center !important;
+                    gap: 12px !important;
+                }}
+                
+                .success-message::before {{
+                    content: '✅';
+                    font-size: 1.2em;
+                }}
+                
+                /* Info Messages */
+                .info-message {{
+                    background: rgba(59, 130, 246, 0.1) !important;
+                    border: 1px solid rgba(59, 130, 246, 0.3) !important;
+                    color: var(--color-info) !important;
+                    padding: 16px 20px !important;
+                    border-radius: 8px !important;
+                    margin: 16px 0 !important;
+                    display: flex !important;
+                    align-items: center !important;
+                    gap: 12px !important;
+                }}
+                
+                .info-message::before {{
+                    content: 'ℹ️';
+                    font-size: 1.2em;
+                }}
+                
+                /* Force Override Any White Backgrounds */
+                *[style*="background: white"],
+                *[style*="background-color: white"],
+                *[style*="background: rgb(255, 255, 255)"],
+                *[style*="background-color: rgb(255, 255, 255)"],
+                *[style*="background: #fff"],
+                *[style*="background-color: #fff"],
+                *[style*="background: #ffffff"],
+                *[style*="background-color: #ffffff"] {{
+                    background: var(--bg-primary) !important;
+                }}
+                
+                /* Ensure text contrast on forced backgrounds */
+                *[style*="color: black"],
+                *[style*="color: #000"],
+                *[style*="color: #000000"],
+                *[style*="color: rgb(0, 0, 0)"] {{
+                    color: var(--text-secondary) !important;
+                }}
+                
+                /* Custom Loading Animation */
+                .redoc-loading {{
+                    position: fixed;
+                    top: 50%;
+                    left: 50%;
+                    transform: translate(-50%, -50%);
+                }}
+                
+                .redoc-loading::after {{
+                    content: 'Loading API Documentation...';
+                    color: var(--text-secondary);
+                    font-size: 1.2rem;
+                    font-weight: 600;
+                    display: block;
+                    margin-top: 20px;
+                    text-align: center;
+                }}
+                
+                /* Mobile Responsive Adjustments */
+                @media (max-width: 768px) {{
+                    .api-info h1 {{
+                        font-size: 2.5rem !important;
+                    }}
+                    
+                    .menu-content {{
+                        width: 260px !important;
+                    }}
+                    
+                    .operation-block {{
+                        padding: 20px !important;
+                    }}
+                    
+                    pre {{
+                        padding: 16px !important;
+                        font-size: 0.8rem !important;
+                    }}
+                }}
+                
+                /* Print Styles */
+                @media print {{
+                    body {{
+                        background: white !important;
+                        color: black !important;
+                    }}
+                    
+                    .menu-content {{
+                        display: none !important;
+                    }}
+                    
+                    .http-verb, .response-code {{
+                        border: 1px solid black !important;
+                        background: none !important;
+                        color: black !important;
+                    }}
+                }}
+                
+                /* Advanced Animations */
+                @keyframes fadeInUp {{
+                    from {{
+                        opacity: 0;
+                        transform: translateY(20px);
+                    }}
+                    to {{
+                        opacity: 1;
+                        transform: translateY(0);
+                    }}
+                }}
+                
+                .operation-block {{
+                    animation: fadeInUp 0.5s ease-out;
+                }}
+                
+                /* Glow Effects */
+                .glow {{
+                    box-shadow: 0 0 20px rgba(102, 126, 234, 0.5) !important;
+                }}
+                
+                /* Premium Hover States */
+                *:focus-visible {{
+                    outline: 2px solid var(--accent-primary) !important;
+                    outline-offset: 2px !important;
                 }}
             </style>
         </head>
         <body>
             <div id="redoc-container"></div>
-            <script src="https://cdn.jsdelivr.net/npm/redoc@latest/bundles/redoc.standalone.js"></script>
+            <script src="https://cdn.jsdelivr.net/npm/redoc@2.0.0/bundles/redoc.standalone.js"></script>
             <script>
-                // Initialize ReDoc with enhanced dark theme
-                Redoc.init('/openapi.json', {{
-                    theme: {{
-                        colors: {{
-                            primary: {{
-                                main: '#667eea',
-                                light: '#a5b4fc',
-                                dark: '#4c1d95',
-                                contrastText: '#ffffff'
+                // Initialize ReDoc with advanced configuration
+                const initializeRedoc = () => {{
+                    Redoc.init('/openapi.json', {{
+                        theme: {{
+                            colors: {{
+                                primary: {{
+                                    main: '#667eea',
+                                    light: '#a5b4fc',
+                                    dark: '#4c1d95',
+                                    contrastText: '#ffffff'
+                                }},
+                                success: {{
+                                    main: '#10b981',
+                                    light: '#6ee7b7',
+                                    dark: '#047857'
+                                }},
+                                warning: {{
+                                    main: '#f59e0b',
+                                    light: '#fcd34d',
+                                    dark: '#b45309'
+                                }},
+                                error: {{
+                                    main: '#ef4444',
+                                    light: '#fca5a5',
+                                    dark: '#991b1b'
+                                }},
+                                gray: {{
+                                    50: '#f9fafb',
+                                    100: '#f3f4f6',
+                                    200: '#e5e7eb',
+                                    300: '#d1d5db',
+                                    400: '#9ca3af',
+                                    500: '#6b7280',
+                                    600: '#4b5563',
+                                    700: '#374151',
+                                    800: '#1f2937',
+                                    900: '#111827'
+                                }},
+                                text: {{
+                                    primary: '#ffffff',
+                                    secondary: '#e0e0e0',
+                                    disabled: '#6b7280',
+                                    hint: '#9ca3af'
+                                }},
+                                border: {{
+                                    dark: 'rgba(255, 255, 255, 0.1)',
+                                    light: 'rgba(255, 255, 255, 0.2)'
+                                }},
+                                responses: {{
+                                    success: {{
+                                        color: '#10b981',
+                                        backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                                        tabTextColor: '#10b981'
+                                    }},
+                                    error: {{
+                                        color: '#ef4444',
+                                        backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                                        tabTextColor: '#ef4444'
+                                    }},
+                                    redirect: {{
+                                        color: '#f59e0b',
+                                        backgroundColor: 'rgba(245, 158, 11, 0.15)',
+                                        tabTextColor: '#f59e0b'
+                                    }},
+                                    info: {{
+                                        color: '#3b82f6',
+                                        backgroundColor: 'rgba(59, 130, 246, 0.15)',
+                                        tabTextColor: '#3b82f6'
+                                    }}
+                                }}
                             }},
-                            success: {{
-                                main: '#10b981',
-                                light: '#6ee7b7',
-                                dark: '#047857',
-                                contrastText: '#ffffff'
+                            schema: {{
+                                linesColor: 'rgba(102, 126, 234, 0.4)',
+                                defaultDetailsWidth: '75%',
+                                typeNameColor: '#10b981',
+                                typeTitleColor: '#667eea',
+                                requireLabelColor: '#ef4444',
+                                labelsTextSize: '0.9em',
+                                nestingSpacing: '1em',
+                                nestedBackground: 'rgba(255, 255, 255, 0.02)',
+                                arrow: {{
+                                    size: '1.1em',
+                                    color: '#a3a3a3'
+                                }}
                             }},
-                            warning: {{
-                                main: '#f59e0b',
-                                light: '#fcd34d',
-                                dark: '#b45309',
-                                contrastText: '#ffffff'
-                            }},
-                            error: {{
-                                main: '#ef4444',
-                                light: '#fca5a5',
-                                dark: '#991b1b',
-                                contrastText: '#ffffff'
-                            }},
-                            text: {{
-                                primary: '#e0e7ff',
-                                secondary: '#a3a3a3',
-                                disabled: '#6b7280',
-                                hint: '#9ca3af'
-                            }},
-                            background: {{
-                                primary: '#0a0a0a',
-                                secondary: '#0f0f0f',
-                                paper: '#1a1a1a'
-                            }},
-                            border: {{
-                                light: 'rgba(255, 255, 255, 0.08)',
-                                dark: 'rgba(255, 255, 255, 0.04)'
-                            }}
-                        }},
-                        typography: {{
-                            fontSize: '15px',
-                            fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-                            fontWeightLight: 300,
-                            fontWeightRegular: 400,
-                            fontWeightMedium: 500,
-                            fontWeightBold: 700,
-                            headings: {{
+                            typography: {{
+                                fontSize: '16px',
+                                lineHeight: '1.6',
+                                fontWeightRegular: '400',
+                                fontWeightBold: '700',
+                                fontWeightLight: '300',
                                 fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-                                fontWeight: 700,
-                                lineHeight: 1.2
+                                smoothing: 'antialiased',
+                                optimizeSpeed: true,
+                                headings: {{
+                                    fontFamily: '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+                                    fontWeight: '700',
+                                    lineHeight: '1.2'
+                                }},
+                                code: {{
+                                    fontSize: '14px',
+                                    fontFamily: '"JetBrains Mono", "Monaco", "Consolas", monospace',
+                                    lineHeight: '1.6',
+                                    fontWeight: '400',
+                                    color: '#e6edf3',
+                                    backgroundColor: '#0d1117',
+                                    wrap: true
+                                }},
+                                links: {{
+                                    color: '#667eea',
+                                    visited: '#667eea',
+                                    hover: '#818cf8',
+                                    textDecoration: 'auto',
+                                    hoverTextDecoration: 'auto'
+                                }}
                             }},
-                            code: {{
-                                fontSize: '13px',
-                                fontFamily: '"JetBrains Mono", "Monaco", "Consolas", monospace',
-                                lineHeight: 1.6,
-                                fontWeight: 500,
-                                color: '#a5b4fc',
-                                backgroundColor: '#0d1117',
-                                wrap: true
+                            sidebar: {{
+                                width: '300px',
+                                backgroundColor: '#0a0a0a',
+                                textColor: '#a0a0a0',
+                                activeTextColor: '#ffffff',
+                                groupItems: {{
+                                    activeBackgroundColor: 'rgba(102, 126, 234, 0.15)',
+                                    activeTextColor: '#ffffff',
+                                    textTransform: 'none'
+                                }},
+                                level1Items: {{
+                                    activeBackgroundColor: 'rgba(102, 126, 234, 0.2)',
+                                    activeTextColor: '#ffffff',
+                                    textTransform: 'none'
+                                }},
+                                arrow: {{
+                                    size: '1.5em',
+                                    color: '#a0a0a0'
+                                }}
                             }},
-                            links: {{
-                                color: '#a5b4fc',
-                                hover: '#c7d2fe',
-                                visited: '#a5b4fc'
+                            logo: {{
+                                gutter: '16px',
+                                maxHeight: '60px',
+                                maxWidth: '200px'
+                            }},
+                            rightPanel: {{
+                                backgroundColor: '#0a0a0a',
+                                width: '40%',
+                                textColor: '#e0e0e0'
+                            }},
+                            codeBlock: {{
+                                backgroundColor: '#0d1117'
+                            }},
+                            spacing: {{
+                                unit: 5,
+                                sectionHorizontal: 40,
+                                sectionVertical: 40
                             }}
                         }},
-                        sidebar: {{
-                            width: '280px',
-                            backgroundColor: '#0f0f0f',
-                            textColor: '#e0e7ff',
-                            activeTextColor: '#ffffff',
-                            groupItems: {{
-                                textTransform: 'uppercase',
-                                fontWeight: 700,
-                                fontSize: '12px',
-                                letterSpacing: '0.05em'
-                            }},
-                            level1Items: {{
-                                textTransform: 'none',
-                                fontWeight: 600,
-                                fontSize: '14px'
-                            }},
-                            arrow: {{
-                                size: '12px',
-                                color: '#a5b4fc'
-                            }}
-                        }},
-                        rightPanel: {{
-                            backgroundColor: '#0d0d0d',
-                            width: '45%',
-                            textColor: '#e0e7ff'
-                        }},
-                        schema: {{
-                            nestedBackground: 'rgba(102, 126, 234, 0.05)',
-                            linesColor: 'rgba(102, 126, 234, 0.2)',
-                            defaultDetailsWidth: '75%',
-                            typeNameColor: '#a5b4fc',
-                            typeTitleColor: '#e0e7ff',
-                            requireLabelColor: '#ef4444',
-                            labelsTextSize: '12px',
-                            nestingSpacing: '16px',
-                            arrow: {{
-                                size: '10px',
-                                color: '#a5b4fc'
-                            }}
-                        }},
-                        codeBlock: {{
-                            backgroundColor: '#0d1117',
-                            borderRadius: '10px',
-                            border: '1px solid rgba(102, 126, 234, 0.2)'
-                        }}
-                    }},
-                    options: {{
                         scrollYOffset: 0,
                         hideDownloadButton: false,
+                        disableSearch: false,
+                        noAutoAuth: true,
+                        nativeScrollbars: false,
+                        sortPropsAlphabetically: true,
+                        hideHostname: false,
                         expandResponses: '200,201',
                         requiredPropsFirst: true,
-                        sortPropsAlphabetically: false,
-                        showExtensions: true,
                         pathInMiddlePanel: true,
-                        hideRequestPayloadSample: false,
-                        noAutoAuth: false,
-                        onlyRequiredInSamples: false,
-                        theme: {{
-                            spacing: {{
-                                unit: 4,
-                                sectionHorizontal: 32,
-                                sectionVertical: 32
-                            }}
-                        }},
-                        disableSearch: false,
+                        untrustedSpec: false,
                         hideLoading: false,
-                        nativeScrollbars: false,
-                        showObjectSchemaExamples: true,
-                        unstable_ignoreMimeParameters: false
-                    }}
-                }}, document.getElementById('redoc-container'));
+                        showExtensions: true,
+                        hideSingleRequestSampleTab: false,
+                        menuToggle: true,
+                        suppressWarnings: false,
+                        payloadSampleIdx: 0,
+                        expandSingleSchemaField: true,
+                        generateCodeSamples: {{
+                            languages: [
+                                {{ lang: 'curl', label: 'cURL' }},
+                                {{ lang: 'python', label: 'Python' }},
+                                {{ lang: 'javascript', label: 'JavaScript' }},
+                                {{ lang: 'go', label: 'Go' }},
+                                {{ lang: 'php', label: 'PHP' }},
+                                {{ lang: 'java', label: 'Java' }},
+                                {{ lang: 'csharp', label: 'C#' }}
+                            ]
+                        }}
+                    }}, document.getElementById('redoc-container'));
+                }};
+                
+                // Initialize Redoc
+                initializeRedoc();
+                
+                // Post-initialization enhancements
+                setTimeout(() => {{
+                    // Force dark mode on any remaining light elements
+                    const enforceFullDarkMode = () => {{
+                        const allElements = document.querySelectorAll('*');
+                        allElements.forEach(el => {{
+                            const computedStyle = window.getComputedStyle(el);
+                            const bgColor = computedStyle.backgroundColor;
+                            const color = computedStyle.color;
+                            
+                            // Check for white/light backgrounds
+                            if (bgColor && (
+                                bgColor === 'rgb(255, 255, 255)' ||
+                                bgColor === 'white' ||
+                                bgColor.includes('255, 255, 255')
+                            )) {{
+                                el.style.backgroundColor = '#0a0a0a !important';
+                            }}
+                            
+                            // Check for black/dark text on dark background
+                            if (color && (
+                                color === 'rgb(0, 0, 0)' ||
+                                color === 'black' ||
+                                color.includes('0, 0, 0')
+                            )) {{
+                                el.style.color = '#e0e0e0 !important';
+                            }}
+                        }});
+                    }};
+                    
+                    enforceFullDarkMode();
+                    
+                    // Add smooth scroll behavior
+                    document.documentElement.style.scrollBehavior = 'smooth';
+                    
+                    // Add custom animations to elements as they appear
+                    const observerOptions = {{
+                        threshold: 0.1,
+                        rootMargin: '0px 0px -50px 0px'
+                    }};
+                    
+                    const observer = new IntersectionObserver((entries) => {{
+                        entries.forEach(entry => {{
+                            if (entry.isIntersecting) {{
+                                entry.target.style.opacity = '1';
+                                entry.target.style.transform = 'translateY(0)';
+                            }}
+                        }});
+                    }}, observerOptions);
+                    
+                    // Observe operation blocks for animations
+                    document.querySelectorAll('.operation-block').forEach(block => {{
+                        block.style.opacity = '0';
+                        block.style.transform = 'translateY(20px)';
+                        block.style.transition = 'all 0.5s ease-out';
+                        observer.observe(block);
+                    }});
+                    
+                    // Add copy-to-clipboard functionality to code blocks
+                    document.querySelectorAll('pre').forEach(pre => {{
+                        const wrapper = document.createElement('div');
+                        wrapper.className = 'code-wrapper';
+                        wrapper.style.position = 'relative';
+                        
+                        pre.parentNode.insertBefore(wrapper, pre);
+                        wrapper.appendChild(pre);
+                        
+                        const copyBtn = document.createElement('button');
+                        copyBtn.className = 'copy-code-btn';
+                        copyBtn.textContent = 'Copy';
+                        copyBtn.style.cssText = `
+                            position: absolute;
+                            top: 8px;
+                            right: 8px;
+                            background: rgba(102, 126, 234, 0.2);
+                            color: #667eea;
+                            border: 1px solid rgba(102, 126, 234, 0.3);
+                            padding: 4px 12px;
+                            border-radius: 6px;
+                            font-size: 0.75rem;
+                            cursor: pointer;
+                            transition: all 0.2s;
+                            z-index: 10;
+                        `;
+                        
+                        copyBtn.addEventListener('click', () => {{
+                            navigator.clipboard.writeText(pre.textContent);
+                            copyBtn.textContent = 'Copied!';
+                            copyBtn.style.background = 'rgba(16, 185, 129, 0.2)';
+                            copyBtn.style.color = '#10b981';
+                            copyBtn.style.borderColor = 'rgba(16, 185, 129, 0.3)';
+                            
+                            setTimeout(() => {{
+                                copyBtn.textContent = 'Copy';
+                                copyBtn.style.background = 'rgba(102, 126, 234, 0.2)';
+                                copyBtn.style.color = '#667eea';
+                                copyBtn.style.borderColor = 'rgba(102, 126, 234, 0.3)';
+                            }}, 2000);
+                        }});
+                        
+                        wrapper.appendChild(copyBtn);
+                    }});
+                    
+                    // Add keyboard shortcuts
+                    document.addEventListener('keydown', (e) => {{
+                        // Ctrl/Cmd + K for search
+                        if ((e.ctrlKey || e.metaKey) && e.key === 'k') {{
+                            e.preventDefault();
+                            const searchInput = document.querySelector('.search-box input');
+                            if (searchInput) searchInput.focus();
+                        }}
+                        
+                        // Escape to close modals
+                        if (e.key === 'Escape') {{
+                            const modals = document.querySelectorAll('.modal');
+                            modals.forEach(modal => modal.style.display = 'none');
+                        }}
+                    }});
+                    
+                }}, 1500);
             </script>
         </body>
         </html>
-        """
+        """,
+        status_code=200
     )
     
 @app.on_event("startup")
@@ -7180,28 +8259,25 @@ def update_operation_status(operation_id: str, status: str, progress: float, mes
 
 @app.post("/initiate-chat",
           response_model=ChatInitResponse,
-          summary="Start Chat Session",
-          description="Initialize a new chat session with an AI assistant. Creates thread and vector store for context.",
+          summary="Initialize Chat Session",
+          description="""Create a new chat session with an AI assistant.
+
+Creates thread and vector store for context.""",
           tags=["Chat Operations"])
-async def initiate_chat(request: Request):
+async def initiate_chat(
+    file: Optional[UploadFile] = File(None, description="Initial file to process"),
+    context: Optional[str] = Form(None, description="User context or persona")
+):
     """
     Create a new chat session with persistent context.
     
-    Form parameters (parsed from request):
+    Form parameters (now properly handled by FastAPI):
     - file (optional): Initial file to process
     - context (optional): User context or persona
     """
+
     client = create_client()
     logging.info("Initiating new chat session...")
-
-    # Parse the form data
-    try:
-        form = await request.form()
-        file: Optional[UploadFile] = form.get("file", None)
-        context: Optional[str] = form.get("context", None)
-    except Exception as e:
-        logging.error(f"Error parsing form data: {e}")
-        raise HTTPException(status_code=400, detail=f"Invalid form data: {e}")
 
     # Create a vector store up front
     try:
@@ -7984,20 +9060,8 @@ async def process_conversation(
     When context is provided, it bypasses thread-based conversation and uses
     completions API directly with intelligent context processing.
     """
-    files = await validate_file_uploads(files)
-    files = None if not files else files
     client = create_client()
     # Log the operation mode
-    if context is not None:
-        logging.info(f"🔄 CONTEXT MODE ACTIVATED - Bypassing thread system")
-        logging.info(f"  Assistant: {assistant}")
-        logging.info(f"  Thread (ignored): {session}")
-        logging.info(f"  Context size: {len(context) if context else 0} chars")
-    else:
-        logging.info(f"📌 THREAD MODE - Using standard assistant flow")
-        logging.info(f"  Assistant: {assistant}")
-        logging.info(f"  Thread: {session}")
-    
     
     thread_lock = None
     response_started = False
@@ -8009,8 +9073,6 @@ async def process_conversation(
         Accepts raw context string that can be JSON, plain text, or any format.
         Supports multiple file uploads with automatic text extraction.
         """
-        files = await validate_file_uploads(files)
-        files = None if not files else files
         try:
             logging.info(f"Falling back to completions API. Context: {error_context}")
             
@@ -9389,32 +10451,74 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
     ######################### END OF def stream_response() #######################################
     
     try:
-        # Acquire thread lock if session exists
+        # PRIORITY 1: Check for context or files FIRST (before any thread operations)
+        if context is not None:
+            logging.info(f"🔄 CONTEXT MODE ACTIVATED - Bypassing thread system")
+            logging.info(f"  Assistant: {assistant}")
+            logging.info(f"  Thread (ignored): {session}")
+            logging.info(f"  Context size: {len(context) if context else 0} chars")
+            
+            # Immediately fallback to completions API when context is provided
+            return await fallback_to_completions(
+                error_context="Context mode requested - bypassing assistant API",
+                user_context=context,
+                files=files
+            )
+        
+        if files:
+            logging.info(f"📎 FILES DETECTED - Using enhanced completions with file analysis")
+            logging.info(f"  Files count: {len(files)}")
+            logging.info(f"  Files: {[f.filename for f in files]}")
+            
+            # Immediately use fallback_to_completions when files are present
+            return await fallback_to_completions(
+                error_context="File analysis requested",
+                user_context=context,
+                files=files
+            )
+        
+        # PRIORITY 2: Check for missing parameters (no point in continuing without them)
+        if not assistant or not session:
+            missing_params = []
+            if not assistant:
+                missing_params.append("assistant_id")
+            if not session:
+                missing_params.append("thread_id")
+            
+            logging.info(f"Missing required parameters: {', '.join(missing_params)}. Falling back to completions API.")
+            return await fallback_to_completions(
+                error_context=f"Missing required parameters: {', '.join(missing_params)}",
+                user_context=context,
+                files=files
+            )
+        
+        # PRIORITY 3: Now we know we need thread mode - log it
+        logging.info(f"📌 THREAD MODE - Using standard assistant flow")
+        logging.info(f"  Assistant: {assistant}")
+        logging.info(f"  Thread: {session}")
+        
+        # PRIORITY 4: Acquire thread lock (ONLY ONCE, ONLY WHEN NEEDED)
         try:
             thread_lock = await thread_lock_manager.get_lock(session)
             await asyncio.wait_for(thread_lock.acquire(), timeout=30.0)  # 30 second timeout
             logging.info(f"Acquired thread lock for session {session}")
         except asyncio.TimeoutError:
             logging.warning(f"Timeout acquiring thread lock for session {session}")
-            return await fallback_to_completions(error_context=f"Thread lock timeout",user_context=context, files=files)
+            return await fallback_to_completions(
+                error_context=f"Thread lock timeout",
+                user_context=context,
+                files=files
+            )
         except Exception as lock_e:
             logging.error(f"Error acquiring thread lock: {lock_e}")
-            return await fallback_to_completions(error_context=f"Thread lock error: {str(lock_e)}",user_context=context, files=files)
+            return await fallback_to_completions(
+                error_context=f"Thread lock error: {str(lock_e)}",
+                user_context=context,
+                files=files
+            )
         
-        # Validate resources if provided 
+        # PRIORITY 5: Validate resources
         try:
-            if not assistant or not session:
-                missing_params = []
-                if not assistant:
-                    missing_params.append("assistant_id")
-                if not session:
-                    missing_params.append("thread_id")
-                
-                logging.info(f"Missing required parameters: {', '.join(missing_params)}. Falling back to completions API.")
-                return await fallback_to_completions(
-                    error_context=f"Missing required parameters: {', '.join(missing_params)}",
-                    user_context=context, files=files
-                )
             validation = await validate_resources(client, session, assistant)
             
             # If either resource is invalid, fallback to completions
@@ -9428,30 +10532,15 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
                 logging.warning(f"Invalid resources: {', '.join(invalid_resources)}. Falling back to completions API.")
                 return await fallback_to_completions(
                     error_context=f"Invalid resources: {', '.join(invalid_resources)}",
-                    user_context=context, files=files
-                )
-        except Exception as validation_e:
-            logging.error(f"Error during resource validation: {validation_e}")
-            return await fallback_to_completions(error_context=f"Resource validation error: {str(validation_e)}",user_context=context, files=files)
-
-        try:
-            if files:
-                logging.info(f"📎 FILES DETECTED - Using enhanced completions with file analysis")
-                logging.info(f"  Files count: {len(files)}")
-                logging.info(f"  Files: {[f.filename for f in files]}")
-                # Immediately use fallback_to_completions when files are present
-                return await fallback_to_completions(
-                    error_context="File analysis requested",
                     user_context=context,
                     files=files
                 )
-        except Exception as file_error:
-            logging.error(f"Error handling files: {str(file_error)}")
-            # Still try to process without files if there's an error
+        except Exception as validation_e:
+            logging.error(f"Error during resource validation: {validation_e}")
             return await fallback_to_completions(
-                error_context=f"File handling error: {str(file_error)}",
+                error_context=f"Resource validation error: {str(validation_e)}",
                 user_context=context,
-                files=None  # Don't pass corrupted files
+                files=files
             )
         
         # Check if there's an active run before adding a message
@@ -10456,45 +11545,31 @@ def generate_file_from_response(content: str, file_type: str) -> Optional[Tuple[
 @app.post("/completion",
           response_model=CompletionResponse,
           summary="Generate AI Completion",
-          description="""Generate AI-powered text completions with optional file exports in CSV, Excel, or Word formats.
-
-**Features:**
-- Multi-format exports (CSV, Excel, Word)
-- File context integration
-- Customizable AI behavior
-- Automatic retry logic
-
-**Output Formats:**
-- `none`: Plain text response
-- `csv`: Download link for CSV file
-- `excel`: Download link for Excel file
-- `word`: Download link for Word document
-
-**Examples:**
-1. Simple completion: Just provide a prompt
-2. Data generation: Set output_format and rows_to_generate
-3. Document analysis: Upload files with your prompt
-""",
-          tags=["AI Operations"])
-async def completion(
-    prompt: str = Form(..., description="The prompt for AI completion"),
-    model: str = Form(default="gpt-4o-mini", description="Model to use", enum=["gpt-4o-mini", "gpt-4o"]),
-    temperature: float = Form(default=0.7, ge=0, le=2, description="Sampling temperature (0=deterministic, 2=creative)"),
-    max_tokens: int = Form(default=4096, ge=1, le=10000, description="Maximum tokens in response"),
+          description="Generate AI-powered text completions with optional file exports in CSV, Excel, or Word formats.",
+          tags=["AI Operations"],
+          responses={
+              200: {"model": CompletionResponse, "description": "Successful completion"},
+              400: {"model": ErrorResponse, "description": "Bad request"},
+              500: {"model": ErrorResponse, "description": "Internal server error"}
+          })
+async def chat_completion(
+    request: Request,
+    prompt: str = Form(..., description="The prompt for AI completion", example="Generate a list of 10 product names"),
+    model: str = Form(default="gpt-4.1-mini", description="Model to use"),
+    temperature: float = Form(default=0.8, ge=0, le=2, description="Sampling temperature (0=deterministic, 2=creative)"),
+    max_tokens: int = Form(default=5000, ge=1, le=10000, description="Maximum tokens in response"),
     system_message: Optional[str] = Form(default=None, description="Custom system message"),
-    output_format: Optional[str] = Form(default=None, description="Export format", enum=["none", "csv", "excel", "word"]),
+    output_format: Optional[str] = Form(default=None, description="Export format"),
     files: Optional[List[UploadFile]] = File(default=None, description="Optional files to process"),
     max_retries: int = Form(default=3, ge=1, le=5, description="Maximum retry attempts"),
     rows_to_generate: int = Form(default=30, ge=1, le=1000, description="Number of rows for CSV/Excel generation")
 ):
-    """Generate AI completions with optional file context and export options."""
-    
-    # Validate files using our helper
-    files = await validate_file_uploads(files)
-    files = None if not files else files
-    # Log the request
-    logging.info(f"Completion request - Model: {model}, Format: {output_format}, Files: {len(files) if files else 0}")
-    
+
+    """
+    Enhanced generative AI completion endpoint - creates comprehensive, detailed content.
+    Uses the same structure as extract-reviews for CSV/Excel generation.
+    Returns raw text if no output_format specified.
+    """
     client = create_client()
     
     try:
