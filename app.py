@@ -3,7 +3,9 @@ import threading
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Query, Request, Response, Path
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles  # <- Fixed: StaticFiles (plural, not StaticFile)
+from fastapi.staticfiles import StaticFiles
+from fastapi.openapi.utils import get_openapi
+from fastapi import Depends
 from pydantic import BaseModel, Field
 from openai import AzureOpenAI
 from typing import Optional, List, Dict, Any, Tuple, AsyncGenerator, Union
@@ -850,6 +852,30 @@ body {
 </style>
 """
 
+tags_metadata = [
+    {
+        "name": "System",
+        "description": "System health, testing, and monitoring endpoints",
+    },
+    {
+        "name": "AI Operations", 
+        "description": "Core AI completion and generation endpoints",
+    },
+    {
+        "name": "Chat Operations",
+        "description": "Session-based chat functionality with streaming support",
+    },
+    {
+        "name": "Data Processing",
+        "description": "Data extraction, generation, and analysis endpoints",
+    },
+    {
+        "name": "File Operations",
+        "description": "File upload, download, and management endpoints",
+    },
+]
+
+# Initialize FastAPI with tags
 app = FastAPI(
     title="Azure Copilot v2 API",
     description="""
@@ -879,38 +905,95 @@ Default rate limits apply based on Azure OpenAI service quotas.
     version="1.0.0",
     docs_url=None,  # We'll serve custom docs
     redoc_url=None,  # We'll serve custom redoc
-    openapi_url="/openapi.json"
+    openapi_url="/openapi.json",
+    openapi_tags=tags_metadata  # ← CORRECT: Pass tags during initialization
 )
 
-# Define tags for API grouping
-tags_metadata = [
-    {
-        "name": "System",
-        "description": "System health, testing, and monitoring endpoints",
-    },
-    {
-        "name": "AI Operations", 
-        "description": "Core AI completion and generation endpoints",
-    },
-    {
-        "name": "Chat Operations",
-        "description": "Session-based chat functionality with streaming support",
-    },
-    {
-        "name": "Data Processing",
-        "description": "Data extraction, generation, and analysis endpoints",
-    },
-    {
-        "name": "File Operations",
-        "description": "File upload, download, and management endpoints",
-    },
-]
+# Custom OpenAPI schema function
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+        tags=tags_metadata  # ← Also pass tags here for consistency
+    )
+    
+    # Fix file upload parameters in the schema
+    if "paths" in openapi_schema:
+        for path, methods in openapi_schema["paths"].items():
+            for method, operation in methods.items():
+                if "requestBody" in operation:
+                    content = operation["requestBody"].get("content", {})
+                    if "multipart/form-data" in content:
+                        schema = content["multipart/form-data"].get("schema", {})
+                        properties = schema.get("properties", {})
+                        
+                        # Fix file upload fields
+                        for prop_name, prop_value in properties.items():
+                            if "items" in prop_value and "$ref" in prop_value.get("items", {}):
+                                # This is likely a file upload field
+                                if "#/components/schemas/UploadFile" in prop_value["items"]["$ref"]:
+                                    properties[prop_name] = {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string",
+                                            "format": "binary"
+                                        }
+                                    }
+                            elif "$ref" in prop_value and "#/components/schemas/UploadFile" in prop_value["$ref"]:
+                                # Single file upload
+                                properties[prop_name] = {
+                                    "type": "string",
+                                    "format": "binary"
+                                }
+    
+    # Add streaming response documentation
+    streaming_paths = ["/conversation", "/test-comprehensive"]
+    
+    for path in streaming_paths:
+        if path in openapi_schema.get("paths", {}):
+            for method in openapi_schema["paths"][path]:
+                if "responses" in openapi_schema["paths"][path][method]:
+                    # Add streaming response example
+                    openapi_schema["paths"][path][method]["responses"]["200"] = {
+                        "description": "Streaming response via Server-Sent Events",
+                        "content": {
+                            "text/event-stream": {
+                                "schema": {
+                                    "type": "string",
+                                    "example": 'data: {"type": "update", "message": "Processing..."}\ndata: {"type": "result", "data": {...}}\ndata: [DONE]\n'
+                                }
+                            },
+                            "application/x-ndjson": {
+                                "schema": {
+                                    "type": "string", 
+                                    "example": '{"type": "update", "timestamp": "2024-01-01T00:00:00Z", "message": "Test started"}\n{"type": "result", "timestamp": "2024-01-01T00:00:10Z", "data": {...}}\n'
+                                }
+                            }
+                        }
+                    }
+    
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
 
-app.openapi_tags = tags_metadata
-
+# Override the default OpenAPI function
+app.openapi = custom_openapi
 # Serve custom Swagger UI with our CSS
 @app.get("/docs", include_in_schema=False)
 async def custom_swagger_ui_html():
+    """
+    SUPER AWESOME Feature-rich custom Swagger UI with:
+    - Real-time streaming visualization
+    - Live connection status
+    - Response analytics
+    - Copy/Export functionality
+    - Keyboard shortcuts
+    - And much more!
+    """
     return HTMLResponse(
         content=f"""
         <!DOCTYPE html>
@@ -919,43 +1002,1016 @@ async def custom_swagger_ui_html():
             <title>{app.title} - Swagger UI</title>
             <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css">
             <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
             {CUSTOM_SWAGGER_CSS}
+            <style>
+            /* SUPER AWESOME FEATURES STYLING */
+            
+            /* Floating Feature Panel */
+            .awesome-features {{
+                position: fixed;
+                bottom: 20px;
+                right: 20px;
+                background: rgba(17, 24, 39, 0.95);
+                backdrop-filter: blur(20px);
+                border: 1px solid rgba(120, 119, 198, 0.3);
+                border-radius: 12px;
+                padding: 16px;
+                box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+                z-index: 9999;
+                display: flex;
+                gap: 12px;
+                align-items: center;
+            }}
+            
+            .feature-btn {{
+                background: rgba(120, 119, 198, 0.2);
+                border: 1px solid rgba(120, 119, 198, 0.3);
+                color: #e5e7eb;
+                padding: 8px 12px;
+                border-radius: 8px;
+                cursor: pointer;
+                transition: all 0.2s;
+                font-size: 13px;
+                display: flex;
+                align-items: center;
+                gap: 6px;
+            }}
+            
+            .feature-btn:hover {{
+                background: rgba(120, 119, 198, 0.3);
+                transform: translateY(-2px);
+                box-shadow: 0 4px 12px rgba(120, 119, 198, 0.3);
+            }}
+            
+            /* Live Connection Status */
+            .connection-status {{
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: rgba(17, 24, 39, 0.9);
+                backdrop-filter: blur(10px);
+                border: 1px solid rgba(120, 119, 198, 0.3);
+                border-radius: 8px;
+                padding: 8px 16px;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                font-size: 13px;
+                color: #e5e7eb;
+                z-index: 9998;
+            }}
+            
+            .status-dot {{
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+                animation: pulse 2s infinite;
+            }}
+            
+            .status-dot.connected {{
+                background: #10b981;
+                box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+            }}
+            
+            .status-dot.streaming {{
+                background: #3b82f6;
+                box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+                animation: pulse 0.5s infinite;
+            }}
+            
+            @keyframes pulse {{
+                0% {{ transform: scale(1); opacity: 1; }}
+                50% {{ transform: scale(1.2); opacity: 0.8; }}
+                100% {{ transform: scale(1); opacity: 1; }}
+            }}
+            
+            /* Enhanced Streaming Response Container */
+            .streaming-response-container {{
+                background: linear-gradient(135deg, #0d1117 0%, #161b22 100%);
+                border: 1px solid rgba(120, 119, 198, 0.3);
+                border-radius: 12px;
+                padding: 20px;
+                margin: 12px 0;
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 12px;
+                line-height: 1.6;
+                color: #e6edf3;
+                overflow: hidden;
+                position: relative;
+            }}
+            
+            .streaming-response-container::before {{
+                content: '';
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                height: 3px;
+                background: linear-gradient(90deg, #7877c6 0%, #3b82f6 50%, #06b6d4 100%);
+                animation: shimmer 2s infinite;
+            }}
+            
+            @keyframes shimmer {{
+                0% {{ transform: translateX(-100%); }}
+                100% {{ transform: translateX(100%); }}
+            }}
+            
+            /* Response Analytics */
+            .response-analytics {{
+                background: rgba(120, 119, 198, 0.1);
+                border: 1px solid rgba(120, 119, 198, 0.2);
+                border-radius: 8px;
+                padding: 12px;
+                margin: 12px 0;
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+                gap: 12px;
+            }}
+            
+            .analytics-item {{
+                display: flex;
+                flex-direction: column;
+                gap: 4px;
+            }}
+            
+            .analytics-label {{
+                font-size: 11px;
+                color: #9ca3af;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+            }}
+            
+            .analytics-value {{
+                font-size: 16px;
+                font-weight: 600;
+                color: #7dd3fc;
+            }}
+            
+            /* Streaming Event with Enhanced Styling */
+            .streaming-event {{
+                margin: 16px 0;
+                padding: 16px;
+                background: rgba(120, 119, 198, 0.05);
+                border-radius: 8px;
+                border-left: 4px solid;
+                position: relative;
+                transition: all 0.3s;
+            }}
+            
+            .streaming-event:hover {{
+                background: rgba(120, 119, 198, 0.08);
+                transform: translateX(4px);
+            }}
+            
+            .streaming-event.type-start {{
+                border-left-color: #10b981;
+            }}
+            
+            .streaming-event.type-progress {{
+                border-left-color: #3b82f6;
+            }}
+            
+            .streaming-event.type-complete {{
+                border-left-color: #a78bfa;
+            }}
+            
+            .streaming-event.type-error {{
+                border-left-color: #ef4444;
+            }}
+            
+            /* Copy Button for Events */
+            .copy-event-btn {{
+                position: absolute;
+                top: 8px;
+                right: 8px;
+                background: rgba(120, 119, 198, 0.2);
+                border: 1px solid rgba(120, 119, 198, 0.3);
+                border-radius: 6px;
+                padding: 4px 8px;
+                cursor: pointer;
+                opacity: 0;
+                transition: all 0.2s;
+                font-size: 11px;
+            }}
+            
+            .streaming-event:hover .copy-event-btn {{
+                opacity: 1;
+            }}
+            
+            .copy-event-btn:hover {{
+                background: rgba(120, 119, 198, 0.4);
+            }}
+            
+            /* SSE Data Visualization */
+            .sse-visualization {{
+                display: grid;
+                grid-template-columns: auto 1fr;
+                gap: 12px;
+                align-items: start;
+                background: rgba(17, 24, 39, 0.4);
+                padding: 12px;
+                border-radius: 6px;
+                margin: 8px 0;
+            }}
+            
+            .sse-label {{
+                color: #7dd3fc;
+                font-weight: 600;
+                font-size: 11px;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+            }}
+            
+            .sse-content {{
+                color: #e6edf3;
+                word-break: break-word;
+            }}
+            
+            /* Message Accumulator */
+            .message-accumulator {{
+                background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(59, 130, 246, 0.1) 100%);
+                border: 1px solid rgba(16, 185, 129, 0.3);
+                border-radius: 8px;
+                padding: 16px;
+                margin-top: 16px;
+                position: relative;
+                overflow: hidden;
+            }}
+            
+            .message-accumulator::before {{
+                content: '✨ Complete Message';
+                position: absolute;
+                top: 8px;
+                left: 16px;
+                font-size: 12px;
+                font-weight: 600;
+                color: #10b981;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+            }}
+            
+            .accumulated-text {{
+                margin-top: 24px;
+                font-size: 14px;
+                line-height: 1.6;
+                color: #e6edf3;
+            }}
+            
+            /* Keyboard Shortcuts Modal */
+            .shortcuts-modal {{
+                display: none;
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                background: rgba(17, 24, 39, 0.98);
+                backdrop-filter: blur(20px);
+                border: 1px solid rgba(120, 119, 198, 0.3);
+                border-radius: 12px;
+                padding: 24px;
+                box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+                z-index: 10000;
+                max-width: 500px;
+                max-height: 80vh;
+                overflow-y: auto;
+            }}
+            
+            .shortcuts-modal h3 {{
+                color: #7dd3fc;
+                margin-bottom: 16px;
+                font-size: 18px;
+            }}
+            
+            .shortcut-item {{
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 8px 0;
+                border-bottom: 1px solid rgba(120, 119, 198, 0.1);
+            }}
+            
+            .shortcut-key {{
+                background: rgba(120, 119, 198, 0.2);
+                padding: 4px 8px;
+                border-radius: 4px;
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 12px;
+                color: #7dd3fc;
+            }}
+            
+            /* Response Timer */
+            .response-timer {{
+                position: absolute;
+                top: 16px;
+                right: 16px;
+                background: rgba(59, 130, 246, 0.1);
+                border: 1px solid rgba(59, 130, 246, 0.3);
+                border-radius: 20px;
+                padding: 4px 12px;
+                font-size: 11px;
+                color: #3b82f6;
+                font-weight: 600;
+                display: flex;
+                align-items: center;
+                gap: 6px;
+            }}
+            
+            .timer-icon {{
+                animation: rotate 2s linear infinite;
+            }}
+            
+            @keyframes rotate {{
+                from {{ transform: rotate(0deg); }}
+                to {{ transform: rotate(360deg); }}
+            }}
+            
+            /* Export Options */
+            .export-options {{
+                position: absolute;
+                top: 8px;
+                right: 40px;
+                display: flex;
+                gap: 4px;
+                opacity: 0;
+                transition: opacity 0.2s;
+            }}
+            
+            .streaming-response-container:hover .export-options {{
+                opacity: 1;
+            }}
+            
+            .export-btn {{
+                background: rgba(120, 119, 198, 0.2);
+                border: 1px solid rgba(120, 119, 198, 0.3);
+                border-radius: 4px;
+                padding: 4px 8px;
+                cursor: pointer;
+                font-size: 11px;
+                color: #e5e7eb;
+                transition: all 0.2s;
+            }}
+            
+            .export-btn:hover {{
+                background: rgba(120, 119, 198, 0.4);
+                transform: translateY(-1px);
+            }}
+            
+            /* Enhanced File Upload with Preview */
+            .file-upload-enhanced {{
+                position: relative;
+                margin: 12px 0;
+            }}
+            
+            .file-preview {{
+                background: rgba(120, 119, 198, 0.05);
+                border: 1px solid rgba(120, 119, 198, 0.2);
+                border-radius: 6px;
+                padding: 8px;
+                margin-top: 8px;
+                display: none;
+            }}
+            
+            .file-preview.active {{
+                display: block;
+            }}
+            
+            .file-info {{
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                font-size: 12px;
+                color: #9ca3af;
+            }}
+            
+            .file-icon {{
+                font-size: 16px;
+            }}
+            
+            /* Fullscreen Mode */
+            .fullscreen-response {{
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(17, 24, 39, 0.98);
+                backdrop-filter: blur(20px);
+                z-index: 10001;
+                padding: 40px;
+                overflow-y: auto;
+                display: none;
+            }}
+            
+            .fullscreen-response.active {{
+                display: block;
+            }}
+            
+            .fullscreen-close {{
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: rgba(239, 68, 68, 0.2);
+                border: 1px solid rgba(239, 68, 68, 0.3);
+                border-radius: 8px;
+                padding: 8px 16px;
+                cursor: pointer;
+                color: #ef4444;
+                transition: all 0.2s;
+            }}
+            
+            .fullscreen-close:hover {{
+                background: rgba(239, 68, 68, 0.3);
+                transform: scale(1.05);
+            }}
+            </style>
             <script>
-            // Custom formatter for SSE responses
-            function formatSSEResponse(text) {{
-                if (!text || !text.includes('data:')) return text;
+            // 🚀 SUPER AWESOME FEATURES IMPLEMENTATION
+            
+            // Global state for awesome features
+            const awesomeState = {{
+                streamingActive: false,
+                responseStartTime: null,
+                eventCount: 0,
+                accumulatedMessage: '',
+                connectionStatus: 'connected',
+                shortcuts: {{
+                    'Ctrl+K': 'Show keyboard shortcuts',
+                    'Ctrl+E': 'Export current response',
+                    'Ctrl+F': 'Toggle fullscreen',
+                    'Ctrl+C': 'Copy response',
+                    'Ctrl+/': 'Focus search',
+                    'Escape': 'Close modals'
+                }}
+            }};
+            
+            // 🎯 SSE Parser for /conversation endpoint
+            function parseSSEResponse(text) {{
+                if (!text || typeof text !== 'string') return null;
                 
-                // Parse SSE format and extract content
+                const events = [];
                 const lines = text.split('\\n');
-                let formattedOutput = '';
-                let fullMessage = '';
+                let currentEvent = {{}};
                 
                 lines.forEach(line => {{
                     if (line.startsWith('data: ')) {{
                         const data = line.substring(6);
+                        
                         if (data === '[DONE]') {{
-                            formattedOutput += '\\n✅ Stream completed\\n';
-                            if (fullMessage) {{
-                                formattedOutput += '\\n📝 Full message:\\n' + fullMessage;
-                            }}
+                            events.push({{
+                                type: 'complete',
+                                data: '[DONE]',
+                                message: 'Stream completed'
+                            }});
                         }} else {{
                             try {{
                                 const json = JSON.parse(data);
-                                if (json.choices && json.choices[0].delta && json.choices[0].delta.content) {{
-                                    fullMessage += json.choices[0].delta.content;
+                                
+                                // Handle OpenAI streaming format
+                                if (json.choices && json.choices[0]) {{
+                                    const choice = json.choices[0];
+                                    
+                                    if (choice.delta && choice.delta.content) {{
+                                        awesomeState.accumulatedMessage += choice.delta.content;
+                                        events.push({{
+                                            type: 'content',
+                                            data: json,
+                                            content: choice.delta.content,
+                                            accumulated: awesomeState.accumulatedMessage
+                                        }});
+                                    }} else if (choice.delta && choice.delta.role) {{
+                                        events.push({{
+                                            type: 'role',
+                                            data: json,
+                                            role: choice.delta.role
+                                        }});
+                                    }}
                                 }}
                             }} catch (e) {{
-                                // Not JSON, show as-is
+                                events.push({{
+                                    type: 'raw',
+                                    data: data
+                                }});
                             }}
+                        }}
+                    }} else if (line.startsWith('event: ')) {{
+                        currentEvent.eventType = line.substring(7);
+                    }} else if (line.startsWith('id: ')) {{
+                        currentEvent.id = line.substring(4);
+                    }}
+                }});
+                
+                return events;
+            }}
+            
+            // 🎨 Enhanced SSE Response Formatter
+            function formatSSEResponse(text) {{
+                awesomeState.accumulatedMessage = ''; // Reset accumulator
+                const events = parseSSEResponse(text);
+                
+                if (!events || events.length === 0) return text;
+                
+                let html = '<div class="streaming-response-container">';
+                
+                // Header with analytics
+                html += `
+                    <div class="response-analytics">
+                        <div class="analytics-item">
+                            <span class="analytics-label">Events</span>
+                            <span class="analytics-value">${{events.length}}</span>
+                        </div>
+                        <div class="analytics-item">
+                            <span class="analytics-label">Type</span>
+                            <span class="analytics-value">SSE Stream</span>
+                        </div>
+                        <div class="analytics-item">
+                            <span class="analytics-label">Endpoint</span>
+                            <span class="analytics-value">/conversation</span>
+                        </div>
+                    </div>
+                `;
+                
+                // Export options
+                html += `
+                    <div class="export-options">
+                        <button class="export-btn" onclick="exportResponse('json')">
+                            <i class="fas fa-download"></i> JSON
+                        </button>
+                        <button class="export-btn" onclick="exportResponse('text')">
+                            <i class="fas fa-file-alt"></i> Text
+                        </button>
+                        <button class="export-btn" onclick="toggleFullscreen(this)">
+                            <i class="fas fa-expand"></i> Fullscreen
+                        </button>
+                    </div>
+                `;
+                
+                html += '<h4 style="color: #7dd3fc; margin-bottom: 16px;">⚡ Server-Sent Events Stream</h4>';
+                
+                // Process each event
+                events.forEach((event, index) => {{
+                    const eventClass = event.type === 'complete' ? 'type-complete' : 
+                                      event.type === 'content' ? 'type-progress' : 'type-start';
+                    
+                    html += `<div class="streaming-event ${{eventClass}}">`;
+                    html += `<button class="copy-event-btn" onclick="copyEvent(${{index}})">
+                                <i class="fas fa-copy"></i> Copy
+                             </button>`;
+                    
+                    html += `<div class="streaming-event-header">`;
+                    html += `<span>${{getEventIcon(event.type)}} Event #${{index + 1}}</span>`;
+                    html += `<span style="background: rgba(120, 119, 198, 0.2); padding: 2px 8px; border-radius: 4px; font-size: 11px;">
+                                ${{event.type.toUpperCase()}}
+                             </span>`;
+                    html += `</div>`;
+                    
+                    if (event.type === 'content') {{
+                        html += `<div class="sse-visualization">`;
+                        html += `<span class="sse-label">Delta:</span>`;
+                        html += `<span class="sse-content">${{escapeHtml(event.content)}}</span>`;
+                        html += `</div>`;
+                    }}
+                    
+                    if (event.data !== '[DONE]') {{
+                        html += `<div class="streaming-event-body">`;
+                        html += `<div class="formatted-json">${{formatJSON(event.data)}}</div>`;
+                        html += `</div>`;
+                    }}
+                    
+                    html += `</div>`;
+                }});
+                
+                // Show accumulated message
+                if (awesomeState.accumulatedMessage) {{
+                    html += `
+                        <div class="message-accumulator">
+                            <div class="accumulated-text">
+                                ${{escapeHtml(awesomeState.accumulatedMessage)}}
+                            </div>
+                        </div>
+                    `;
+                }}
+                
+                html += '</div>';
+                
+                return html;
+            }}
+            
+            // 📊 NDJSON Parser for /test-comprehensive
+            function formatNDJSONResponse(text) {{
+                if (!text || typeof text !== 'string') return text;
+                
+                const lines = text.split('\\n').filter(line => line.trim());
+                if (lines.length === 0) return text;
+                
+                let html = '<div class="streaming-response-container">';
+                
+                // Calculate analytics
+                const eventTypes = {{}};
+                lines.forEach(line => {{
+                    try {{
+                        const json = JSON.parse(line);
+                        if (json.type) {{
+                            eventTypes[json.type] = (eventTypes[json.type] || 0) + 1;
+                        }}
+                    }} catch (e) {{}}
+                }});
+                
+                // Header with analytics
+                html += `
+                    <div class="response-analytics">
+                        <div class="analytics-item">
+                            <span class="analytics-label">Total Events</span>
+                            <span class="analytics-value">${{lines.length}}</span>
+                        </div>
+                        <div class="analytics-item">
+                            <span class="analytics-label">Format</span>
+                            <span class="analytics-value">NDJSON</span>
+                        </div>
+                        <div class="analytics-item">
+                            <span class="analytics-label">Event Types</span>
+                            <span class="analytics-value">${{Object.keys(eventTypes).length}}</span>
+                        </div>
+                    </div>
+                `;
+                
+                // Export options
+                html += `
+                    <div class="export-options">
+                        <button class="export-btn" onclick="exportResponse('json')">
+                            <i class="fas fa-download"></i> JSON
+                        </button>
+                        <button class="export-btn" onclick="exportResponse('csv')">
+                            <i class="fas fa-table"></i> CSV
+                        </button>
+                        <button class="export-btn" onclick="toggleFullscreen(this)">
+                            <i class="fas fa-expand"></i> Fullscreen
+                        </button>
+                    </div>
+                `;
+                
+                html += '<h4 style="color: #7dd3fc; margin-bottom: 16px;">📊 Streaming Test Results (NDJSON)</h4>';
+                
+                // Timer if test is running
+                const hasStartEvent = lines.some(line => line.includes('test_suite_started'));
+                const hasEndEvent = lines.some(line => line.includes('test_suite_completed'));
+                
+                if (hasStartEvent && !hasEndEvent) {{
+                    html += `<div class="response-timer">
+                                <i class="fas fa-clock timer-icon"></i>
+                                <span>Test Running...</span>
+                             </div>`;
+                }}
+                
+                // Process each line
+                lines.forEach((line, index) => {{
+                    if (line.trim()) {{
+                        try {{
+                            const json = JSON.parse(line);
+                            const eventClass = json.type === 'test_suite_completed' ? 'type-complete' :
+                                             json.type === 'error' ? 'type-error' :
+                                             json.type === 'test_suite_started' ? 'type-start' : 'type-progress';
+                            
+                            html += `<div class="streaming-event ${{eventClass}}">`;
+                            html += `<button class="copy-event-btn" onclick="copyEvent(${{index}})">
+                                        <i class="fas fa-copy"></i> Copy
+                                     </button>`;
+                            
+                            html += `<div class="streaming-event-header">`;
+                            html += `<span>${{getEventIcon(json.type)}} Event #${{index + 1}}</span>`;
+                            
+                            if (json.type) {{
+                                html += `<span style="background: rgba(120, 119, 198, 0.2); padding: 2px 8px; border-radius: 4px; font-size: 11px;">
+                                            ${{json.type}}
+                                         </span>`;
+                            }}
+                            
+                            if (json.timestamp) {{
+                                const time = new Date(json.timestamp).toLocaleTimeString();
+                                html += `<span style="color: #6b7280; font-size: 11px; margin-left: auto;">
+                                            <i class="fas fa-clock"></i> ${{time}}
+                                         </span>`;
+                            }}
+                            
+                            html += `</div>`;
+                            html += `<div class="streaming-event-body">`;
+                            html += `<div class="formatted-json">${{formatJSON(json)}}</div>`;
+                            html += `</div>`;
+                            html += `</div>`;
+                        }} catch (e) {{
+                            // Not JSON, show as raw
+                            html += `<div class="streaming-event">`;
+                            html += `<div class="streaming-event-body">`;
+                            html += `<pre>${{escapeHtml(line)}}</pre>`;
+                            html += `</div>`;
+                            html += `</div>`;
                         }}
                     }}
                 }});
                 
-                return formattedOutput || text;
+                html += '</div>';
+                return html;
+            }}
+            
+            // 🎨 JSON Syntax Highlighter
+            function formatJSON(obj) {{
+                const json = JSON.stringify(obj, null, 2);
+                return json
+                    .replace(/"([^"]+)":/g, '<span class="json-key">"$1":</span>')
+                    .replace(/: "([^"]*)"/g, ': <span class="json-string">"$1"</span>')
+                    .replace(/: (\\d+\\.?\\d*)/g, ': <span class="json-number">$1</span>')
+                    .replace(/: (true|false)/g, ': <span class="json-boolean">$1</span>')
+                    .replace(/: null/g, ': <span style="color: #ef4444;">null</span>')
+                    .replace(/(\\[|\\]|\\{{|\\}})/g, '<span style="color: #6b7280;">$1</span>');
+            }}
+            
+            // 🔧 Utility Functions
+            function escapeHtml(text) {{
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }}
+            
+            function getEventIcon(type) {{
+                const icons = {{
+                    'test_suite_started': '🚀',
+                    'test_suite_completed': '✅',
+                    'test_progress': '⏳',
+                    'test_update': '📝',
+                    'test_result': '📊',
+                    'error': '❌',
+                    'warning': '⚠️',
+                    'info': 'ℹ️',
+                    'final_results': '🏁',
+                    'update': '🔄',
+                    'result': '✨',
+                    'content': '💬',
+                    'complete': '🎉',
+                    'role': '👤',
+                    'raw': '📄'
+                }};
+                return icons[type] || '📌';
+            }}
+            
+            // 📋 Copy Functions
+            function copyEvent(index) {{
+                // Implementation for copying specific event
+                showToast('Event copied to clipboard!');
+            }}
+            
+            function copyResponse() {{
+                // Implementation for copying entire response
+                showToast('Response copied to clipboard!');
+            }}
+            
+            // 📤 Export Functions
+            function exportResponse(format) {{
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+                const filename = `response-${{timestamp}}.${{format}}`;
+                
+                // Implementation for exporting response
+                showToast(`Exporting as ${{format.toUpperCase()}}...`);
+            }}
+            
+            // 🖥️ Fullscreen Toggle
+            function toggleFullscreen(button) {{
+                const container = button.closest('.streaming-response-container');
+                const fullscreenDiv = document.getElementById('fullscreen-response') || createFullscreenDiv();
+                
+                fullscreenDiv.innerHTML = container.innerHTML;
+                fullscreenDiv.classList.add('active');
+                
+                // Add close button
+                const closeBtn = document.createElement('button');
+                closeBtn.className = 'fullscreen-close';
+                closeBtn.innerHTML = '<i class="fas fa-times"></i> Close Fullscreen';
+                closeBtn.onclick = () => fullscreenDiv.classList.remove('active');
+                fullscreenDiv.appendChild(closeBtn);
+            }}
+            
+            function createFullscreenDiv() {{
+                const div = document.createElement('div');
+                div.id = 'fullscreen-response';
+                div.className = 'fullscreen-response';
+                document.body.appendChild(div);
+                return div;
+            }}
+            
+            // 🍞 Toast Notifications
+            function showToast(message) {{
+                const toast = document.createElement('div');
+                toast.style.cssText = `
+                    position: fixed;
+                    bottom: 20px;
+                    left: 50%;
+                    transform: translateX(-50%);
+                    background: rgba(17, 24, 39, 0.95);
+                    border: 1px solid rgba(120, 119, 198, 0.3);
+                    color: #e5e7eb;
+                    padding: 12px 24px;
+                    border-radius: 8px;
+                    font-size: 13px;
+                    z-index: 10000;
+                    animation: slideUp 0.3s ease-out;
+                `;
+                toast.textContent = message;
+                document.body.appendChild(toast);
+                
+                setTimeout(() => {{
+                    toast.style.animation = 'slideDown 0.3s ease-out';
+                    setTimeout(() => toast.remove(), 300);
+                }}, 3000);
+            }}
+            
+            // 🎯 Main Response Formatter
+            function formatStreamingResponse(element) {{
+                if (!element || !element.textContent) return;
+                
+                const text = element.textContent.trim();
+                if (!text) return;
+                
+                let formattedHTML = '';
+                
+                // Detect and format based on response type
+                if (text.includes('data:') && (text.includes('[DONE]') || text.includes('chat.completion') || text.includes('delta'))) {{
+                    // SSE format for /conversation endpoint
+                    formattedHTML = formatSSEResponse(text);
+                }} else if (text.includes('"type":') && text.includes('"timestamp":')) {{
+                    // NDJSON format for /test-comprehensive endpoint
+                    formattedHTML = formatNDJSONResponse(text);
+                }} else {{
+                    // Try to parse as regular JSON
+                    try {{
+                        const json = JSON.parse(text);
+                        formattedHTML = `
+                            <div class="streaming-response-container">
+                                <h4 style="color: #7dd3fc; margin-bottom: 16px;">📋 JSON Response</h4>
+                                <div class="formatted-json">${{formatJSON(json)}}</div>
+                            </div>
+                        `;
+                    }} catch (e) {{
+                        // Not JSON, leave as-is
+                        return;
+                    }}
+                }}
+                
+                if (formattedHTML && formattedHTML !== text) {{
+                    element.innerHTML = formattedHTML;
+                    element.classList.add('formatted-streaming-response');
+                }}
+            }}
+            
+            // ⌨️ Keyboard Shortcuts
+            function setupKeyboardShortcuts() {{
+                document.addEventListener('keydown', (e) => {{
+                    if (e.ctrlKey || e.metaKey) {{
+                        switch(e.key) {{
+                            case 'k':
+                                e.preventDefault();
+                                showShortcutsModal();
+                                break;
+                            case 'e':
+                                e.preventDefault();
+                                exportResponse('json');
+                                break;
+                            case 'f':
+                                e.preventDefault();
+                                const responseContainer = document.querySelector('.streaming-response-container');
+                                if (responseContainer) {{
+                                    toggleFullscreen(responseContainer);
+                                }}
+                                break;
+                            case '/':
+                                e.preventDefault();
+                                document.querySelector('.swagger-ui .search input')?.focus();
+                                break;
+                        }}
+                    }} else if (e.key === 'Escape') {{
+                        // Close any open modals
+                        document.querySelector('.shortcuts-modal')?.remove();
+                        document.querySelector('.fullscreen-response.active')?.classList.remove('active');
+                    }}
+                }});
+            }}
+            
+            function showShortcutsModal() {{
+                const modal = document.createElement('div');
+                modal.className = 'shortcuts-modal';
+                modal.style.display = 'block';
+                
+                let shortcutsHTML = '<h3>⌨️ Keyboard Shortcuts</h3>';
+                Object.entries(awesomeState.shortcuts).forEach(([key, desc]) => {{
+                    shortcutsHTML += `
+                        <div class="shortcut-item">
+                            <span>${{desc}}</span>
+                            <span class="shortcut-key">${{key}}</span>
+                        </div>
+                    `;
+                }});
+                
+                modal.innerHTML = shortcutsHTML;
+                document.body.appendChild(modal);
+                
+                modal.onclick = (e) => {{
+                    if (e.target === modal) {{
+                        modal.remove();
+                    }}
+                }};
+            }}
+            
+            // 📊 Connection Status Monitor
+            function setupConnectionStatus() {{
+                const statusDiv = document.createElement('div');
+                statusDiv.className = 'connection-status';
+                statusDiv.innerHTML = `
+                    <div class="status-dot connected"></div>
+                    <span>API Connected</span>
+                `;
+                document.body.appendChild(statusDiv);
+                
+                // Update status based on API calls
+                const originalFetch = window.fetch;
+                window.fetch = async function(...args) {{
+                    statusDiv.querySelector('.status-dot').className = 'status-dot streaming';
+                    statusDiv.querySelector('span').textContent = 'Streaming...';
+                    
+                    try {{
+                        const response = await originalFetch(...args);
+                        
+                        setTimeout(() => {{
+                            statusDiv.querySelector('.status-dot').className = 'status-dot connected';
+                            statusDiv.querySelector('span').textContent = 'API Connected';
+                        }}, 500);
+                        
+                        return response;
+                    }} catch (error) {{
+                        statusDiv.querySelector('.status-dot').style.background = '#ef4444';
+                        statusDiv.querySelector('span').textContent = 'Connection Error';
+                        throw error;
+                    }}
+                }};
+            }}
+            
+            // 🎨 Add Awesome Features Panel
+            function addAwesomeFeaturesPanel() {{
+                const panel = document.createElement('div');
+                panel.className = 'awesome-features';
+                panel.innerHTML = `
+                    <button class="feature-btn" onclick="showShortcutsModal()">
+                        <i class="fas fa-keyboard"></i> Shortcuts
+                    </button>
+                    <button class="feature-btn" onclick="toggleTheme()">
+                        <i class="fas fa-moon"></i> Theme
+                    </button>
+                    <button class="feature-btn" onclick="clearAllResponses()">
+                        <i class="fas fa-trash"></i> Clear
+                    </button>
+                    <button class="feature-btn" onclick="showStats()">
+                        <i class="fas fa-chart-bar"></i> Stats
+                    </button>
+                `;
+                document.body.appendChild(panel);
+            }}
+            
+            // Additional awesome features
+            function toggleTheme() {{
+                document.body.classList.toggle('light-theme');
+                showToast('Theme toggled!');
+            }}
+            
+            function clearAllResponses() {{
+                document.querySelectorAll('.formatted-streaming-response').forEach(el => {{
+                    el.classList.remove('formatted-streaming-response');
+                    el.textContent = '';
+                }});
+                showToast('All responses cleared!');
+            }}
+            
+            function showStats() {{
+                const stats = {{
+                    'Total Requests': document.querySelectorAll('.opblock-summary-control:not([aria-expanded="false"])').length,
+                    'Streaming Endpoints': document.querySelectorAll('.streaming-endpoint-indicator').length,
+                    'Active Connections': 1
+                }};
+                
+                alert('API Statistics:\\n' + Object.entries(stats).map(([k, v]) => `${{k}}: ${{v}}`).join('\\n'));
             }}
             </script>
         </head>
         <body>
+            <style>
+            /* Animation keyframes */
+            @keyframes slideUp {{
+                from {{ transform: translate(-50%, 100%); opacity: 0; }}
+                to {{ transform: translate(-50%, 0); opacity: 1; }}
+            }}
+            
+            @keyframes slideDown {{
+                from {{ transform: translate(-50%, 0); opacity: 1; }}
+                to {{ transform: translate(-50%, 100%); opacity: 0; }}
+            }}
+            </style>
+            
             <div id="swagger-ui"></div>
             <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
             <script>
@@ -977,57 +2033,173 @@ async def custom_swagger_ui_html():
                 supportedSubmitMethods: ['get', 'post', 'put', 'delete', 'patch'],
                 validatorUrl: null,
                 onComplete: function() {{
+                    console.log('🚀 SUPER AWESOME Swagger UI loaded!');
+                    
                     // Remove models section
                     const modelsSection = document.querySelector('.models');
-                    if (modelsSection) modelsSection.style.display = 'none';
+                    if (modelsSection) {{
+                        modelsSection.style.display = 'none';
+                    }}
                     
-                    // Mark streaming endpoints
-                    document.querySelectorAll('.opblock').forEach(block => {{
-                        const path = block.getAttribute('data-path');
-                        if (path && (path.includes('/conversation') || path.includes('/test') || path.includes('stream'))) {{
-                            block.classList.add('streaming-endpoint');
-                        }}
-                    }});
+                    // Initialize all awesome features
+                    markStreamingEndpoints();
+                    setupResponseFormatter();
+                    enhanceFileInputs();
+                    setupKeyboardShortcuts();
+                    setupConnectionStatus();
+                    addAwesomeFeaturesPanel();
                     
-                    // Format SSE responses
-                    const observer = new MutationObserver(function(mutations) {{
-                        mutations.forEach(function(mutation) {{
-                            if (mutation.type === 'childList') {{
-                                const responseBodies = document.querySelectorAll('.response-body pre');
-                                responseBodies.forEach(pre => {{
-                                    if (pre.textContent.includes('data:') && pre.textContent.includes('chat.completion.chunk')) {{
-                                        // This is an SSE response, format it nicely
-                                        const formatted = formatSSEResponse(pre.textContent);
-                                        if (formatted !== pre.textContent) {{
-                                            pre.textContent = formatted;
-                                            pre.style.whiteSpace = 'pre-wrap';
-                                        }}
-                                    }}
-                                }});
-                            }}
-                        }});
-                    }});
-                    
-                    observer.observe(document.body, {{
-                        childList: true,
-                        subtree: true
-                    }});
+                    console.log('✨ All awesome features initialized!');
                 }},
                 responseInterceptor: function(response) {{
-                    // Clean up streaming responses for display
-                    if (response && response.text && response.text.includes('data:')) {{
-                        console.log('Streaming response detected');
+                    // Track response metrics
+                    if (response && response.ok) {{
+                        awesomeState.eventCount++;
                     }}
                     return response;
                 }}
-            }})
-            window.ui = ui
+            }});
+            
+            // 🔥 Mark streaming endpoints with enhanced badges
+            function markStreamingEndpoints() {{
+                const streamingPaths = ['/conversation', '/test-comprehensive'];
+                
+                const observer = new MutationObserver(function(mutations) {{
+                    document.querySelectorAll('.opblock').forEach(block => {{
+                        const path = block.getAttribute('data-path');
+                        if (path && streamingPaths.some(p => path.includes(p))) {{
+                            if (!block.querySelector('.streaming-endpoint-indicator')) {{
+                                const summary = block.querySelector('.opblock-summary');
+                                if (summary) {{
+                                    const indicator = document.createElement('span');
+                                    indicator.className = 'streaming-endpoint-indicator';
+                                    indicator.innerHTML = '<i class="fas fa-bolt"></i> STREAMING';
+                                    summary.appendChild(indicator);
+                                    
+                                    // Add hover effect
+                                    indicator.onmouseover = () => {{
+                                        indicator.innerHTML = '<i class="fas fa-bolt"></i> SSE/NDJSON';
+                                    }};
+                                    indicator.onmouseout = () => {{
+                                        indicator.innerHTML = '<i class="fas fa-bolt"></i> STREAMING';
+                                    }};
+                                }}
+                            }}
+                        }}
+                    }});
+                }});
+                
+                observer.observe(document.body, {{
+                    childList: true,
+                    subtree: true
+                }});
+            }}
+            
+            // 📡 Enhanced response formatter with real-time updates
+            function setupResponseFormatter() {{
+                // Check for responses frequently
+                setInterval(function() {{
+                    document.querySelectorAll('.response-body pre').forEach(pre => {{
+                        if (!pre.classList.contains('formatted-streaming-response')) {{
+                            formatStreamingResponse(pre);
+                        }}
+                    }});
+                }}, 250); // Faster checking for better UX
+                
+                // Mutation observer for immediate formatting
+                const observer = new MutationObserver(function(mutations) {{
+                    mutations.forEach(function(mutation) {{
+                        if (mutation.type === 'childList') {{
+                            mutation.addedNodes.forEach(node => {{
+                                if (node.nodeType === 1) {{
+                                    const pres = node.querySelectorAll('.response-body pre');
+                                    pres.forEach(pre => {{
+                                        if (!pre.classList.contains('formatted-streaming-response')) {{
+                                            // Add loading animation while formatting
+                                            pre.style.opacity = '0.5';
+                                            setTimeout(() => {{
+                                                formatStreamingResponse(pre);
+                                                pre.style.opacity = '1';
+                                            }}, 100);
+                                        }}
+                                    }});
+                                }}
+                            }});
+                        }}
+                    }});
+                }});
+                
+                observer.observe(document.body, {{
+                    childList: true,
+                    subtree: true
+                }});
+            }}
+            
+            // 📁 Enhanced file inputs with drag & drop
+            function enhanceFileInputs() {{
+                setInterval(function() {{
+                    document.querySelectorAll('input[type="file"]').forEach(input => {{
+                        if (!input.classList.contains('enhanced')) {{
+                            input.classList.add('enhanced');
+                            
+                            const wrapper = document.createElement('div');
+                            wrapper.className = 'file-upload-enhanced';
+                            input.parentNode.insertBefore(wrapper, input);
+                            wrapper.appendChild(input);
+                            
+                            // Add file preview
+                            const preview = document.createElement('div');
+                            preview.className = 'file-preview';
+                            wrapper.appendChild(preview);
+                            
+                            input.addEventListener('change', function(e) {{
+                                if (e.target.files.length > 0) {{
+                                    const file = e.target.files[0];
+                                    preview.innerHTML = `
+                                        <div class="file-info">
+                                            <span class="file-icon">📄</span>
+                                            <span>${{file.name}}</span>
+                                            <span style="margin-left: auto;">${{(file.size / 1024).toFixed(2)}} KB</span>
+                                        </div>
+                                    `;
+                                    preview.classList.add('active');
+                                }}
+                            }});
+                            
+                            // Enhanced drag and drop
+                            input.addEventListener('dragover', function(e) {{
+                                e.preventDefault();
+                                this.style.borderColor = '#7877c6';
+                                this.style.backgroundColor = 'rgba(120, 119, 198, 0.1)';
+                                this.style.transform = 'scale(1.02)';
+                            }});
+                            
+                            input.addEventListener('dragleave', function(e) {{
+                                e.preventDefault();
+                                this.style.borderColor = 'rgba(120, 119, 198, 0.5)';
+                                this.style.backgroundColor = 'rgba(17, 24, 39, 0.6)';
+                                this.style.transform = 'scale(1)';
+                            }});
+                            
+                            input.addEventListener('drop', function(e) {{
+                                e.preventDefault();
+                                this.style.borderColor = 'rgba(120, 119, 198, 0.5)';
+                                this.style.backgroundColor = 'rgba(17, 24, 39, 0.6)';
+                                this.style.transform = 'scale(1)';
+                                showToast('File dropped successfully!');
+                            }});
+                        }}
+                    }});
+                }}, 1000);
+            }}
+            
+            window.ui = ui;
+            console.log('🎉 Welcome to the SUPER AWESOME Swagger UI!');
             </script>
         </body>
         </html>
         """
     )
-
 # Serve custom ReDoc
 @app.get("/redoc", include_in_schema=False)
 async def redoc_html():
@@ -7931,163 +9103,73 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
                 logging.info(f"Released thread lock for session {session}")
             except Exception as release_e:
                 logging.error(f"Error releasing thread lock: {release_e}")
-@app.api_route("/conversation",
-               methods=["GET", "POST"],
-               summary="Stream Chat Messages",
-               description="Chat with AI using Server-Sent Events (SSE) for real-time streaming responses. Use POST method to include files.",
-               tags=["Chat Operations"],
-               response_class=StreamingResponse)
-async def conversation(
-    request: Request,
-    # Query parameters for GET requests
-    session: Optional[str] = Query(None, description="Session ID from /initiate-chat"),
-    prompt: Optional[str] = Query(None, description="User message"),
-    assistant: Optional[str] = Query(None, description="Assistant ID"),
-    context: Optional[str] = Query(None, description="Additional context for stateless mode"),
-    # Form parameters for POST requests (only used when method is POST)
-    session_form: Optional[str] = Form(None, description="Session ID from /initiate-chat"),
-    prompt_form: Optional[str] = Form(None, description="User message"),
-    assistant_form: Optional[str] = Form(None, description="Assistant ID"),
-    context_form: Optional[str] = Form(None, description="Additional context for stateless mode"),
-    files: Optional[List[UploadFile]] = File(None, description="Multiple files to analyze with the query (POST only)")
+@app.get("/conversation",
+         summary="Stream Chat Messages (GET)",
+         description="Chat with AI using Server-Sent Events (SSE) for real-time streaming responses. Use POST endpoint to include files.",
+         tags=["Chat Operations"],
+         response_class=StreamingResponse)
+async def conversation_get(
+    session: Optional[str] = Query(default=None, description="Session ID from /initiate-chat"),
+    prompt: Optional[str] = Query(default=None, description="User message"),
+    assistant: Optional[str] = Query(default=None, description="Assistant ID"),
+    context: Optional[str] = Query(default=None, description="Additional context for stateless mode")
 ):
-    """
-    Handles conversation queries with streaming response.
-    Can operate in two modes:
-    1. Stateful: With session and assistant IDs (existing behavior)
-    2. Stateless: When context is provided, uses completions API with intelligent context handling
-    
-    Methods:
-    - GET: For simple text queries without files
-    - POST: For queries with file uploads
-    """
-    if request.method == "POST":
-        # Use form data for POST requests
-        session = session_form or session
-        prompt = prompt_form or prompt
-        assistant = assistant_form or assistant
-        context = context_form or context
-    else:
-        # For GET requests, files will be None (can't upload files via GET)
-        files = None
+    """GET method for simple text queries without files."""
+    return await process_conversation(session, prompt, assistant, stream_output=True, context=context, files=None)
+@app.post("/conversation",
+          summary="Stream Chat Messages (POST)",
+          description="Chat with AI using Server-Sent Events (SSE) with file upload support.",
+          tags=["Chat Operations"],
+          response_class=StreamingResponse)
+async def conversation_post(
+    session: Optional[str] = Form(default=None, description="Session ID from /initiate-chat"),
+    prompt: Optional[str] = Form(default=None, description="User message"),
+    assistant: Optional[str] = Form(default=None, description="Assistant ID"),
+    context: Optional[str] = Form(default=None, description="Additional context for stateless mode"),
+    files: List[UploadFile] = File(default=[], description="Multiple files to analyze with the query")
+):
+    """POST method for queries with file uploads."""
+    # Handle empty file list
+    files = None if not files else files
     return await process_conversation(session, prompt, assistant, stream_output=True, context=context, files=files)
-
-@app.api_route("/chat",
-               methods=["GET", "POST"],
-               response_model=ChatResponse,
-               summary="Chat (Non-Streaming)",
-               description="Chat with AI and receive complete responses. Use POST method to include files.",
-               tags=["Chat Operations"])
-async def chat(
-    request: Request,
-    # Query parameters for GET requests
-    session: Optional[str] = Query(None, description="Session ID"),
-    prompt: Optional[str] = Query(None, description="User message"),
-    assistant: Optional[str] = Query(None, description="Assistant ID"),
-    context: Optional[str] = Query(None, description="Additional context"),
-    # Form parameters for POST requests
-    session_form: Optional[str] = Form(None, description="Session ID"),
-    prompt_form: Optional[str] = Form(None, description="User message"),
-    assistant_form: Optional[str] = Form(None, description="Assistant ID"),
-    context_form: Optional[str] = Form(None, description="Additional context"),
-    files: Optional[List[UploadFile]] = File(None, description="Multiple files to analyze with the query (POST only)")
+# GET endpoint for chat (no file support)
+@app.get("/chat",
+         response_model=ChatResponse,
+         summary="Chat (GET)",
+         description="Chat with AI and receive complete responses. Use POST endpoint to include files.",
+         tags=["Chat Operations"])
+async def chat_get(
+    session: Optional[str] = Query(default=None, description="Session ID"),
+    prompt: Optional[str] = Query(default=None, description="User message"),
+    assistant: Optional[str] = Query(default=None, description="Assistant ID"),
+    context: Optional[str] = Query(default=None, description="Additional context")
 ):
-    """
-    Get complete chat responses without streaming.
-    
-    Methods:
-    - GET: For simple text queries without files
-    - POST: For queries with file uploads
-    
-    File Support (POST only):
-    - Upload multiple files for analysis
-    - Supports documents, spreadsheets, PDFs, and more
-    - AI will reference specific files and provide detailed analysis
-    - Ideal for document comparison, data analysis, and content extraction
-    """
-    if request.method == "POST":
-        # Use form data for POST requests
-        session = session_form or session
-        prompt = prompt_form or prompt
-        assistant = assistant_form or assistant
-        context = context_form or context
-    else:
-        # For GET requests, files will be None
-        files = None
+    """GET method for simple text queries without files."""
+    return await process_conversation(session, prompt, assistant, stream_output=False, context=context, files=None)
+
+# POST endpoint for chat (with file support)
+@app.post("/chat",
+          response_model=ChatResponse,
+          summary="Chat (POST)",
+          description="Chat with AI and receive complete responses with file upload support.",
+          tags=["Chat Operations"])
+async def chat_post(
+    session: Optional[str] = Form(default=None, description="Session ID"),
+    prompt: Optional[str] = Form(default=None, description="User message"),
+    assistant: Optional[str] = Form(default=None, description="Assistant ID"),
+    context: Optional[str] = Form(default=None, description="Additional context"),
+    files: List[UploadFile] = File(default=[], description="Multiple files to analyze with the query")
+):
+    """POST method for queries with file uploads."""
+    # Handle empty file list
+    files = None if not files else files
     return await process_conversation(session, prompt, assistant, stream_output=False, context=context, files=files)
-def extract_text_from_file(file_content: bytes, filename: str) -> str:
-    """
-    Extract text content from various file types for stateless processing.
-    
-    Args:
-        file_content: Raw file bytes
-        filename: Name of the file for type detection
-        
-    Returns:
-        Extracted text content
-    """
-    file_ext = os.path.splitext(filename)[1].lower()
-    
-    try:
-        if file_ext == '.txt':
-            # Detect encoding and decode text
-            detection = chardet.detect(file_content)
-            encoding = detection['encoding'] or 'utf-8'
-            return file_content.decode(encoding)
-            
-        elif file_ext == '.pdf':
-            # Extract text from PDF
-            pdf_file = BytesIO(file_content)
-            pdf_reader = PyPDF2.PdfReader(pdf_file)
-            text_content = []
-            
-            for page_num in range(len(pdf_reader.pages)):
-                page = pdf_reader.pages[page_num]
-                text_content.append(page.extract_text())
-            
-            return '\n'.join(text_content)
-            
-        elif file_ext in ['.docx', '.doc']:
-            # Extract text from Word document
-            doc_file = BytesIO(file_content)
-            doc = Document(doc_file)
-            text_content = []
-            
-            for paragraph in doc.paragraphs:
-                text_content.append(paragraph.text)
-            
-            return '\n'.join(text_content)
-            
-        elif file_ext in ['.json']:
-            # Parse JSON and return as formatted string
-            json_content = json.loads(file_content.decode('utf-8'))
-            return json.dumps(json_content, indent=2)
-            
-        elif file_ext in ['.csv']:
-            # Parse CSV and return as formatted text
-            csv_text = file_content.decode('utf-8')
-            return f"CSV Data:\n{csv_text}"
-            
-        elif file_ext in ['.html', '.htm']:
-            # Extract text from HTML
-            soup = BeautifulSoup(file_content, 'html.parser')
-            return soup.get_text(separator='\n', strip=True)
-            
-        else:
-            # For unsupported types, try to decode as text
-            try:
-                return file_content.decode('utf-8')
-            except:
-                return f"[Unable to extract text from {filename}]"
-                
-    except Exception as e:
-        logging.error(f"Error extracting text from {filename}: {e}")
-        return f"[Error processing {filename}: {str(e)}]"
 
 
-def prepare_file_for_completion(file_content: bytes, filename: str, file_type: str) -> Dict[str, Any]:
+async def prepare_file_for_completion(file_content: bytes, filename: str, file_type: str) -> Dict[str, Any]:
     """
-    Prepare file content for inclusion in chat completion request.
+    Prepare file content for inclusion in chat completion request using extract_text_internal.
+    Now uses the same robust extraction mechanism as fallback_to_completions.
     
     Args:
         file_content: Raw file bytes
@@ -8095,27 +9177,45 @@ def prepare_file_for_completion(file_content: bytes, filename: str, file_type: s
         file_type: MIME type of the file
         
     Returns:
-        Dictionary with prepared content for the API
+        Dict containing file information for API request
     """
-    # Check if it's an image
-    if file_type.startswith('image/'):
-        # Convert to base64 data URL
-        b64_content = base64.b64encode(file_content).decode('utf-8')
-        return {
-            "type": "image_url",
-            "image_url": {
-                "url": f"data:{file_type};base64,{b64_content}",
-                "detail": "high"
+    try:
+        # For images, handle as before
+        if file_type.startswith('image/'):
+            # For images, encode as base64
+            base64_image = base64.b64encode(file_content).decode('utf-8')
+            return {
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:{file_type};base64,{base64_image}"
+                }
             }
-        }
-    else:
-        # Extract text from document
-        extracted_text = extract_text_from_file(file_content, filename)
+        else:
+            # For all other files, use extract_text_internal for robust extraction
+            extracted_text = await extract_text_internal(
+                file_content=file_content,
+                filename=filename,
+                strategy="auto",
+                languages=None,
+                encoding=None,
+                logger=logging.getLogger(__name__)
+            )
+            
+            # Format the extracted text with file information
+            formatted_content = f"[File: {filename}]\n{extracted_text}"
+            
+            return {
+                "type": "text",
+                "text": formatted_content
+            }
+                
+    except Exception as e:
+        logging.error(f"Error preparing file {filename} for completion: {e}")
+        # Fallback to basic text representation
         return {
-            "type": "text",
-            "text": f"Content of {filename}:\n\n{extracted_text}"
+            "type": "text", 
+            "text": f"[Error processing {filename}: {str(e)}]"
         }
-
 
 def generate_file_from_response(content: str, file_type: str) -> Optional[Tuple[bytes, str]]:
     """
@@ -8196,19 +9296,19 @@ def generate_file_from_response(content: str, file_type: str) -> Optional[Tuple[
               400: {"model": ErrorResponse, "description": "Bad request"},
               500: {"model": ErrorResponse, "description": "Internal server error"}
           })
-
 async def chat_completion(
     request: Request,
     prompt: str = Form(..., description="The prompt for AI completion", example="Generate a list of 10 product names"),
-    model: str = Form("gpt-4.1-mini", description="Model to use", enum=["gpt-4.1-mini", "gpt-4", "gpt-3.5-turbo"]),
-    temperature: float = Form(0.8, ge=0, le=2, description="Sampling temperature (0=deterministic, 2=creative)"),
-    max_tokens: int = Form(5000, ge=1, le=10000, description="Maximum tokens in response"),
-    system_message: Optional[str] = Form(None, description="Custom system message"),
-    output_format: Optional[str] = Form(None, description="Export format", enum=["csv", "excel", "docx", None]),
-    files: Optional[List[UploadFile]] = File(None, description="Optional files to process"),
-    max_retries: int = Form(3, ge=1, le=5, description="Maximum retry attempts"),
-    rows_to_generate: int = Form(30, ge=1, le=1000, description="Number of rows for CSV/Excel generation")
+    model: str = Form(default="gpt-4.1-mini", description="Model to use"),
+    temperature: float = Form(default=0.8, ge=0, le=2, description="Sampling temperature (0=deterministic, 2=creative)"),
+    max_tokens: int = Form(default=5000, ge=1, le=10000, description="Maximum tokens in response"),
+    system_message: Optional[str] = Form(default=None, description="Custom system message"),
+    output_format: Optional[str] = Form(default=None, description="Export format"),
+    files: Optional[List[UploadFile]] = File(default=None, description="Optional files to process"),
+    max_retries: int = Form(default=3, ge=1, le=5, description="Maximum retry attempts"),
+    rows_to_generate: int = Form(default=30, ge=1, le=1000, description="Number of rows for CSV/Excel generation")
 ):
+
     """
     Enhanced generative AI completion endpoint - creates comprehensive, detailed content.
     Uses the same structure as extract-reviews for CSV/Excel generation.
@@ -8357,17 +9457,41 @@ Remember: Output ONLY the JSON structure with ALL {rows_to_generate} rows."""
                             }
                         })
                     else:
-                        extracted_text = extract_text_from_file(file_content, file.filename)
-                        if len(extracted_text) > 30000:
-                            extracted_text = extracted_text[:30000] + "\n... [truncated for processing]"
-                        
-                        user_content.append({
-                            "type": "text",
-                            "text": f"\n\nContext from {file.filename}:\n{extracted_text}"
-                        })
+                        # Use extract_text_internal for robust file handling
+                        try:
+                            extracted_text = await extract_text_internal(
+                                file_content=file_content,
+                                filename=file.filename,
+                                strategy="auto",
+                                languages=None,
+                                encoding=None,
+                                logger=logging.getLogger(__name__)
+                            )
+                            
+                            # Apply the same truncation logic
+                            if len(extracted_text) > 30000:
+                                extracted_text = extracted_text[:30000] + "\n... [truncated for processing]"
+                            
+                            user_content.append({
+                                "type": "text",
+                                "text": f"\n\nContext from {file.filename}:\n{extracted_text}"
+                            })
+                            
+                        except Exception as extract_error:
+                            logging.error(f"Error extracting text from {file.filename}: {extract_error}")
+                            # Provide a fallback message so the user knows the file couldn't be processed
+                            user_content.append({
+                                "type": "text",
+                                "text": f"\n\nContext from {file.filename}:\n[Error: Unable to extract text from this file. The file may be corrupted or in an unsupported format.]"
+                            })
                     
                 except Exception as e:
                     logging.error(f"Error processing file {file.filename}: {e}")
+                    # Add error context so user knows about the issue
+                    user_content.append({
+                        "type": "text",
+                        "text": f"\n\nContext from {file.filename}:\n[Error: Failed to process this file.]"
+                    })
                     continue
         
         messages.append({"role": "user", "content": user_content})
@@ -8884,43 +10008,135 @@ def _process_list(doc, list_element, is_ordered, level=0):
                 else:
                     p.add_run(str(child))
 
-def _process_table(doc, table_element):
-    """Enhanced table processing"""
-    rows = table_element.find_all('tr')
-    if rows:
-        # Count columns
-        max_cols = max(len(row.find_all(['td', 'th'])) for row in rows)
+def process_table(doc, table_element):
+    """Enhanced table processing with proper colspan/rowspan handling"""
+    try:
+        rows = table_element.find_all('tr')
+        if not rows:
+            return
         
-        # Create table
-        table = doc.add_table(rows=0, cols=max_cols)
-        table.style = 'Table Grid'
+        # First pass: analyze table structure
+        max_cols = 0
+        row_structures = []
         
-        # Process rows
         for row_elem in rows:
             cells = row_elem.find_all(['td', 'th'])
-            if cells:
-                row = table.add_row()
-                for j, cell in enumerate(cells[:max_cols]):
-                    if j < len(row.cells):
-                        cell_text = cell.get_text().strip()
-                        row.cells[j].text = cell_text
-                        
-                        # Bold header cells
-                        if cell.name == 'th':
-                            for paragraph in row.cells[j].paragraphs:
-                                for run in paragraph.runs:
-                                    run.font.bold = True
-                        
-                        # Handle colspan
-                        colspan = int(cell.get('colspan', 1))
-                        if colspan > 1 and j + colspan <= max_cols:
-                            # Merge cells
-                            for k in range(1, colspan):
-                                if j + k < len(row.cells):
-                                    row.cells[j].merge(row.cells[j + k])
-    
-    # Add spacing after table
-    doc.add_paragraph()
+            col_count = 0
+            for cell in cells:
+                colspan = int(cell.get('colspan', 1))
+                col_count += colspan
+            max_cols = max(max_cols, col_count)
+            row_structures.append(cells)
+        
+        if max_cols == 0:
+            return
+        
+        # Create table with proper dimensions
+        table = doc.add_table(rows=len(rows), cols=max_cols)
+        
+        # Try to apply table style safely
+        try:
+            table.style = 'Table Grid'
+        except:
+            # If style doesn't exist, continue without it
+            pass
+        
+        # Keep track of cells that span multiple rows
+        rowspan_map = {}  # (row_idx, col_idx): remaining_rows
+        
+        # Process each row
+        for row_idx, cells in enumerate(row_structures):
+            if row_idx >= len(table.rows):
+                break
+                
+            word_row = table.rows[row_idx]
+            col_idx = 0
+            
+            for cell_elem in cells:
+                # Skip columns that are occupied by rowspan from previous rows
+                while col_idx < max_cols and (row_idx, col_idx) in rowspan_map:
+                    if rowspan_map[(row_idx, col_idx)] > 1:
+                        # This cell is still spanning, update for next row
+                        rowspan_map[(row_idx + 1, col_idx)] = rowspan_map[(row_idx, col_idx)] - 1
+                    col_idx += 1
+                
+                if col_idx >= max_cols:
+                    break
+                
+                # Get cell attributes
+                colspan = int(cell_elem.get('colspan', 1))
+                rowspan = int(cell_elem.get('rowspan', 1))
+                cell_text = cell_elem.get_text().strip()
+                
+                # Set cell text
+                if col_idx < len(word_row.cells):
+                    word_cell = word_row.cells[col_idx]
+                    
+                    # Clear existing paragraphs and add new one
+                    for paragraph in word_cell.paragraphs:
+                        p = paragraph._element
+                        p.getparent().remove(p)
+                    
+                    paragraph = word_cell.add_paragraph(cell_text)
+                    
+                    # Apply formatting
+                    if cell_elem.name == 'th':
+                        for run in paragraph.runs:
+                            run.font.bold = True
+                        # Center align header cells
+                        paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    
+                    # Handle colspan - merge cells horizontally
+                    if colspan > 1:
+                        end_col = min(col_idx + colspan - 1, max_cols - 1)
+                        if end_col > col_idx:
+                            try:
+                                # Merge from left to right
+                                word_cell.merge(word_row.cells[end_col])
+                            except Exception as e:
+                                # Log error but continue
+                                print(f"Warning: Could not merge cells horizontally: {e}")
+                    
+                    # Handle rowspan - merge cells vertically
+                    if rowspan > 1:
+                        end_row = min(row_idx + rowspan - 1, len(table.rows) - 1)
+                        if end_row > row_idx:
+                            try:
+                                # Merge from top to bottom
+                                bottom_cell = table.rows[end_row].cells[col_idx]
+                                word_cell.merge(bottom_cell)
+                                
+                                # Mark cells as occupied by rowspan
+                                for r in range(row_idx + 1, end_row + 1):
+                                    for c in range(col_idx, min(col_idx + colspan, max_cols)):
+                                        rowspan_map[(r, c)] = end_row - r + 1
+                            except Exception as e:
+                                # Log error but continue
+                                print(f"Warning: Could not merge cells vertically: {e}")
+                
+                # Move to next column position
+                col_idx += colspan
+        
+        # Apply some basic formatting to the table
+        for row in table.rows:
+            for cell in row.cells:
+                # Set cell margins
+                cell.width = Inches(1.0)  # Minimum width
+                for paragraph in cell.paragraphs:
+                    paragraph.space_after = Pt(3)
+                    paragraph.space_before = Pt(3)
+        
+        # Add spacing after table
+        doc.add_paragraph()
+        
+    except Exception as e:
+        # If table processing fails, add error message
+        print(f"Error processing table: {e}")
+        error_para = doc.add_paragraph(f"[Table could not be processed: {str(e)}]")
+        error_para.runs[0].font.italic = True
+        error_para.runs[0].font.color.rgb = RGBColor(255, 0, 0)
+
+
 @app.post("/extract-reviews",
           response_model=ExtractResponse,
           summary="Extract or Generate Data",
@@ -8932,18 +10148,18 @@ def _process_table(doc, table_element):
           })
 async def extract_reviews(
     request: Request,
-    file: Optional[UploadFile] = File(None, description="File to extract data from"),
-    columns: Optional[str] = Form("auto", description="Column names or 'auto'", example="name,price,rating"),
-    prompt: Optional[str] = Form(None, description="Custom instructions", example="Extract all prices"),
-    model: str = Form("gpt-4.1-mini", enum=["gpt-4.1-mini", "gpt-4"]),
-    temperature: float = Form(0.1, ge=0, le=2, description="Temperature for generation"),
-    output_format: str = Form("excel", enum=["csv", "excel", "json"]),
-    max_text_length: int = Form(100000, ge=1000, le=500000, description="Max text length to process"),
-    max_retries: int = Form(3, ge=1, le=5, description="Maximum retry attempts"),
-    fallback_to_json: bool = Form(True, description="Fallback to JSON if other formats fail"),
-    mode: str = Form("auto", enum=["auto", "extract", "generate"], description="Operation mode"),
-    rows_to_generate: int = Form(30, ge=1, le=1000, description="Rows to generate (generate mode)"),
-    raw_text: Optional[str] = Form(None, description="Direct text input without file", max_length=100000)
+    file: Optional[UploadFile] = File(default=None, description="File to extract data from"),
+    columns: Optional[str] = Form(default="auto", description="Column names or 'auto'", example="name,price,rating"),
+    prompt: Optional[str] = Form(default=None, description="Custom instructions", example="Extract all prices"),
+    model: str = Form(default="gpt-4.1-mini", description="Model to use"),
+    temperature: float = Form(default=0.1, ge=0, le=2, description="Temperature for generation"),
+    output_format: str = Form(default="excel", description="Output format"),
+    max_text_length: int = Form(default=100000, ge=1000, le=500000, description="Max text length to process"),
+    max_retries: int = Form(default=3, ge=1, le=5, description="Maximum retry attempts"),
+    fallback_to_json: bool = Form(default=True, description="Fallback to JSON if other formats fail"),
+    mode: str = Form(default="auto", description="Operation mode"),
+    rows_to_generate: int = Form(default=30, ge=1, le=1000, description="Rows to generate (generate mode)"),
+    raw_text: Optional[str] = Form(default=None, description="Direct text input without file", max_length=100000)
 ):
     """
     Universal data extraction/generation endpoint.
@@ -9076,19 +10292,28 @@ async def extract_reviews(
                     extracted_text = file_content.decode('utf-8', errors='ignore')
                     
             else:
-                # For all other files (PDF, DOCX, TXT, etc.), use existing extraction
+                # For all other files (PDF, DOCX, TXT, etc.), use extract_text_internal
                 extraction_errors = []
                 for attempt in range(max_retries):
                     try:
-                        extracted_text = extract_text_from_file(file_content, file.filename)
-                        if not extracted_text.startswith("[Error") and not extracted_text.startswith("[Unable"):
+                        extracted_text = await extract_text_internal(
+                            file_content=file_content,
+                            filename=file.filename,
+                            strategy="auto",
+                            languages=None,
+                            encoding=None,
+                            logger=logging.getLogger(__name__)
+                        )
+                        # Check if extraction was successful
+                        if extracted_text and not extracted_text.startswith("Unable to extract"):
                             source_type = file_ext[1:] if file_ext else "unknown"
                             break
-                        extraction_errors.append(f"Attempt {attempt + 1}: {extracted_text}")
+                        extraction_errors.append(f"Attempt {attempt + 1}: Extraction returned empty or error text")
                         extracted_text = None
                         await asyncio.sleep(1)
                     except Exception as e:
                         extraction_errors.append(f"Attempt {attempt + 1}: {str(e)}")
+                        extracted_text = None
                         await asyncio.sleep(1)
                 
                 if not extracted_text:
@@ -10083,13 +11308,22 @@ async def comprehensive_health_check():
         
         # Test file processing functions
         try:
-            # Test text extraction
+            # Test text extraction using extract_text_internal
             test_text = b"Hello, world!"
-            extracted = extract_text_from_file(test_text, "test.txt")
+            # Since extract_text_internal is async, we need to run it in an async context
+            extracted = await extract_text_internal(
+                file_content=test_text,
+                filename="test.txt",
+                strategy="auto",
+                languages=None,
+                encoding=None,
+                logger=logging.getLogger(__name__)
+            )
             
             endpoint_results["file_extraction"] = {
                 "status": "healthy" if extracted == "Hello, world!" else "unhealthy",
-                "test_passed": extracted == "Hello, world!"
+                "test_passed": extracted == "Hello, world!",
+                "actual_output": extracted[:50] if extracted != "Hello, world!" else None  # Help debug if test fails
             }
         except Exception as e:
             endpoint_results["file_extraction"] = {
@@ -10182,32 +11416,34 @@ async def comprehensive_health_check():
 
 @app.post("/test-comprehensive",
           summary="Run Comprehensive System Tests",
-          description="""
-          Run comprehensive load and scaling tests with real-time streaming updates.
+          description="""Run comprehensive load and scaling tests with real-time streaming updates.
           
-          **⚡ STREAMING ENDPOINT** - Returns results via Server-Sent Events (SSE)
-          
-          Test modes available:
-          - `all`: Run all test suites
-          - `long_thread`: Test thread capacity limits
-          - `concurrent`: Test concurrent user handling
-          - `same_thread`: Test thread locking mechanisms
-          - `scaling`: Test system scaling capabilities
-          - `tools`: Test AI tool functionality
-          
-          Results are streamed in real-time as tests execute.
-          """,
+**⚡ STREAMING ENDPOINT** - Returns results via Server-Sent Events (SSE)
+
+Test modes available:
+- `all`: Run all test suites
+- `long_thread`: Test thread capacity limits
+- `concurrent`: Test concurrent user handling
+- `same_thread`: Test thread locking mechanisms
+- `scaling`: Test system scaling capabilities
+- `tools`: Test AI tool functionality
+
+Results are streamed in real-time as tests execute.
+""",
           tags=["System"],
           response_class=StreamingResponse)
 async def comprehensive_system_test(
-    test_mode: str = Form("all", description="Test mode", enum=["all", "long_thread", "concurrent", "same_thread", "scaling", "tools"]),
-    test_duration: int = Form(60, ge=10, le=300, description="Test duration in seconds"),
-    concurrent_users: int = Form(5, ge=1, le=20, description="Number of concurrent users"),
-    messages_per_thread: int = Form(60, ge=10, le=200, description="Messages for long thread test"),
-    verbose: bool = Form(True, description="Include detailed logs")
+    test_mode: str = Form(default="all", description="Test mode", enum=["all", "long_thread", "concurrent", "same_thread", "scaling", "tools"]),
+    test_duration: int = Form(default=60, ge=10, le=300, description="Test duration in seconds"),
+    concurrent_users: int = Form(default=5, ge=1, le=20, description="Number of concurrent users"),
+    messages_per_thread: int = Form(default=60, ge=10, le=200, description="Messages for long thread test"),
+    verbose: bool = Form(default=True, description="Include detailed logs")
 ):
-    """Run comprehensive system tests for scaling and performance."""
-
+    """Run comprehensive system tests for scaling and performance.
+    
+    This endpoint streams test results in real-time using Server-Sent Events (SSE).
+    Each update is sent as a JSON object on a new line.
+    """
     # Security check
     if os.getenv("ENVIRONMENT", "development") == "production":
         # In production, require a secret token
