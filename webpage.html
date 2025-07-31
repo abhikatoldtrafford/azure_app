@@ -1666,7 +1666,7 @@
                         <iframe 
                             id="api-docs-frame"
                             src="/docs" 
-                            style="width: 100%; height: 800px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-primary);"
+                            style="width: 100%; height: 800px; border: 1px solid var(--border); border-radius: 8px; background: white;"
                             title="API Documentation"
                             onload="onDocLoad()">
                         </iframe>
@@ -2241,6 +2241,8 @@
             loading.style.display = 'block';
             frame.style.display = 'none';
             
+            // Set white background for light theme
+            frame.style.background = '#ffffff';
             frame.src = '/docs';
             currentDocView = 'swagger';
         }
@@ -2252,6 +2254,8 @@
             loading.style.display = 'block';
             frame.style.display = 'none';
             
+            // Set white background for ReDoc light theme
+            frame.style.background = '#ffffff';
             frame.src = '/redoc';
             currentDocView = 'redoc';
         }
