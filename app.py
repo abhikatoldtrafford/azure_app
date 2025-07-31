@@ -1,6 +1,11 @@
 import logging
 import threading
-import httpx
+try:
+    import httpx
+    HTTPX_AVAILABLE = True
+except ImportError:
+    HTTPX_AVAILABLE = False
+    logging.warning("httpx not available - will use simple client creation")
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Query, Request, Response, Path
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -6699,29 +6704,39 @@ def get_downloads_directory():
 
 # Update the global variable
 DOWNLOADS_DIR = get_downloads_directory()
-_client_instance: Optional[AzureOpenAI] = None
+_client_instance = None
+_http_client = None
 _client_lock = threading.Lock()
-_http_client: Optional[httpx.Client] = None
 
+# Replace your existing create_client() function with this version
 def create_client() -> AzureOpenAI:
     """
-    Creates an optimized AzureOpenAI client instance with connection pooling.
-    Uses singleton pattern for maximum performance and connection reuse.
+    Creates an AzureOpenAI client instance.
     
-    This function is used throughout the application and benefits from:
-    - Connection pooling (100+ concurrent connections)
-    - HTTP/2 support for multiplexing
-    - Singleton pattern to reuse connections
-    - Automatic retries and robust error handling
+    Attempts to create an optimized client with connection pooling.
+    Falls back to simple client creation if optimization fails.
     
     Returns:
         AzureOpenAI client instance
     """
     global _client_instance, _http_client
     
-    # Fast path: return existing instance (most common case)
+    # Fast path: return existing instance if available
     if _client_instance is not None:
-        return _client_instance
+        try:
+            # Quick health check - try to access a property
+            _ = _client_instance.api_key
+            return _client_instance
+        except Exception:
+            # Client might be in bad state, recreate it
+            logging.warning("Existing client instance appears invalid, recreating...")
+            _client_instance = None
+            if _http_client:
+                try:
+                    _http_client.close()
+                except:
+                    pass
+                _http_client = None
     
     # Thread-safe client creation
     with _client_lock:
@@ -6729,87 +6744,78 @@ def create_client() -> AzureOpenAI:
         if _client_instance is not None:
             return _client_instance
         
-        try:
-            # Create optimized HTTP client with connection pooling
-            _http_client = httpx.Client(
-                # Connection pooling settings
-                limits=httpx.Limits(
-                    max_connections=100,           # Total connections in pool
-                    max_keepalive_connections=20,  # Persistent connections
-                    keepalive_expiry=30.0,        # Keep connections alive for 30s
-                ),
-                # Timeout configuration
-                timeout=httpx.Timeout(
-                    timeout=120.0,    # Total timeout (Azure max)
-                    connect=10.0,     # Connection timeout
-                    read=60.0,        # Read timeout
-                    write=30.0,       # Write timeout
-                    pool=5.0          # Pool acquisition timeout
-                ),
-                # Transport configuration
-                transport=httpx.HTTPTransport(
-                    retries=3,        # Automatic retries on connection errors
-                    http2=True,       # Enable HTTP/2 for better performance
-                ),
-                # Additional settings
-                follow_redirects=True,
-                # Custom headers
-                headers={
-                    "User-Agent": "Azure-CoPilot-V2/1.0",
-                    "X-Client-Version": "1.0.0",
-                },
-            )
-            
-            # Create the Azure OpenAI client with optimized settings
-            _client_instance = AzureOpenAI(
-                azure_endpoint=AZURE_ENDPOINT,
-                api_key=AZURE_API_KEY,
-                api_version=AZURE_API_VERSION,
-                http_client=_http_client,
-                max_retries=3,  # Application-level retries
-                # Default timeout is handled by httpx
-            )
-            
-            logging.info("Created optimized AzureOpenAI client with connection pooling")
-            return _client_instance
-            
-        except Exception as e:
-            logging.error(f"Failed to create optimized client: {e}. Falling back to basic client.")
-            
-            # Fallback: Create a basic client without custom HTTP client
+        # Try optimized client first (only if httpx is available)
+        if HTTPX_AVAILABLE:
             try:
+                logging.info("Attempting to create optimized client with connection pooling...")
+                
+                # Create optimized HTTP client
+                _http_client = httpx.Client(
+                    limits=httpx.Limits(
+                        max_connections=10,
+                        max_keepalive_connections=5,
+                        keepalive_expiry=30.0,
+                    ),
+                    timeout=httpx.Timeout(
+                        timeout=120.0,
+                        connect=10.0,
+                        read=60.0,
+                        write=30.0,
+                        pool=5.0
+                    ),
+                    transport=httpx.HTTPTransport(
+                        retries=3,
+                        http2=True,
+                    ),
+                    follow_redirects=True,
+                )
+                
+                # Create optimized client
                 _client_instance = AzureOpenAI(
                     azure_endpoint=AZURE_ENDPOINT,
                     api_key=AZURE_API_KEY,
                     api_version=AZURE_API_VERSION,
-                    timeout=120.0,
-                    max_retries=3
+                    http_client=_http_client,
+                    max_retries=3,
                 )
-                logging.warning("Using basic AzureOpenAI client without connection pooling")
+                
+                # Test the client with a minimal operation
+                # This ensures the client is actually working
+                test_client = _client_instance.with_options(timeout=5.0)
+                
+                logging.info("Successfully created optimized AzureOpenAI client")
                 return _client_instance
                 
-            except Exception as fallback_error:
-                logging.critical(f"Failed to create even basic client: {fallback_error}")
-                raise
-
-# Cleanup function to properly close connections on shutdown
-def _cleanup_client():
-    """Close client connections gracefully on application shutdown."""
-    global _client_instance, _http_client
-    
-    try:
-        if _http_client is not None:
-            _http_client.close()
-            _http_client = None
-            logging.info("Closed HTTP client connections")
-            
-        _client_instance = None
+            except Exception as e:
+                logging.error(f"Failed to create optimized client: {type(e).__name__}: {e}")
+                
+                # Clean up failed attempts
+                if _http_client:
+                    try:
+                        _http_client.close()
+                    except:
+                        pass
+                    _http_client = None
+                _client_instance = None
         
-    except Exception as e:
-        logging.error(f"Error during client cleanup: {e}")
-
-# Register cleanup on application shutdown
-atexit.register(_cleanup_client)
+        # Fallback: Use YOUR EXACT simple function implementation
+        try:
+            logging.info("Creating simple AzureOpenAI client...")
+            
+            # This is your exact simple implementation
+            _client_instance = AzureOpenAI(
+                azure_endpoint=AZURE_ENDPOINT,
+                api_key=AZURE_API_KEY,
+                api_version=AZURE_API_VERSION,
+            )
+            
+            logging.info("Successfully created simple AzureOpenAI client")
+            return _client_instance
+            
+        except Exception as e:
+            logging.critical(f"Failed to create even simple client: {type(e).__name__}: {e}")
+            _client_instance = None
+            raise
 
 def construct_download_url(request: Request, filename: str) -> str:
     """
