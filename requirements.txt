@@ -1,6 +1,9 @@
 fastapi>=0.104.0
 uvicorn>=0.24.0
-httpx[all]
+httpx[http2]
+h2>=4.0.0,<5.0.0
+hpack>=4.0.0
+hyperframe>=6.0.0
 # Azure and OpenAI
 openai==1.90.0,
 azure-identity>=1.15.0
