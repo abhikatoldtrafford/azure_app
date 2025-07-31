@@ -312,7 +312,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 CUSTOM_SWAGGER_CSS = """
 <style>
-/* 🎨 AZURE COPILOT V2 - ULTRA PREMIUM THEME WITH LIGHT MODE DEFAULT */
+/* 🎨 AZURE COPILOT V2 - ULTRA PREMIUM THEME */
 
 /* Hide unwanted elements */
 .swagger-ui .topbar { display: none !important; }
@@ -320,7 +320,7 @@ CUSTOM_SWAGGER_CSS = """
 .swagger-ui section.models { display: none !important; }
 .swagger-ui .scheme-container { display: none !important; }
 
-/* Animated gradient background - LIGHT MODE DEFAULT */
+/* Animated gradient background */
 @keyframes gradientShift {
     0% { background-position: 0% 50%; }
     50% { background-position: 100% 50%; }
@@ -336,12 +336,7 @@ body {
     min-height: 100vh !important;
 }
 
-/* Dark mode body background */
-body.dark-mode {
-    background: linear-gradient(-45deg, #0d1117, #161b22, #0d1117, #21262d) !important;
-}
-
-/* CSS Variables - LIGHT MODE DEFAULT */
+/* CSS Variables */
 .swagger-ui {
     --bg-primary: #ffffff;
     --bg-secondary: #f8f9fa;
@@ -361,25 +356,7 @@ body.dark-mode {
     color: var(--text-primary) !important;
 }
 
-/* Dark Mode Variables */
-.swagger-ui.dark-mode {
-    --bg-primary: #1a1a1a;
-    --bg-secondary: #222;
-    --bg-tertiary: #2a2a2a;
-    --accent: #7877c6;
-    --accent-hover: #9291d0;
-    --accent-active: #5c5ba0;
-    --text-primary: #f0f0f0;
-    --text-secondary: #c0c0c0;
-    --text-muted: #888;
-    --border: #333;
-    --success: #4ade80;
-    --error: #f87171;
-    --warning: #fbbf24;
-    --info: #60a5fa;
-}
-
-/* Main container with glassmorphism - LIGHT MODE DEFAULT */
+/* Main container with glassmorphism */
 .swagger-ui .wrapper {
     background: rgba(255, 255, 255, 0.95) !important;
     backdrop-filter: blur(20px) !important;
@@ -392,13 +369,7 @@ body.dark-mode {
     border: 1px solid rgba(92, 124, 250, 0.1) !important;
 }
 
-.dark-mode .swagger-ui .wrapper {
-    background: rgba(26, 26, 26, 0.85) !important;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5) !important;
-    border: 1px solid rgba(120, 119, 198, 0.2) !important;
-}
-
-/* Header section - LIGHT MODE DEFAULT */
+/* Header section */
 .swagger-ui .info {
     margin-bottom: 50px !important;
     padding: 40px !important;
@@ -407,11 +378,6 @@ body.dark-mode {
     border: 1px solid rgba(92, 124, 250, 0.2) !important;
     position: relative !important;
     overflow: hidden !important;
-}
-
-.dark-mode .swagger-ui .info {
-    background: linear-gradient(135deg, rgba(120, 119, 198, 0.1) 0%, rgba(120, 119, 198, 0.05) 100%) !important;
-    border: 1px solid rgba(120, 119, 198, 0.3) !important;
 }
 
 .swagger-ui .info::before {
@@ -425,16 +391,12 @@ body.dark-mode {
     animation: pulse 4s ease-in-out infinite !important;
 }
 
-.dark-mode .swagger-ui .info::before {
-    background: radial-gradient(circle, rgba(120, 119, 198, 0.1) 0%, transparent 70%) !important;
-}
-
 @keyframes pulse {
     0%, 100% { transform: scale(1); opacity: 0.5; }
     50% { transform: scale(1.1); opacity: 0.3; }
 }
 
-/* Title with proper contrast - LIGHT MODE DEFAULT */
+/* Title with gradient */
 .swagger-ui .info .title {
     font-size: 3.5rem !important;
     font-weight: 900 !important;
@@ -446,11 +408,6 @@ body.dark-mode {
     margin-bottom: 16px !important;
     position: relative !important;
     z-index: 1 !important;
-}
-
-.dark-mode .swagger-ui .info .title {
-    background: linear-gradient(135deg, #f0f0f0 0%, #d0d0d0 100%) !important;
-    text-shadow: 0 4px 12px rgba(120, 119, 198, 0.3) !important;
 }
 
 .swagger-ui .info .title small {
@@ -466,10 +423,6 @@ body.dark-mode {
     margin-top: 8px !important;
 }
 
-.dark-mode .swagger-ui .info .title small {
-    background: linear-gradient(135deg, #7877c6 0%, #9291d0 100%) !important;
-}
-
 /* Description with better readability */
 .swagger-ui .info .description,
 .swagger-ui .info .description p,
@@ -480,7 +433,7 @@ body.dark-mode {
     font-weight: 400 !important;
 }
 
-/* Enhanced operation blocks - LIGHT MODE DEFAULT */
+/* Enhanced operation blocks */
 .swagger-ui .opblock {
     background: var(--bg-secondary) !important;
     border: 1px solid var(--border) !important;
@@ -491,21 +444,13 @@ body.dark-mode {
     box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05) !important;
 }
 
-.dark-mode .swagger-ui .opblock {
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
-}
-
 .swagger-ui .opblock:hover {
     transform: translateY(-2px) !important;
     box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1) !important;
     border-color: var(--accent) !important;
 }
 
-.dark-mode .swagger-ui .opblock:hover {
-    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2) !important;
-}
-
-/* Operation summary - LIGHT MODE DEFAULT */
+/* Operation summary */
 .swagger-ui .opblock-summary {
     background: rgba(255, 255, 255, 0.9) !important;
     padding: 16px 20px !important;
@@ -513,16 +458,8 @@ body.dark-mode {
     border: none !important;
 }
 
-.dark-mode .swagger-ui .opblock-summary {
-    background: rgba(34, 34, 34, 0.8) !important;
-}
-
 .swagger-ui .opblock-summary:hover {
     background: rgba(248, 249, 250, 0.95) !important;
-}
-
-.dark-mode .swagger-ui .opblock-summary:hover {
-    background: rgba(42, 42, 42, 0.9) !important;
 }
 
 /* Method labels with distinct colors */
@@ -539,7 +476,7 @@ body.dark-mode {
     overflow: hidden !important;
 }
 
-/* Method colors with proper contrast for both themes */
+/* Method colors */
 .swagger-ui .opblock.opblock-get .opblock-summary-method {
     background: #16a34a !important;
     color: #ffffff !important;
@@ -594,10 +531,6 @@ body.dark-mode {
     border-left: 4px solid var(--accent) !important;
 }
 
-.dark-mode .swagger-ui .opblock-section-header {
-    background: rgba(120, 119, 198, 0.1) !important;
-}
-
 .swagger-ui .opblock-section-header h4 {
     color: var(--text-primary) !important;
     font-size: 14px !important;
@@ -622,10 +555,6 @@ body.dark-mode {
     font-size: 14px !important;
 }
 
-.dark-mode .swagger-ui .parameters-col_name {
-    color: #60a5fa !important;
-}
-
 .swagger-ui .parameters-col_description {
     color: var(--text-secondary) !important;
     font-size: 14px !important;
@@ -639,11 +568,7 @@ body.dark-mode {
     font-weight: 600 !important;
 }
 
-.dark-mode .swagger-ui .parameter__type {
-    color: #a78bfa !important;
-}
-
-/* Input fields - LIGHT MODE DEFAULT */
+/* Input fields */
 .swagger-ui input[type=text],
 .swagger-ui input[type=password],
 .swagger-ui input[type=email],
@@ -669,13 +594,6 @@ body.dark-mode {
     background: var(--bg-primary) !important;
 }
 
-.dark-mode .swagger-ui input:focus,
-.dark-mode .swagger-ui textarea:focus,
-.dark-mode .swagger-ui select:focus {
-    box-shadow: 0 0 0 4px rgba(120, 119, 198, 0.2) !important;
-    background: var(--bg-secondary) !important;
-}
-
 /* Buttons */
 .swagger-ui .btn {
     background: var(--accent) !important;
@@ -696,10 +614,6 @@ body.dark-mode {
     background: var(--accent-hover) !important;
     transform: translateY(-2px) !important;
     box-shadow: 0 4px 8px rgba(92, 124, 250, 0.2) !important;
-}
-
-.dark-mode .swagger-ui .btn:hover {
-    box-shadow: 0 8px 16px rgba(120, 119, 198, 0.3) !important;
 }
 
 .swagger-ui .btn:active {
@@ -778,10 +692,6 @@ body.dark-mode {
     border: 1px solid var(--border) !important;
 }
 
-.dark-mode .swagger-ui .responses-wrapper {
-    background: rgba(34, 34, 34, 0.5) !important;
-}
-
 .swagger-ui .responses-inner {
     background: transparent !important;
 }
@@ -836,11 +746,6 @@ body.dark-mode {
     color: var(--accent) !important;
 }
 
-.dark-mode .swagger-ui .copy-to-clipboard {
-    background: rgba(120, 119, 198, 0.2) !important;
-    border: 2px solid var(--accent) !important;
-}
-
 .swagger-ui .copy-to-clipboard:hover {
     background: var(--accent) !important;
     color: #ffffff !important;
@@ -848,11 +753,7 @@ body.dark-mode {
     box-shadow: 0 4px 12px rgba(92, 124, 250, 0.3) !important;
 }
 
-.dark-mode .swagger-ui .copy-to-clipboard:hover {
-    box-shadow: 0 4px 12px rgba(120, 119, 198, 0.3) !important;
-}
-
-/* Code blocks - LIGHT MODE DEFAULT */
+/* Code blocks */
 .swagger-ui .highlight-code pre,
 .swagger-ui pre {
     background: #f6f8fa !important;
@@ -866,13 +767,6 @@ body.dark-mode {
     overflow-x: auto !important;
 }
 
-.dark-mode .swagger-ui .highlight-code pre,
-.dark-mode .swagger-ui pre {
-    background: #0d1117 !important;
-    color: #e6edf3 !important;
-    box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.3) !important;
-}
-
 .swagger-ui code {
     background: rgba(92, 124, 250, 0.1) !important;
     color: #5c7cfa !important;
@@ -880,11 +774,6 @@ body.dark-mode {
     border-radius: 4px !important;
     font-family: 'JetBrains Mono', monospace !important;
     font-size: 0.9em !important;
-}
-
-.dark-mode .swagger-ui code {
-    background: rgba(120, 119, 198, 0.15) !important;
-    color: #f0a0ff !important;
 }
 
 /* Response status badges */
@@ -904,34 +793,16 @@ body.dark-mode {
     border: 2px solid #16a34a !important;
 }
 
-.dark-mode .swagger-ui .response[data-code^="2"] .response-col_status {
-    background: rgba(22, 163, 74, 0.2) !important;
-    color: #4ade80 !important;
-    box-shadow: 0 0 20px rgba(22, 163, 74, 0.4) !important;
-}
-
 .swagger-ui .response[data-code^="4"] .response-col_status {
     background: rgba(234, 88, 12, 0.1) !important;
     color: #ea580c !important;
     border: 2px solid #ea580c !important;
 }
 
-.dark-mode .swagger-ui .response[data-code^="4"] .response-col_status {
-    background: rgba(234, 88, 12, 0.2) !important;
-    color: #fbbf24 !important;
-    box-shadow: 0 0 20px rgba(234, 88, 12, 0.4) !important;
-}
-
 .swagger-ui .response[data-code^="5"] .response-col_status {
     background: rgba(220, 38, 38, 0.1) !important;
     color: #dc2626 !important;
     border: 2px solid #dc2626 !important;
-}
-
-.dark-mode .swagger-ui .response[data-code^="5"] .response-col_status {
-    background: rgba(220, 38, 38, 0.2) !important;
-    color: #f87171 !important;
-    box-shadow: 0 0 20px rgba(220, 38, 38, 0.4) !important;
 }
 
 /* Model/Schema display */
@@ -959,16 +830,8 @@ body.dark-mode {
     color: #7c3aed !important;
 }
 
-.dark-mode .swagger-ui .prop-type {
-    color: #a78bfa !important;
-}
-
 .swagger-ui .prop-format {
     color: #2563eb !important;
-}
-
-.dark-mode .swagger-ui .prop-format {
-    color: #60a5fa !important;
 }
 
 /* Scrollbar */
@@ -992,18 +855,6 @@ body.dark-mode {
     background: linear-gradient(135deg, var(--accent-hover) 0%, var(--accent-active) 100%) !important;
 }
 
-/* Floating action indicator */
-.swagger-ui::after {
-    content: '✨ Enhanced with Awesome Features' !important;
-    position: fixed !important;
-    bottom: 10px !important;
-    left: 10px !important;
-    font-size: 11px !important;
-    color: var(--text-muted) !important;
-    opacity: 0.5 !important;
-    pointer-events: none !important;
-}
-
 /* Links */
 .swagger-ui a {
     color: var(--accent) !important;
@@ -1025,20 +876,12 @@ body.dark-mode {
     margin: 16px 0 !important;
 }
 
-.dark-mode .swagger-ui .errors-wrapper {
-    background: rgba(220, 38, 38, 0.1) !important;
-}
-
 .swagger-ui .errors-wrapper .error {
     color: #dc2626 !important;
     font-weight: 500 !important;
 }
 
-.dark-mode .swagger-ui .errors-wrapper .error {
-    color: #f87171 !important;
-}
-
-/* Select dropdowns - LIGHT MODE DEFAULT */
+/* Select dropdowns */
 .swagger-ui select {
     appearance: none !important;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%23495057'%3E%3Cpath fill-rule='evenodd' d='M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z' clip-rule='evenodd'/%3E%3C/svg%3E") !important;
@@ -1046,10 +889,6 @@ body.dark-mode {
     background-position: right 10px center !important;
     background-size: 20px !important;
     padding-right: 40px !important;
-}
-
-.dark-mode .swagger-ui select {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%23c0c0c0'%3E%3Cpath fill-rule='evenodd' d='M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z' clip-rule='evenodd'/%3E%3C/svg%3E") !important;
 }
 
 /* Tabs */
@@ -1065,10 +904,6 @@ body.dark-mode {
 .swagger-ui .tab:hover {
     color: var(--text-primary) !important;
     background: rgba(92, 124, 250, 0.05) !important;
-}
-
-.dark-mode .swagger-ui .tab:hover {
-    background: rgba(120, 119, 198, 0.1) !important;
 }
 
 .swagger-ui .tab.active {
@@ -1092,11 +927,7 @@ body.dark-mode {
     box-shadow: 0 8px 16px rgba(92, 124, 250, 0.3) !important;
 }
 
-.dark-mode .swagger-ui .authorization__btn:hover {
-    box-shadow: 0 8px 16px rgba(120, 119, 198, 0.3) !important;
-}
-
-/* Smooth transitions for theme switching */
+/* Smooth transitions */
 body, body *, .swagger-ui, .swagger-ui * {
     transition: background-color 0.3s ease, 
                 color 0.3s ease, 
@@ -1106,6 +937,64 @@ body, body *, .swagger-ui, .swagger-ui * {
 }
 </style>
 """
+
+
+@app.get("/docs", include_in_schema=False)
+async def custom_swagger_ui_html():
+    """
+    Simplified Swagger UI with custom styling only.
+    - Clean, modern interface with premium design
+    - All endpoints fully functional
+    - Streaming support built into /conversation endpoint
+    """
+    return HTMLResponse(
+        content=f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>{app.title} - Swagger UI</title>
+            <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css">
+            <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+            {CUSTOM_SWAGGER_CSS}
+        </head>
+        <body>
+            <div id="swagger-ui"></div>
+            
+            <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+            <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-standalone-preset.js"></script>
+            <script>
+            window.onload = function() {
+                window.ui = SwaggerUIBundle({
+                    url: "/openapi.json",
+                    dom_id: '#swagger-ui',
+                    deepLinking: true,
+                    presets: [
+                        SwaggerUIBundle.presets.apis,
+                        SwaggerUIStandalonePreset
+                    ],
+                    plugins: [
+                        SwaggerUIBundle.plugins.DownloadUrl
+                    ],
+                    layout: "StandaloneLayout",
+                    defaultModelsExpandDepth: -1,
+                    displayRequestDuration: true,
+                    filter: true,
+                    persistAuthorization: true,
+                    tryItOutEnabled: true,
+                    supportedSubmitMethods: ['get', 'post', 'put', 'delete', 'patch'],
+                    onComplete: function() {
+                        console.log("Azure CoPilot V2 API loaded successfully!");
+                    }
+                });
+            };
+            </script>
+        </body>
+        </html>
+        """,
+        headers={
+            "Content-Type": "text/html; charset=utf-8",
+        }
+    )
 
 tags_metadata = [
     {
@@ -1249,8 +1138,6 @@ Ready to revolutionize your workflow? <strong>Let's build something AMAZING toge
         }
     ]
 )
-
-# Custom OpenAPI schema function
 def custom_openapi():
     if app.openapi_schema:
         return app.openapi_schema
@@ -1263,7 +1150,7 @@ def custom_openapi():
         tags=tags_metadata
     )
     
-    # Fix file upload parameters in the schema
+    # Fix file upload parameters in the schema - PRESERVED
     if "paths" in openapi_schema:
         for path, methods in openapi_schema["paths"].items():
             for method, operation in methods.items():
@@ -1276,7 +1163,7 @@ def custom_openapi():
                         # Create a new properties dict to avoid modifying during iteration
                         new_properties = {}
                         
-                        # ENHANCED: Add specific schemas for known POST endpoints
+                        # ENHANCED: Add specific schemas for known POST endpoints - PRESERVED
                         if method == "post":
                             if path == "/conversation":
                                 # Define explicit schema for /conversation POST
@@ -1293,79 +1180,45 @@ def custom_openapi():
                                         "example": "Hello, can you help me analyze this data?",
                                         "title": "Prompt"
                                     },
+                                    "context": {
+                                        "type": "string",
+                                        "description": "Optional context for the conversation", 
+                                        "example": "I'm a financial analyst",
+                                        "title": "Context"
+                                    },
                                     "assistant": {
                                         "type": "string",
                                         "description": "Assistant ID",
                                         "example": "asst_xyz789",
                                         "title": "Assistant"
                                     },
-                                    "context": {
-                                        "type": "string",
-                                        "description": "Additional context for stateless mode",
-                                        "example": "You are a data analyst",
-                                        "title": "Context"
-                                    },
-                                    "files": {
-                                        "type": "array",
-                                        "items": {
-                                            "type": "string",
-                                            "format": "binary"
-                                        },
-                                        "description": "Multiple files to analyze with the query",
-                                        "title": "Files"
-                                    }
-                                }
-                            elif path == "/upload-file":
-                                # Define explicit schema for /upload-file POST
-                                new_properties = {
                                     "file": {
                                         "type": "string",
                                         "format": "binary",
-                                        "description": "File to upload",
+                                        "description": "File to include in the conversation",
                                         "title": "File"
-                                    },
-                                    "assistant": {
-                                        "type": "string",
-                                        "description": "Assistant ID to attach file to",
-                                        "example": "asst_abc123",
-                                        "title": "Assistant"
-                                    },
-                                    "session": {
-                                        "type": "string",
-                                        "description": "Session ID for context (optional)",
-                                        "example": "thread_xyz789",
-                                        "title": "Session"
-                                    },
-                                    "context": {
-                                        "type": "string",
-                                        "description": "File context description (optional)",
-                                        "example": "This is Q4 2023 financial data",
-                                        "title": "Context"
-                                    },
-                                    "prompt": {
-                                        "type": "string",
-                                        "description": "Specific prompt for image analysis (optional)",
-                                        "example": "What objects are in this image?",
-                                        "title": "Prompt"
                                     }
                                 }
-                                
-                                # Update the required fields
-                                schema["required"] = ["file", "assistant"]
                             elif path == "/chat":
                                 # Define explicit schema for /chat POST
                                 new_properties = {
                                     "session": {
                                         "type": "string",
-                                        "description": "Session ID",
+                                        "description": "Session ID from /initiate-chat",
                                         "example": "thread_abc123",
                                         "title": "Session"
                                     },
                                     "prompt": {
                                         "type": "string",
                                         "description": "User message", 
-                                        "example": "What insights can you provide?",
+                                        "example": "Analyze the quarterly results",
                                         "title": "Prompt"
+                                    },
+                                    "context": {
+                                        "type": "string",
+                                        "description": "Optional context for the conversation",
+                                        "example": "Focus on revenue trends", 
+                                        "title": "Context"
                                     },
                                     "assistant": {
                                         "type": "string",
@@ -1373,199 +1226,30 @@ def custom_openapi():
                                         "example": "asst_xyz789",
                                         "title": "Assistant"
                                     },
-                                    "context": {
-                                        "type": "string",
-                                        "description": "Additional context",
-                                        "example": "Focus on financial metrics",
-                                        "title": "Context"
-                                    },
-                                    "files": {
-                                        "type": "array",
-                                        "items": {
-                                            "type": "string",
-                                            "format": "binary"
-                                        },
-                                        "description": "Multiple files to analyze with the query",
-                                        "title": "Files"
-                                    }
-                                }
-                                
-                            elif path == "/completion":
-                                # Define explicit schema for /completion POST
-                                new_properties = {
-                                    "prompt": {
-                                        "type": "string",
-                                        "description": "The prompt/question to send to the AI",
-                                        "example": "Explain quantum computing in simple terms",
-                                        "title": "Prompt"
-                                    },
-                                    "model": {
-                                        "type": "string",
-                                        "description": "AI model to use",
-                                        "default": "gpt-4.1-mini",
-                                        "enum": ["gpt-4o", "gpt-4", "gpt-4.1", "gpt-4.1-mini"],
-                                        "example": "gpt-4.1-mini",
-                                        "title": "Model"
-                                    },
-                                    "temperature": {
-                                        "type": "number",
-                                        "description": "Creativity level (0-1)",
-                                        "default": 0.3,
-                                        "minimum": 0,
-                                        "maximum": 1,
-                                        "example": 0.3,
-                                        "title": "Temperature"
-                                    },
-                                    "max_tokens": {
-                                        "type": "integer",
-                                        "description": "Maximum response length",
-                                        "default": 2000,
-                                        "example": 2000,
-                                        "title": "Max Tokens"
-                                    },
-                                    "context": {
-                                        "type": "string",
-                                        "description": "System context or personality",
-                                        "example": "You are a helpful assistant",
-                                        "title": "Context"
-                                    },
                                     "file": {
                                         "type": "string",
                                         "format": "binary",
-                                        "description": "Optional file for context",
+                                        "description": "File to include in the conversation",
                                         "title": "File"
                                     }
                                 }
-                                
-                            elif path == "/initiate-chat":
-                                # Define explicit schema for /initiate-chat POST
-                                new_properties = {
-                                    "file": {
-                                        "type": "string",
-                                        "format": "binary",
-                                        "description": "Initial file to process",
-                                        "title": "File",
-                                        "nullable": True,
-                                        "x-nullable": True
-                                    },
-                                    "context": {
-                                        "type": "string",
-                                        "description": "User context or persona",
-                                        "example": "I am a data analyst working on quarterly reports",
-                                        "title": "Context"
-                                    }
-                                }
-                                
-                                # Update the schema properties
-                                schema["properties"] = new_properties
-                                
-                                # Ensure neither field is marked as required
-                                if "required" in schema:
-                                    schema["required"] = [field for field in schema.get("required", []) if field not in ["file", "context"]]
-                            
-                            elif path == "/test-comprehensive":
-                                # Define explicit schema for /test-comprehensive POST
-                                new_properties = {
-                                    "test_mode": {
-                                        "type": "string",
-                                        "description": "Test mode",
-                                        "default": "all",
-                                        "enum": ["all", "long_thread", "concurrent", "same_thread", "scaling", "tools"],
-                                        "title": "Test Mode"
-                                    },
-                                    "test_duration": {
-                                        "type": "integer",
-                                        "description": "Test duration in seconds",
-                                        "default": 60,
-                                        "minimum": 10,
-                                        "maximum": 300,
-                                        "title": "Test Duration"
-                                    },
-                                    "concurrent_users": {
-                                        "type": "integer",
-                                        "description": "Number of concurrent users",
-                                        "default": 5,
-                                        "minimum": 1,
-                                        "maximum": 20,
-                                        "title": "Concurrent Users"
-                                    },
-                                    "messages_per_thread": {
-                                        "type": "integer",
-                                        "description": "Messages for long thread test",
-                                        "default": 60,
-                                        "minimum": 10,
-                                        "maximum": 200,
-                                        "title": "Messages Per Thread"
-                                    },
-                                    "verbose": {
-                                        "type": "boolean",
-                                        "description": "Include detailed logs",
-                                        "default": True,
-                                        "title": "Verbose"
-                                    }
-                                }
-                            
                             else:
-                                # For other POST endpoints, use the existing logic
+                                # For other endpoints, process properties normally - PRESERVED
                                 for prop_name, prop_value in properties.items():
-                                    # Check if this is a file-related field
-                                    is_file_field = False
-                                    
-                                    # Enhanced file field detection (PRESERVED FROM ORIGINAL)
-                                    if prop_name in ["file", "files"]:
-                                        is_file_field = True
-                                    elif isinstance(prop_value, dict):
-                                        # Check anyOf structure for file fields
-                                        if "anyOf" in prop_value:
-                                            for option in prop_value.get("anyOf", []):
-                                                if isinstance(option, dict):
-                                                    items = option.get("items", {})
-                                                    if isinstance(items, dict) and items.get("format") == "binary":
-                                                        is_file_field = True
-                                                        break
-                                    
-                                    # Process the field based on type
-                                    if is_file_field:
-                                        if prop_name == "file":
-                                            new_properties[prop_name] = {
-                                                "type": "string",
-                                                "format": "binary",
-                                                "description": prop_value.get("description", "File to upload"),
-                                                "title": prop_value.get("title", "File")
-                                            }
-                                        else:  # files
-                                            new_properties[prop_name] = {
-                                                "type": "array",
-                                                "items": {
-                                                    "type": "string",
-                                                    "format": "binary"
-                                                },
-                                                "description": prop_value.get("description", "Files to upload"),
-                                                "title": prop_value.get("title", "Files")
-                                            }
-                                    else:
-                                        # Handle non-file fields - clean up anyOf structures (PRESERVED FROM ORIGINAL)
-                                        if isinstance(prop_value, dict) and "anyOf" in prop_value:
-                                            # Extract base type and properties
-                                            base_type = None
-                                            base_props = {}
-                                            description = prop_value.get("description", "")
-                                            title = prop_value.get("title", "")
-                                            
-                                            # Analyze anyOf options
-                                            for option in prop_value["anyOf"]:
-                                                if isinstance(option, dict) and option.get("type") != "null":
-                                                    base_type = option.get("type")
-                                                    # Copy all properties except type
-                                                    for key, value in option.items():
-                                                        if key not in ["type", "description", "title"]:
-                                                            base_props[key] = value
-                                                    break
-                                            
-                                            if base_type:
-                                                # Reconstruct cleaner schema
-                                                new_prop = {"type": base_type}
-                                                new_prop.update(base_props)
+                                    if isinstance(prop_value, dict):
+                                        if prop_value.get("type") == "array" and "items" in prop_value:
+                                            if prop_value["items"].get("type") == "string" and prop_value["items"].get("format") == "binary":
+                                                # This is a file array parameter
+                                                description = prop_value.get("description", f"Upload {prop_name}")
+                                                title = prop_value.get("title", prop_name.replace("_", " ").title())
+                                                
+                                                new_prop = {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "string",
+                                                        "format": "binary"
+                                                    }
+                                                }
                                                 
                                                 # Add metadata
                                                 if description:
@@ -1575,81 +1259,33 @@ def custom_openapi():
                                                     
                                                 new_properties[prop_name] = new_prop
                                             else:
-                                                # Fallback if we can't determine type
+                                                # Keep array types as-is
                                                 new_properties[prop_name] = prop_value
+                                        elif prop_value.get("anyOf"):
+                                            # Handle Union types (like file upload fields) - PRESERVED
+                                            for option in prop_value["anyOf"]:
+                                                if isinstance(option, dict) and option.get("type") == "string" and option.get("format") == "binary":
+                                                    # This is a file upload parameter
+                                                    description = prop_value.get("description", f"Upload {prop_name}")
+                                                    title = prop_value.get("title", prop_name.replace("_", " ").title())
+                                                    
+                                                    new_prop = {
+                                                        "type": "string",
+                                                        "format": "binary"
+                                                    }
+                                                    
+                                                    # Add metadata
+                                                    if description:
+                                                        new_prop["description"] = description
+                                                    if title:
+                                                        new_prop["title"] = title
+                                                        
+                                                    new_properties[prop_name] = new_prop
+                                                else:
+                                                    # Fallback if we can't determine type
+                                                    new_properties[prop_name] = prop_value
                                         else:
                                             # Keep simple types as-is
-                                            new_properties[prop_name] = prop_value
-                        
-                        else:
-                            # For GET and other methods, use existing logic (PRESERVED FROM ORIGINAL)
-                            for prop_name, prop_value in properties.items():
-                                # Check if this is a file-related field
-                                is_file_field = False
-                                
-                                # Enhanced file field detection
-                                if prop_name in ["file", "files"]:
-                                    is_file_field = True
-                                elif isinstance(prop_value, dict):
-                                    # Check anyOf structure for file fields
-                                    if "anyOf" in prop_value:
-                                        for option in prop_value.get("anyOf", []):
-                                            if isinstance(option, dict):
-                                                items = option.get("items", {})
-                                                if isinstance(items, dict) and items.get("format") == "binary":
-                                                    is_file_field = True
-                                                    break
-                                
-                                # Process the field based on type
-                                if is_file_field:
-                                    if prop_name == "file":
-                                        new_properties[prop_name] = {
-                                            "type": "string",
-                                            "format": "binary",
-                                            "description": prop_value.get("description", "File to upload")
-                                        }
-                                    else:  # files
-                                        new_properties[prop_name] = {
-                                            "type": "array",
-                                            "items": {
-                                                "type": "string",
-                                                "format": "binary"
-                                            },
-                                            "description": prop_value.get("description", "Files to upload")
-                                        }
-                                else:
-                                    # Handle non-file fields - clean up anyOf structures
-                                    if isinstance(prop_value, dict) and "anyOf" in prop_value:
-                                        # Extract base type and properties
-                                        base_type = None
-                                        base_props = {}
-                                        description = prop_value.get("description", "")
-                                        title = prop_value.get("title", "")
-                                        
-                                        # Analyze anyOf options
-                                        for option in prop_value["anyOf"]:
-                                            if isinstance(option, dict) and option.get("type") != "null":
-                                                base_type = option.get("type")
-                                                # Copy all properties except type
-                                                for key, value in option.items():
-                                                    if key not in ["type", "description", "title"]:
-                                                        base_props[key] = value
-                                                break
-                                        
-                                        if base_type:
-                                            # Reconstruct cleaner schema
-                                            new_prop = {"type": base_type}
-                                            new_prop.update(base_props)
-                                            
-                                            # Add metadata
-                                            if description:
-                                                new_prop["description"] = description
-                                            if title:
-                                                new_prop["title"] = title
-                                                
-                                            new_properties[prop_name] = new_prop
-                                        else:
-                                            # Fallback if we can't determine type
                                             new_properties[prop_name] = prop_value
                                     else:
                                         # Keep simple types as-is
@@ -1658,1457 +1294,17 @@ def custom_openapi():
                         # Update schema with fixed properties
                         schema["properties"] = new_properties
                         
-                        # Also check if there are required fields that need adjustment (PRESERVED FROM ORIGINAL)
+                        # Also check if there are required fields that need adjustment - PRESERVED
                         if "required" in schema:
                             # Keep required fields as is - the schema already handles this correctly
                             pass
     
-    # Add enhanced streaming response documentation (PRESERVED FROM ORIGINAL)
-    streaming_paths = ["/conversation", "/test-comprehensive"]
-    
-    for path in streaming_paths:
-        if path in openapi_schema.get("paths", {}):
-            for method in openapi_schema["paths"][path]:
-                if "responses" in openapi_schema["paths"][path][method]:
-                    # Add comprehensive streaming response documentation
-                    openapi_schema["paths"][path][method]["responses"]["200"] = {
-                        "description": "Streaming response via Server-Sent Events (SSE) or NDJSON",
-                        "content": {
-                            "text/event-stream": {
-                                "schema": {
-                                    "type": "string",
-                                    "example": 'data: {"id": "chatcmpl-xxx", "object": "chat.completion.chunk", "created": 1234567890, "model": "gpt-4", "choices": [{"index": 0, "delta": {"content": "Hello"}, "finish_reason": null}]}\ndata: {"id": "chatcmpl-xxx", "object": "chat.completion.chunk", "created": 1234567890, "model": "gpt-4", "choices": [{"index": 0, "delta": {"content": " world!"}, "finish_reason": null}]}\ndata: [DONE]\n',
-                                    "description": "Server-Sent Events stream with chat completion chunks"
-                                }
-                            },
-                            "application/x-ndjson": {
-                                "schema": {
-                                    "type": "string", 
-                                    "example": '{"type": "test_started", "timestamp": "2024-01-01T00:00:00Z", "data": {"test_name": "concurrent_users", "parameters": {"users": 5}}}\n{"type": "progress", "timestamp": "2024-01-01T00:00:05Z", "data": {"completed": 2, "total": 5, "message": "Testing concurrent user 2..."}}\n{"type": "test_completed", "timestamp": "2024-01-01T00:00:10Z", "data": {"status": "passed", "summary": "All tests completed successfully"}}\n',
-                                    "description": "Newline-delimited JSON stream for real-time updates"
-                                }
-                            }
-                        }
-                    }
-    
-    # Add detailed examples for conversation endpoint (PRESERVED FROM ORIGINAL)
-    conversation_endpoints = ["/conversation", "/chat"]
-    for endpoint in conversation_endpoints:
-        if endpoint in openapi_schema.get("paths", {}):
-            for method in ["get", "post"]:
-                if method in openapi_schema["paths"][endpoint]:
-                    operation = openapi_schema["paths"][endpoint][method]
-                    
-                    # Enhance description with usage examples
-                    current_desc = operation.get("description", "")
-                    enhanced_desc = current_desc + """
-
-**Conversation Modes:**
-
-1. **Session-based with Assistant & Thread:**
-   - `session`: Valid thread ID from /initiate-chat
-   - `assistant`: Assistant ID
-   - `prompt`: Your message
-   
-2. **Invalid Thread Recovery:**
-   - System automatically creates new thread if invalid ID provided
-   - Returns new thread ID in response
-
-3. **Context-only Mode (Stateless):**
-   - `context`: User context or persona
-   - `prompt`: Your message
-   - No session/assistant needed
-
-4. **File-enhanced Mode (POST only):**
-   - Include files with your query
-   - System analyzes files in context
-
-**Response Format:**
-- `/conversation`: SSE stream with real-time chunks
-- `/chat`: Complete JSON response after processing"""
-                    
-                    operation["description"] = enhanced_desc
-    
-    # Cache the schema
     app.openapi_schema = openapi_schema
     return app.openapi_schema
 
 # Override the default OpenAPI function
 app.openapi = custom_openapi
 # Serve custom Swagger UI with our CSS
-@app.get("/docs", include_in_schema=False)
-async def custom_swagger_ui_html():
-    """
-    SUPER AWESOME Feature-rich custom Swagger UI with:
-    - Light mode as default (with dark mode option)
-    - Real-time streaming visualization with EventSource
-    - Live connection status monitoring
-    - Response analytics and timing
-    - Copy/Export functionality
-    - Keyboard shortcuts
-    - Enhanced conversation mode documentation
-    - Raw/Parsed mode toggle
-    """
-    return HTMLResponse(
-        content=f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>{app.title} - Swagger UI</title>
-            <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css">
-            <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-            {CUSTOM_SWAGGER_CSS}
-            <style>
-            /* SUPER AWESOME FEATURES STYLING - ALL EXISTING FEATURES PRESERVED */
-            
-            /* Floating Feature Panel - LIGHT MODE DEFAULT */
-            .awesome-features {{
-                position: fixed;
-                bottom: 20px;
-                right: 20px;
-                background: rgba(255, 255, 255, 0.95);
-                backdrop-filter: blur(20px);
-                border: 1px solid rgba(92, 124, 250, 0.2);
-                border-radius: 12px;
-                padding: 16px;
-                box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
-                z-index: 9999;
-                display: flex;
-                gap: 12px;
-                align-items: center;
-            }}
-            
-            .dark-mode .awesome-features {{
-                background: rgba(17, 24, 39, 0.95);
-                border: 1px solid rgba(120, 119, 198, 0.3);
-                box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-            }}
-            
-            .feature-btn {{
-                background: rgba(92, 124, 250, 0.1);
-                border: 1px solid rgba(92, 124, 250, 0.3);
-                color: #364fc7;
-                padding: 8px 12px;
-                border-radius: 8px;
-                cursor: pointer;
-                transition: all 0.2s;
-                font-size: 13px;
-                display: flex;
-                align-items: center;
-                gap: 6px;
-            }}
-            
-            .dark-mode .feature-btn {{
-                background: rgba(120, 119, 198, 0.2);
-                border-color: rgba(120, 119, 198, 0.3);
-                color: #e5e7eb;
-            }}
-            
-            .feature-btn:hover {{
-                background: rgba(92, 124, 250, 0.2);
-                transform: translateY(-2px);
-                box-shadow: 0 4px 12px rgba(92, 124, 250, 0.2);
-            }}
-            
-            .dark-mode .feature-btn:hover {{
-                background: rgba(120, 119, 198, 0.3);
-                box-shadow: 0 4px 12px rgba(120, 119, 198, 0.3);
-            }}
-            
-            .feature-btn.active {{
-                background: rgba(92, 124, 250, 0.3);
-                border-color: #5c7cfa;
-            }}
-            
-            .dark-mode .feature-btn.active {{
-                background: rgba(120, 119, 198, 0.5);
-                border-color: #7877c6;
-            }}
-            
-            /* Live Connection Status - LIGHT MODE DEFAULT */
-            .connection-status {{
-                position: fixed;
-                top: 20px;
-                right: 20px;
-                background: rgba(255, 255, 255, 0.95);
-                backdrop-filter: blur(10px);
-                border: 1px solid rgba(92, 124, 250, 0.2);
-                border-radius: 8px;
-                padding: 8px 16px;
-                display: flex;
-                align-items: center;
-                gap: 8px;
-                font-size: 13px;
-                color: #212529;
-                z-index: 9998;
-            }}
-            
-            .dark-mode .connection-status {{
-                background: rgba(17, 24, 39, 0.9);
-                border: 1px solid rgba(120, 119, 198, 0.3);
-                color: #e5e7eb;
-            }}
-            
-            .status-dot {{
-                width: 8px;
-                height: 8px;
-                border-radius: 50%;
-                background: #10b981;
-                animation: pulse-dot 2s infinite;
-            }}
-            
-            @keyframes pulse-dot {{
-                0%, 100% {{ opacity: 1; transform: scale(1); }}
-                50% {{ opacity: 0.6; transform: scale(1.2); }}
-            }}
-            
-            /* Toast Notifications */
-            @keyframes slideUp {{
-                from {{ transform: translateY(100px); opacity: 0; }}
-                to {{ transform: translateY(0); opacity: 1; }}
-            }}
-            
-            @keyframes slideDown {{
-                from {{ transform: translateY(0); opacity: 1; }}
-                to {{ transform: translateY(100px); opacity: 0; }}
-            }}
-            
-            /* REAL-TIME STREAMING VIEWER - LIGHT MODE DEFAULT */
-            .streaming-viewer {{
-                position: fixed;
-                top: 50%;
-                left: 50%;
-                transform: translate(-50%, -50%);
-                width: 90%;
-                max-width: 800px;
-                height: 80vh;
-                background: rgba(255, 255, 255, 0.98);
-                backdrop-filter: blur(20px);
-                border: 1px solid var(--border);
-                border-radius: 16px;
-                box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15);
-                z-index: 10000;
-                display: none;
-                flex-direction: column;
-                overflow: hidden;
-            }}
-            
-            .dark-mode .streaming-viewer {{
-                background: rgba(17, 24, 39, 0.98);
-                border: 2px solid rgba(120, 119, 198, 0.3);
-                box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-            }}
-            
-            .streaming-header {{
-                padding: 20px;
-                background: var(--bg-secondary);
-                border-bottom: 1px solid var(--border);
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-            }}
-            
-            .streaming-title {{
-                font-size: 18px;
-                font-weight: 600;
-                color: var(--text-primary);
-                display: flex;
-                align-items: center;
-                gap: 10px;
-            }}
-            
-            .streaming-close {{
-                background: transparent;
-                border: 1px solid var(--border);
-                padding: 8px 16px;
-                border-radius: 8px;
-                cursor: pointer;
-                color: var(--text-secondary);
-                transition: all 0.2s;
-            }}
-            
-            .streaming-close:hover {{
-                background: var(--bg-tertiary);
-                color: var(--text-primary);
-            }}
-            
-            .streaming-controls {{
-                padding: 16px 20px;
-                background: var(--bg-tertiary);
-                display: flex;
-                gap: 12px;
-                align-items: center;
-            }}
-            
-            .control-btn {{
-                background: rgba(92, 124, 250, 0.1);
-                color: var(--accent);
-                border: 1px solid var(--accent);
-                padding: 6px 12px;
-                border-radius: 6px;
-                cursor: pointer;
-                font-size: 13px;
-                transition: all 0.2s;
-                display: flex;
-                align-items: center;
-                gap: 6px;
-            }}
-            
-            .dark-mode .control-btn {{
-                background: rgba(120, 119, 198, 0.1);
-            }}
-            
-            .control-btn:hover {{
-                background: rgba(92, 124, 250, 0.2);
-                transform: translateY(-1px);
-            }}
-            
-            .dark-mode .control-btn:hover {{
-                background: rgba(120, 119, 198, 0.2);
-            }}
-            
-            .streaming-status {{
-                margin-left: auto;
-                display: flex;
-                align-items: center;
-                gap: 8px;
-                color: var(--text-secondary);
-                font-size: 13px;
-            }}
-            
-            .streaming-indicator {{
-                width: 10px;
-                height: 10px;
-                border-radius: 50%;
-                background: #10b981;
-                animation: pulse-dot 1s infinite;
-            }}
-            
-            .streaming-content {{
-                flex: 1;
-                overflow-y: auto;
-                padding: 20px;
-                background: var(--bg-primary);
-            }}
-            
-            .stream-chunk {{
-                margin-bottom: 12px;
-                padding: 12px;
-                background: var(--bg-secondary);
-                border: 1px solid var(--border);
-                border-radius: 8px;
-                font-family: 'JetBrains Mono', monospace;
-                font-size: 13px;
-                animation: fadeIn 0.3s ease;
-            }}
-            
-            @keyframes fadeIn {{
-                from {{ opacity: 0; transform: translateY(10px); }}
-                to {{ opacity: 1; transform: translateY(0); }}
-            }}
-            
-            .stream-chunk.raw {{
-                background: #f6f8fa;
-                color: #24292e;
-            }}
-            
-            .dark-mode .stream-chunk.raw {{
-                background: #0d1117;
-                color: #e6edf3;
-            }}
-            
-            .chunk-header {{
-                display: flex;
-                justify-content: space-between;
-                margin-bottom: 8px;
-                font-size: 11px;
-                color: var(--text-muted);
-                text-transform: uppercase;
-                letter-spacing: 0.05em;
-            }}
-            
-            .chunk-content {{
-                color: var(--text-primary);
-                line-height: 1.5;
-                white-space: pre-wrap;
-                word-break: break-word;
-            }}
-            
-            .accumulated-message {{
-                margin-top: 20px;
-                padding: 20px;
-                background: var(--bg-tertiary);
-                border: 2px solid var(--accent);
-                border-radius: 12px;
-            }}
-            
-            .accumulated-message h5 {{
-                margin: 0 0 12px 0;
-                color: var(--accent);
-                font-size: 16px;
-                font-weight: 600;
-            }}
-            
-            .accumulated-content {{
-                color: var(--text-primary);
-                line-height: 1.6;
-                font-size: 14px;
-            }}
-            
-            /* Response Formatting Styles */
-            .streaming-response-container {{
-                position: relative;
-                margin-top: 16px;
-                padding: 16px;
-                background: var(--bg-secondary);
-                border: 1px solid var(--border);
-                border-radius: 8px;
-            }}
-            
-            .response-header {{
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                margin-bottom: 12px;
-                padding-bottom: 12px;
-                border-bottom: 1px solid var(--border);
-            }}
-            
-            .response-type {{
-                font-size: 12px;
-                font-weight: 600;
-                text-transform: uppercase;
-                letter-spacing: 0.05em;
-                color: var(--text-muted);
-            }}
-            
-            .response-actions {{
-                display: flex;
-                gap: 8px;
-            }}
-            
-            .action-btn {{
-                background: transparent;
-                border: 1px solid var(--border);
-                padding: 4px 8px;
-                border-radius: 4px;
-                cursor: pointer;
-                font-size: 12px;
-                color: var(--text-secondary);
-                transition: all 0.2s;
-            }}
-            
-            .action-btn:hover {{
-                background: var(--bg-tertiary);
-                color: var(--text-primary);
-            }}
-            
-            .stream-message {{
-                padding: 8px 12px;
-                margin: 4px 0;
-                background: var(--bg-tertiary);
-                border-left: 3px solid var(--accent);
-                border-radius: 4px;
-                font-family: 'JetBrains Mono', monospace;
-                font-size: 13px;
-                line-height: 1.5;
-                animation: slideIn 0.2s ease;
-            }}
-            
-            @keyframes slideIn {{
-                from {{ opacity: 0; transform: translateX(-10px); }}
-                to {{ opacity: 1; transform: translateX(0); }}
-            }}
-            
-            .stream-error {{
-                border-left-color: var(--error);
-                background: rgba(255, 107, 107, 0.1);
-                color: var(--error);
-            }}
-            
-            .stream-info {{
-                border-left-color: var(--info);
-                background: rgba(77, 171, 247, 0.1);
-            }}
-            
-            .fullscreen {{
-                width: 100vw !important;
-                height: 100vh !important;
-                max-width: none !important;
-                border-radius: 0 !important;
-                top: 0 !important;
-                left: 0 !important;
-                transform: none !important;
-            }}
-            
-            /* Toast notification styling */
-            .toast {{
-                position: fixed;
-                bottom: 20px;
-                left: 50%;
-                transform: translateX(-50%);
-                background: var(--bg-elevated);
-                color: var(--text-primary);
-                padding: 12px 24px;
-                border-radius: 8px;
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-                z-index: 10001;
-                animation: slideUp 0.3s ease;
-            }}
-            
-            .toast.error {{
-                background: var(--error);
-                color: white;
-            }}
-            
-            .toast.success {{
-                background: var(--success);
-                color: white;
-            }}
-            
-            .toast.hiding {{
-                animation: slideDown 0.3s ease;
-            }}
-            
-            /* Pulse animation for awesome features indicator */
-            @keyframes pulse {{
-                0% {{ opacity: 1; transform: scale(1); }}
-                50% {{ opacity: 0.5; transform: scale(1.5); }}
-                100% {{ opacity: 1; transform: scale(1); }}
-            }}
-            </style>
-        </head>
-        <body>
-            <div id="swagger-ui"></div>
-            
-            <!-- Connection Status -->
-            <div class="connection-status">
-                <div class="status-dot"></div>
-                <span>API Connected</span>
-            </div>
-            
-            <!-- Awesome Features Panel -->
-            <div class="awesome-features">
-                <button class="feature-btn" onclick="toggleDarkMode()" title="Toggle theme">
-                    <i class="fas fa-sun"></i> Light
-                </button>
-                <button class="feature-btn" id="rawModeBtn" onclick="toggleRawMode()" title="Toggle raw/parsed view">
-                    <i class="fas fa-code"></i> Raw
-                </button>
-                <button class="feature-btn" onclick="toggleAnimations()" title="Toggle animations">
-                    <i class="fas fa-magic"></i> Animate
-                </button>
-                <button class="feature-btn" onclick="showKeyboardShortcuts()" title="Keyboard shortcuts">
-                    <i class="fas fa-keyboard"></i> Keys
-                </button>
-                <button class="feature-btn" onclick="exportAllResponses()" title="Export all responses">
-                    <i class="fas fa-download"></i> Export
-                </button>
-            </div>
-            
-            <!-- Real-time Streaming Viewer -->
-            <div id="streamingViewer" class="streaming-viewer">
-                <div class="streaming-header">
-                    <div class="streaming-title">
-                        <i class="fas fa-stream"></i> Real-time Stream Viewer
-                    </div>
-                    <button class="streaming-close" onclick="closeStreamingViewer()">
-                        <i class="fas fa-times"></i> Close
-                    </button>
-                </div>
-                <div class="streaming-controls">
-                    <button class="control-btn" id="streamRawBtn" onclick="toggleStreamRaw()">
-                        <i class="fas fa-code"></i> Raw
-                    </button>
-                    <button class="control-btn" onclick="clearStreamContent()">
-                        <i class="fas fa-trash"></i> Clear
-                    </button>
-                    <button class="control-btn" onclick="exportStreamContent()">
-                        <i class="fas fa-download"></i> Export
-                    </button>
-                    <div class="streaming-status" id="streamingStatus" style="display: none;">
-                        <div class="streaming-indicator"></div>
-                        <span>Streaming...</span>
-                    </div>
-                </div>
-                <div class="streaming-content" id="streamingContent"></div>
-                <div id="accumulatedMessageContainer"></div>
-            </div>
-            
-            <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
-            <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-standalone-preset.js"></script>
-            <script>
-            // 🎯 Global State - DEFAULT TO LIGHT MODE
-            const awesomeState = {{
-                darkMode: localStorage.getItem('swagger-theme') === 'dark', // Default is light
-                rawMode: false,
-                streamRawMode: false,
-                animations: true,
-                responses: [],
-                accumulatedMessage: '',
-                streamBuffer: [],
-                conversationHistory: [],
-                currentEventSource: null,
-                streamingActive: false
-            }};
-            
-            // 🎨 Swagger UI Configuration
-            window.onload = function() {{
-                window.ui = SwaggerUIBundle({{
-                    url: "/openapi.json",
-                    dom_id: '#swagger-ui',
-                    deepLinking: true,
-                    presets: [
-                        SwaggerUIBundle.presets.apis,
-                        SwaggerUIStandalonePreset
-                    ],
-                    plugins: [
-                        SwaggerUIBundle.plugins.DownloadUrl,
-                        EnhanceConversationDocs,
-                        StreamingEndpointEnhancer
-                    ],
-                    layout: "StandaloneLayout",
-                    defaultModelsExpandDepth: -1,
-                    displayRequestDuration: true,
-                    filter: true,
-                    persistAuthorization: true,
-                    onComplete: function() {{
-                        console.log("🚀 Azure CoPilot V2 API loaded!");
-                        
-                        // Initialize theme
-                        initializeTheme();
-                        
-                        // Enhance conversation documentation
-                        enhanceConversationDocs();
-                        enhanceStreamingResponses();
-                        
-                        // Initialize keyboard shortcuts
-                        initKeyboardShortcuts();
-                    }}
-                }});
-            }};
-            
-            // 🌙 Toggle dark/light mode with persistence
-            function toggleDarkMode() {{
-                const body = document.body;
-                const swaggerUI = document.querySelector('.swagger-ui');
-                const darkModeBtn = document.querySelector('.feature-btn[title*="Toggle"]');
-                
-                // Toggle state
-                awesomeState.darkMode = !awesomeState.darkMode;
-                
-                // Toggle classes
-                if (awesomeState.darkMode) {{
-                    body.classList.add('dark-mode');
-                    swaggerUI.classList.add('dark-mode');
-                }} else {{
-                    body.classList.remove('dark-mode');
-                    swaggerUI.classList.remove('dark-mode');
-                }}
-                
-                // Update button
-                if (darkModeBtn) {{
-                    darkModeBtn.innerHTML = awesomeState.darkMode ? 
-                        '<i class="fas fa-moon"></i> Dark' : 
-                        '<i class="fas fa-sun"></i> Light';
-                }}
-                
-                // Save preference
-                localStorage.setItem('swagger-theme', awesomeState.darkMode ? 'dark' : 'light');
-                
-                // Show toast
-                showToast(awesomeState.darkMode ? 
-                    'Switched to Dark Mode 🌙' : 
-                    'Switched to Light Mode ☀️'
-                );
-            }}
-            
-            // Initialize theme on load - DEFAULT TO LIGHT
-            function initializeTheme() {{
-                if (awesomeState.darkMode) {{
-                    document.body.classList.add('dark-mode');
-                    const swaggerUI = document.querySelector('.swagger-ui');
-                    if (swaggerUI) {{
-                        swaggerUI.classList.add('dark-mode');
-                    }}
-                    
-                    // Update button after a short delay
-                    setTimeout(() => {{
-                        const darkModeBtn = document.querySelector('.feature-btn[title*="Toggle"]');
-                        if (darkModeBtn) {{
-                            darkModeBtn.innerHTML = '<i class="fas fa-moon"></i> Dark';
-                        }}
-                    }}, 100);
-                }} else {{
-                    // Default light mode - update button to show sun
-                    setTimeout(() => {{
-                        const darkModeBtn = document.querySelector('.feature-btn[title*="Toggle"]');
-                        if (darkModeBtn) {{
-                            darkModeBtn.innerHTML = '<i class="fas fa-sun"></i> Light';
-                        }}
-                    }}, 100);
-                }}
-            }}
-            
-            // 🚀 Plugin: Enhance Conversation Mode Documentation
-            function EnhanceConversationDocs() {{
-                return {{
-                    wrapComponents: {{
-                        // Enhance operation descriptions
-                        OperationSummary: (Original, system) => (props) => {{
-                            setTimeout(() => {{
-                                enhanceOperationDescriptions();
-                            }}, 100);
-                            return Original(props);
-                        }}
-                    }}
-                }};
-            }}
-            
-            // 🚀 Plugin: Enhance Streaming Endpoints
-            function StreamingEndpointEnhancer() {{
-                return {{
-                    wrapComponents: {{
-                        ResponseBody: (Original, system) => (props) => {{
-                            if (props.path?.includes('/conversation')) {{
-                                setTimeout(() => {{
-                                    addStreamingControls(props.content);
-                                }}, 100);
-                            }}
-                            return Original(props);
-                        }}
-                    }}
-                }};
-            }}
-            
-            // 🎯 Initialize keyboard shortcuts
-            function initKeyboardShortcuts() {{
-                document.addEventListener('keydown', (e) => {{
-                    // Ctrl/Cmd + K for search
-                    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {{
-                        e.preventDefault();
-                        const searchInput = document.querySelector('.filter-container input');
-                        if (searchInput) searchInput.focus();
-                    }}
-                    
-                    // Ctrl/Cmd + S for streaming viewer
-                    if ((e.ctrlKey || e.metaKey) && e.key === 's') {{
-                        e.preventDefault();
-                        openStreamingViewer();
-                    }}
-                    
-                    // Ctrl/Cmd + R for raw mode toggle
-                    if ((e.ctrlKey || e.metaKey) && e.key === 'r') {{
-                        e.preventDefault();
-                        toggleRawMode();
-                    }}
-                    
-                    // Ctrl/Cmd + E for export
-                    if ((e.ctrlKey || e.metaKey) && e.key === 'e') {{
-                        e.preventDefault();
-                        exportAllResponses();
-                    }}
-                    
-                    // Escape to close streaming viewer
-                    if (e.key === 'Escape') {{
-                        const viewer = document.getElementById('streamingViewer');
-                        if (viewer.style.display !== 'none') {{
-                            closeStreamingViewer();
-                        }}
-                    }}
-                }});
-            }}
-            
-            // 🎨 Enhance operation descriptions with better formatting
-            function enhanceOperationDescriptions() {{
-                const conversationEndpoint = document.querySelector('[data-path="/conversation"] .opblock-summary-description');
-                const chatEndpoint = document.querySelector('[data-path="/chat"] .opblock-summary-description');
-                
-                if (conversationEndpoint && !conversationEndpoint.dataset.enhanced) {{
-                    conversationEndpoint.dataset.enhanced = 'true';
-                    conversationEndpoint.innerHTML = `
-                        <span style="color: var(--success); font-weight: 600;">
-                            🚀 SSE Streaming Endpoint
-                        </span> - Real-time AI responses with <code>text/event-stream</code>
-                    `;
-                }}
-                
-                if (chatEndpoint && !chatEndpoint.dataset.enhanced) {{
-                    chatEndpoint.dataset.enhanced = 'true';
-                    chatEndpoint.innerHTML = `
-                        <span style="color: var(--info); font-weight: 600;">
-                            💬 Complete Response Endpoint
-                        </span> - Full AI response in single JSON payload
-                    `;
-                }}
-                
-                // Add visual examples for conversation modes
-                setTimeout(() => {{
-                    const descriptions = document.querySelectorAll('.opblock-description-wrapper');
-                    descriptions.forEach(desc => {{
-                        if (desc.textContent.includes('Flexible conversation modes') && !desc.dataset.examplesAdded) {{
-                            desc.dataset.examplesAdded = 'true';
-                            const examplesHtml = `
-                                <div style="margin-top: 20px; padding: 16px; background: var(--bg-tertiary); border-radius: 8px; border: 1px solid var(--border);">
-                                    <h4 style="margin: 0 0 12px 0; color: var(--accent); font-size: 14px;">
-                                        <i class="fas fa-code"></i> Quick Examples:
-                                    </h4>
-                                    <div style="display: grid; gap: 12px;">
-                                        <div style="padding: 12px; background: var(--bg-primary); border-radius: 6px; border: 1px solid var(--border);">
-                                            <strong style="color: var(--text-primary);">Session Mode:</strong>
-                                            <code style="display: block; margin-top: 4px; font-size: 12px;">
-                                                ?session=thread_abc&assistant=asst_xyz&prompt=Hello
-                                            </code>
-                                        </div>
-                                        <div style="padding: 12px; background: var(--bg-primary); border-radius: 6px; border: 1px solid var(--border);">
-                                            <strong style="color: var(--text-primary);">Context Mode:</strong>
-                                            <code style="display: block; margin-top: 4px; font-size: 12px;">
-                                                ?context=You are helpful&prompt=Explain AI
-                                            </code>
-                                        </div>
-                                    </div>
-                                </div>
-                            `;
-                            desc.insertAdjacentHTML('beforeend', examplesHtml);
-                        }}
-                    }});
-                }}, 100);
-            }}
-            
-            // 🚀 Enhance streaming response displays
-            function enhanceStreamingResponses() {{
-                // Monitor for new responses
-                const observer = new MutationObserver((mutations) => {{
-                    mutations.forEach((mutation) => {{
-                        mutation.addedNodes.forEach((node) => {{
-                            if (node.nodeType === 1 && node.classList?.contains('response-body')) {{
-                                setTimeout(() => formatStreamingResponse(node), 100);
-                            }}
-                        }});
-                    }});
-                }});
-                
-                observer.observe(document.body, {{
-                    childList: true,
-                    subtree: true
-                }});
-            }}
-            
-            // 🎯 Toggle Raw Mode
-            function toggleRawMode() {{
-                awesomeState.rawMode = !awesomeState.rawMode;
-                const btn = document.getElementById('rawModeBtn');
-                btn.classList.toggle('active');
-                
-                // Re-format all visible responses
-                document.querySelectorAll('.response-body').forEach(el => {{
-                    formatStreamingResponse(el);
-                }});
-                
-                showToast(awesomeState.rawMode ? 'Raw mode enabled' : 'Parsed mode enabled');
-            }}
-            
-            // 🎨 Format streaming response based on mode
-            function formatStreamingResponse(element) {{
-                if (!element || !element.textContent) return;
-                
-                const text = element.textContent.trim();
-                if (!text) return;
-                
-                let formattedHTML = '';
-                
-                // Detect response type
-                if (text.includes('data:') && (text.includes('[DONE]') || text.includes('chat.completion'))) {{
-                    // SSE format
-                    formattedHTML = awesomeState.rawMode ? 
-                        formatRawSSEResponse(text) : 
-                        formatParsedSSEResponse(text);
-                }} else if (text.includes('"type":') && text.includes('"timestamp":')) {{
-                    // NDJSON format
-                    formattedHTML = awesomeState.rawMode ?
-                        formatRawNDJSONResponse(text) :
-                        formatParsedNDJSONResponse(text);
-                }} else {{
-                    // Regular JSON
-                    try {{
-                        const json = JSON.parse(text);
-                        formattedHTML = awesomeState.rawMode ?
-                            \`<pre style="margin: 0;">${{JSON.stringify(json, null, 2)}}</pre>\` :
-                            formatParsedJSONResponse(json);
-                    }} catch {{
-                        formattedHTML = \`<pre style="margin: 0;">${{escapeHtml(text)}}</pre>\`;
-                    }}
-                }}
-                
-                element.innerHTML = formattedHTML;
-            }}
-            
-            // 🎨 Format SSE response (raw mode)
-            function formatRawSSEResponse(text) {{
-                const lines = text.split('\\n');
-                return \`
-                    <div class="streaming-response-container">
-                        <div class="response-header">
-                            <span class="response-type">Server-Sent Events (SSE)</span>
-                            <div class="response-actions">
-                                <button class="action-btn" onclick="copyResponse(this)">
-                                    <i class="fas fa-copy"></i> Copy
-                                </button>
-                                <button class="action-btn" onclick="exportResponse('sse')">
-                                    <i class="fas fa-download"></i> Export
-                                </button>
-                            </div>
-                        </div>
-                        <pre style="margin: 0; font-size: 12px;">${{lines.map(line => 
-                            line.startsWith('data:') ? 
-                                \`<span style="color: var(--accent);">data:</span> ${{escapeHtml(line.substring(5))}}\` :
-                                escapeHtml(line)
-                        ).join('\\n')}}</pre>
-                    </div>
-                \`;
-            }}
-            
-            // 🎨 Format SSE response (parsed mode)
-            function formatParsedSSEResponse(text) {{
-                const messages = [];
-                const lines = text.split('\\n');
-                
-                lines.forEach(line => {{
-                    if (line.startsWith('data: ')) {{
-                        const data = line.substring(6);
-                        if (data === '[DONE]') {{
-                            messages.push({{
-                                type: 'done',
-                                content: 'Stream completed'
-                            }});
-                        }} else {{
-                            try {{
-                                const parsed = JSON.parse(data);
-                                if (parsed.choices?.[0]?.delta?.content) {{
-                                    messages.push({{
-                                        type: 'content',
-                                        content: parsed.choices[0].delta.content
-                                    }});
-                                }}
-                            }} catch {{
-                                messages.push({{
-                                    type: 'raw',
-                                    content: data
-                                }});
-                            }}
-                        }}
-                    }}
-                }});
-                
-                const fullMessage = messages
-                    .filter(m => m.type === 'content')
-                    .map(m => m.content)
-                    .join('');
-                
-                return \`
-                    <div class="streaming-response-container">
-                        <div class="response-header">
-                            <span class="response-type">Streaming Response (Parsed)</span>
-                            <div class="response-actions">
-                                <button class="action-btn" onclick="toggleFullscreen(this)">
-                                    <i class="fas fa-expand"></i> Fullscreen
-                                </button>
-                                <button class="action-btn" onclick="copyResponse(this)">
-                                    <i class="fas fa-copy"></i> Copy
-                                </button>
-                            </div>
-                        </div>
-                        <div style="max-height: 400px; overflow-y: auto;">
-                            ${{messages.map(msg => \`
-                                <div class="stream-message ${{msg.type === 'done' ? 'stream-info' : ''}}">
-                                    ${{msg.type === 'done' ? 
-                                        '<i class="fas fa-check-circle"></i> ' : 
-                                        ''}}${{escapeHtml(msg.content)}}
-                                </div>
-                            \`).join('')}}
-                        </div>
-                        ${{fullMessage ? \`
-                            <div style="margin-top: 16px; padding: 16px; background: var(--bg-tertiary); border-radius: 8px;">
-                                <h5 style="margin: 0 0 8px 0; color: var(--accent); font-size: 14px;">
-                                    <i class="fas fa-comment-alt"></i> Complete Message:
-                                </h5>
-                                <div style="color: var(--text-primary); line-height: 1.6;">
-                                    ${{escapeHtml(fullMessage)}}
-                                </div>
-                            </div>
-                        \` : ''}}
-                    </div>
-                \`;
-            }}
-            
-            // 🎨 Format NDJSON response (raw mode)
-            function formatRawNDJSONResponse(text) {{
-                const lines = text.split('\\n').filter(line => line.trim());
-                return \`
-                    <div class="streaming-response-container">
-                        <div class="response-header">
-                            <span class="response-type">NDJSON Stream</span>
-                            <div class="response-actions">
-                                <button class="action-btn" onclick="copyResponse(this)">
-                                    <i class="fas fa-copy"></i> Copy
-                                </button>
-                                <button class="action-btn" onclick="exportResponse('ndjson')">
-                                    <i class="fas fa-download"></i> Export
-                                </button>
-                            </div>
-                        </div>
-                        <pre style="margin: 0; font-size: 12px;">${{lines.map(line => {{
-                            try {{
-                                const json = JSON.parse(line);
-                                return JSON.stringify(json, null, 2);
-                            }} catch {{
-                                return escapeHtml(line);
-                            }}
-                        }}).join('\\n\\n')}}</pre>
-                    </div>
-                \`;
-            }}
-            
-            // 🎨 Format NDJSON response (parsed mode)
-            function formatParsedNDJSONResponse(text) {{
-                const lines = text.split('\\n').filter(line => line.trim());
-                const events = [];
-                
-                lines.forEach(line => {{
-                    try {{
-                        const event = JSON.parse(line);
-                        events.push(event);
-                    }} catch {{
-                        events.push({{ error: 'Failed to parse', raw: line }});
-                    }}
-                }});
-                
-                const fullContent = events
-                    .filter(e => e.content)
-                    .map(e => e.content)
-                    .join('');
-                
-                return \`
-                    <div class="streaming-response-container">
-                        <div class="response-header">
-                            <span class="response-type">NDJSON Stream (Parsed)</span>
-                            <div class="response-actions">
-                                <button class="action-btn" onclick="toggleFullscreen(this)">
-                                    <i class="fas fa-expand"></i> Fullscreen
-                                </button>
-                            </div>
-                        </div>
-                        <div style="max-height: 400px; overflow-y: auto;">
-                            ${{events.map(event => {{
-                                if (event.error) {{
-                                    return \`<div class="stream-message stream-error">
-                                        <i class="fas fa-exclamation-triangle"></i> Parse Error
-                                    </div>\`;
-                                }}
-                                
-                                const timestamp = event.timestamp ? 
-                                    new Date(event.timestamp).toLocaleTimeString() : '';
-                                
-                                return \`
-                                    <div class="stream-message">
-                                        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                                            <span style="color: var(--accent); font-size: 11px;">
-                                                ${{event.type || 'message'}}
-                                            </span>
-                                            <span style="color: var(--text-muted); font-size: 11px;">
-                                                ${{timestamp}}
-                                            </span>
-                                        </div>
-                                        <div>${{escapeHtml(event.content || JSON.stringify(event))}}</div>
-                                    </div>
-                                \`;
-                            }}).join('')}}
-                        </div>
-                        ${{fullContent ? \`
-                            <div style="margin-top: 16px; padding: 16px; background: var(--bg-tertiary); border-radius: 8px;">
-                                <h5 style="margin: 0 0 8px 0; color: var(--accent); font-size: 14px;">
-                                    <i class="fas fa-comment-alt"></i> Complete Message:
-                                </h5>
-                                <div style="color: var(--text-primary); line-height: 1.6;">
-                                    ${{escapeHtml(fullContent)}}
-                                </div>
-                            </div>
-                        \` : ''}}
-                    </div>
-                \`;
-            }}
-            
-            // 🎨 Format JSON response (parsed mode)
-            function formatParsedJSONResponse(json) {{
-                if (json.response) {{
-                    return \`
-                        <div class="streaming-response-container">
-                            <div class="response-header">
-                                <span class="response-type">AI Response</span>
-                                <div class="response-actions">
-                                    <button class="action-btn" onclick="copyResponse(this)">
-                                        <i class="fas fa-copy"></i> Copy
-                                    </button>
-                                </div>
-                            </div>
-                            <div style="padding: 16px; background: var(--bg-tertiary); border-radius: 8px;">
-                                <div style="color: var(--text-primary); line-height: 1.6; white-space: pre-wrap;">
-                                    ${{escapeHtml(json.response)}}
-                                </div>
-                                ${{json.session ? \`
-                                    <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);">
-                                        <span style="color: var(--text-muted); font-size: 12px;">
-                                            Session: <code>${{json.session}}</code>
-                                        </span>
-                                    </div>
-                                \` : ''}}
-                            </div>
-                        </div>
-                    \`;
-                }}
-                
-                return \`<pre style="margin: 0;">${{JSON.stringify(json, null, 2)}}</pre>\`;
-            }}
-            
-            // 🛠️ Utility functions
-            function escapeHtml(text) {{
-                const div = document.createElement('div');
-                div.textContent = text;
-                return div.innerHTML;
-            }}
-            
-            function showToast(message, type = 'success') {{
-                const toast = document.createElement('div');
-                toast.className = \`toast ${{type}}\`;
-                toast.textContent = message;
-                document.body.appendChild(toast);
-                
-                setTimeout(() => {{
-                    toast.classList.add('hiding');
-                    setTimeout(() => toast.remove(), 300);
-                }}, 3000);
-            }}
-            
-            function copyResponse(button) {{
-                const container = button.closest('.streaming-response-container');
-                const text = container.querySelector('pre')?.textContent || 
-                           container.querySelector('.stream-message')?.textContent || '';
-                
-                navigator.clipboard.writeText(text).then(() => {{
-                    showToast('Response copied to clipboard!');
-                }});
-            }}
-            
-            // 🎯 Check API health
-            async function checkApiHealth() {{
-                try {{
-                    const response = await fetch('/health');
-                    const statusDot = document.querySelector('.status-dot');
-                    const statusText = document.querySelector('.connection-status span');
-                    
-                    if (response.ok) {{
-                        statusDot.style.background = '#10b981';
-                        statusText.textContent = 'API Connected';
-                    }} else {{
-                        statusDot.style.background = '#f59e0b';
-                        statusText.textContent = 'API Issues';
-                    }}
-                }} catch (error) {{
-                    const statusDot = document.querySelector('.status-dot');
-                    const statusText = document.querySelector('.connection-status span');
-                    statusDot.style.background = '#ef4444';
-                    statusText.textContent = 'API Disconnected';
-                }}
-            }}
-            
-            // 🎯 Export all responses
-            function exportAllResponses() {{
-                const responses = [];
-                document.querySelectorAll('.response-body').forEach((el, index) => {{
-                    responses.push({{
-                        index: index + 1,
-                        endpoint: el.closest('.opblock')?.querySelector('.opblock-summary-path')?.textContent || 'Unknown',
-                        content: el.textContent
-                    }});
-                }});
-                
-                if (responses.length === 0) {{
-                    showToast('No responses to export', 'error');
-                    return;
-                }}
-                
-                const blob = new Blob([JSON.stringify(responses, null, 2)], {{ type: 'application/json' }});
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = \`api-responses-${{new Date().toISOString()}}.json\`;
-                a.click();
-                URL.revokeObjectURL(url);
-                
-                showToast(\`Exported ${{responses.length}} responses!\`);
-            }}
-            
-            // 🎯 Add streaming controls to conversation endpoint
-            function addStreamingControls(content) {{
-                const controlsHTML = \`
-                    <div style="margin-top: 16px; padding: 12px; background: var(--bg-tertiary); border-radius: 8px; border: 1px solid var(--accent);">
-                        <h5 style="margin: 0 0 8px 0; color: var(--accent); font-size: 14px;">
-                            <i class="fas fa-play-circle"></i> Test Streaming Response
-                        </h5>
-                        <button class="btn" style="background: var(--accent);" onclick="testStreamingEndpoint()">
-                            Open Streaming Viewer
-                        </button>
-                    </div>
-                \`;
-                
-                const responseBody = document.querySelector('[data-path="/conversation"] .response-body');
-                if (responseBody && !responseBody.dataset.controlsAdded) {{
-                    responseBody.dataset.controlsAdded = 'true';
-                    responseBody.insertAdjacentHTML('beforeend', controlsHTML);
-                }}
-            }}
-            
-            // 🎯 Test streaming endpoint
-            function testStreamingEndpoint() {{
-                openStreamingViewer();
-                
-                // Get form data from the swagger UI
-                const form = document.querySelector('[data-path="/conversation"] form');
-                if (!form) {{
-                    showToast('Please try the endpoint first', 'error');
-                    return;
-                }}
-                
-                const formData = new FormData(form);
-                
-                // Close any existing connection
-                if (awesomeState.currentEventSource) {{
-                    awesomeState.currentEventSource.close();
-                }}
-                
-                // Build query string
-                const params = new URLSearchParams();
-                for (let [key, value] of formData.entries()) {{
-                    params.append(key, value);
-                }}
-                
-                const url = \`/conversation?${{params.toString()}}\`;
-                const eventSource = new EventSource(url);
-                awesomeState.currentEventSource = eventSource;
-                awesomeState.streamingActive = true;
-                awesomeState.accumulatedMessage = '';
-                
-                // Show streaming status
-                document.getElementById('streamingStatus').style.display = 'flex';
-                
-                eventSource.onmessage = (event) => {{
-                    if (event.data === '[DONE]') {{
-                        eventSource.close();
-                        awesomeState.streamingActive = false;
-                        document.getElementById('streamingStatus').style.display = 'none';
-                        showAccumulatedMessage();
-                        return;
-                    }}
-                    
-                    try {{
-                        const data = JSON.parse(event.data);
-                        if (data.choices?.[0]?.delta?.content) {{
-                            const content = data.choices[0].delta.content;
-                            awesomeState.accumulatedMessage += content;
-                            
-                            // Add chunk to display
-                            addStreamChunk(content, event.data);
-                        }}
-                    }} catch (e) {{
-                        // Handle non-JSON data
-                        addStreamChunk(event.data, event.data, true);
-                    }}
-                }};
-                
-                eventSource.onerror = (error) => {{
-                    console.error('Stream error:', error);
-                    eventSource.close();
-                    awesomeState.streamingActive = false;
-                    document.getElementById('streamingStatus').style.display = 'none';
-                    showToast('Stream connection error', 'error');
-                }};
-            }}
-            
-            // 🎯 Add stream chunk to display
-            function addStreamChunk(content, rawData, isRaw = false) {{
-                const container = document.getElementById('streamingContent');
-                const chunk = document.createElement('div');
-                chunk.className = awesomeState.streamRawMode ? 'stream-chunk raw' : 'stream-chunk';
-                
-                if (awesomeState.streamRawMode) {{
-                    chunk.innerHTML = \`
-                        <div class="chunk-header">
-                            <span>Raw Data</span>
-                            <span>${{new Date().toLocaleTimeString()}}</span>
-                        </div>
-                        <div class="chunk-content">${{escapeHtml('data: ' + rawData)}}</div>
-                    \`;
-                }} else {{
-                    chunk.innerHTML = \`
-                        <div class="chunk-header">
-                            <span>Chunk #${{container.children.length + 1}}</span>
-                            <span>${{new Date().toLocaleTimeString()}}</span>
-                        </div>
-                        <div class="chunk-content">${{escapeHtml(content)}}</div>
-                    \`;
-                }}
-                
-                container.appendChild(chunk);
-                container.scrollTop = container.scrollHeight;
-            }}
-            
-            // 🎯 Show accumulated message
-            function showAccumulatedMessage() {{
-                if (!awesomeState.accumulatedMessage) return;
-                
-                const container = document.getElementById('accumulatedMessageContainer');
-                container.innerHTML = \`
-                    <div class="accumulated-message">
-                        <h5><i class="fas fa-comment-alt"></i> Complete Message</h5>
-                        <div class="accumulated-content">${{escapeHtml(awesomeState.accumulatedMessage)}}</div>
-                    </div>
-                \`;
-            }}
-            
-            // 🎯 Streaming viewer controls
-            function openStreamingViewer() {{
-                document.getElementById('streamingViewer').style.display = 'flex';
-                clearStreamContent();
-            }}
-            
-            function closeStreamingViewer() {{
-                document.getElementById('streamingViewer').style.display = 'none';
-                if (awesomeState.currentEventSource) {{
-                    awesomeState.currentEventSource.close();
-                    awesomeState.currentEventSource = null;
-                }}
-            }}
-            
-            function toggleStreamRaw() {{
-                awesomeState.streamRawMode = !awesomeState.streamRawMode;
-                const btn = document.getElementById('streamRawBtn');
-                btn.classList.toggle('active');
-                showToast(awesomeState.streamRawMode ? 'Raw stream mode' : 'Parsed stream mode');
-            }}
-            
-            function clearStreamContent() {{
-                document.getElementById('streamingContent').innerHTML = '';
-                document.getElementById('accumulatedMessageContainer').innerHTML = '';
-                awesomeState.accumulatedMessage = '';
-            }}
-            
-            function exportStreamContent() {{
-                const chunks = [];
-                document.querySelectorAll('.stream-chunk').forEach(chunk => {{
-                    chunks.push(chunk.textContent);
-                }});
-                
-                if (chunks.length === 0) {{
-                    showToast('No stream content to export', 'error');
-                    return;
-                }}
-                
-                const blob = new Blob([chunks.join('\\n\\n')], {{ type: 'text/plain' }});
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = \`stream-export-${{new Date().toISOString()}}.txt\`;
-                a.click();
-                URL.revokeObjectURL(url);
-                
-                showToast('Stream content exported!');
-            }}
-            
-            // 🎯 Show keyboard shortcuts
-            function showKeyboardShortcuts() {{
-                const shortcuts = \`
-                    <div style="background: var(--bg-elevated); color: var(--text-primary); padding: 20px; border-radius: 8px;">
-                        <h3 style="margin-top: 0; color: var(--accent);">⌨️ Keyboard Shortcuts</h3>
-                        <p><strong>Ctrl/Cmd + K</strong> - Focus search</p>
-                        <p><strong>Ctrl/Cmd + R</strong> - Toggle raw mode</p>
-                        <p><strong>Ctrl/Cmd + E</strong> - Export responses</p>
-                        <p><strong>Ctrl/Cmd + S</strong> - Toggle streaming viewer</p>
-                        <p><strong>Esc</strong> - Close dialogs</p>
-                    </div>
-                \`;
-                
-                const modal = document.createElement('div');
-                modal.style.cssText = \`
-                    position: fixed;
-                    top: 50%;
-                    left: 50%;
-                    transform: translate(-50%, -50%);
-                    z-index: 10000;
-                    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
-                \`;
-                modal.innerHTML = shortcuts;
-                document.body.appendChild(modal);
-                
-                const closeModal = (e) => {{
-                    if (e.key === 'Escape' || e.type === 'click') {{
-                        modal.remove();
-                        document.removeEventListener('keydown', closeModal);
-                        document.removeEventListener('click', closeModal);
-                    }}
-                }};
-                
-                setTimeout(() => {{
-                    document.addEventListener('keydown', closeModal);
-                    document.addEventListener('click', closeModal);
-                }}, 100);
-            }}
-            
-            // 🌙 Toggle animations
-            function toggleAnimations() {{
-                awesomeState.animations = !awesomeState.animations;
-                document.body.style.setProperty('--animation-duration', awesomeState.animations ? '0.3s' : '0s');
-                showToast(awesomeState.animations ? 'Animations enabled' : 'Animations disabled');
-            }}
-            
-            // Export response helper
-            function exportResponse(format) {{
-                const responses = document.querySelectorAll('.response-body');
-                if (responses.length === 0) {{
-                    showToast('No responses to export', 'error');
-                    return;
-                }}
-                
-                const lastResponse = responses[responses.length - 1];
-                const content = lastResponse.textContent;
-                
-                const blob = new Blob([content], {{ type: format === 'json' ? 'application/json' : 'text/plain' }});
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = \`response-${{new Date().toISOString()}}.${{format === 'json' ? 'json' : 'txt'}}\`;
-                a.click();
-                URL.revokeObjectURL(url);
-                
-                showToast('Response exported!');
-            }}
-            
-            // Toggle fullscreen
-            function toggleFullscreen(element) {{
-                const container = element.closest('.streaming-response-container');
-                if (container) {{
-                    container.classList.toggle('fullscreen');
-                }}
-            }}
-            
-            // Auto-refresh connection status
-            setInterval(checkApiHealth, 30000);
-            </script>
-        </body>
-        </html>
-        """,
-        status_code=200
-    )
 
 @app.get("/redoc", include_in_schema=False)
 async def redoc_html():
@@ -5436,7 +3632,6 @@ _client_instance = None
 _http_client = None
 _client_lock = threading.Lock()
 
-# Replace your existing create_client() function with this version
 def create_client() -> AzureOpenAI:
     """
     Creates an AzureOpenAI client instance.
@@ -5472,12 +3667,21 @@ def create_client() -> AzureOpenAI:
         if _client_instance is not None:
             return _client_instance
         
-        # Try optimized client first (only if httpx is available)
+        # Check if h2 module is actually available
+        h2_available = False
         if HTTPX_AVAILABLE:
             try:
-                logging.info("Attempting to create optimized client with connection pooling...")
+                import h2
+                h2_available = True
+            except ImportError:
+                logging.warning("h2 module not available - HTTP/2 will be disabled")
+        
+        # Try optimized client first (only if httpx and h2 are available)
+        if HTTPX_AVAILABLE and h2_available:
+            try:
+                logging.info("Attempting to create optimized client with connection pooling and HTTP/2...")
                 
-                # Create optimized HTTP client
+                # Create optimized HTTP client with HTTP/2
                 _http_client = httpx.Client(
                     limits=httpx.Limits(
                         max_connections=10,
@@ -5508,14 +3712,13 @@ def create_client() -> AzureOpenAI:
                 )
                 
                 # Test the client with a minimal operation
-                # This ensures the client is actually working
                 test_client = _client_instance.with_options(timeout=5.0)
                 
-                logging.info("Successfully created optimized AzureOpenAI client")
+                logging.info("Successfully created optimized AzureOpenAI client with HTTP/2")
                 return _client_instance
                 
             except Exception as e:
-                logging.error(f"Failed to create optimized client: {type(e).__name__}: {e}")
+                logging.error(f"Failed to create optimized client with HTTP/2: {type(e).__name__}: {e}")
                 
                 # Clean up failed attempts
                 if _http_client:
@@ -5526,11 +3729,59 @@ def create_client() -> AzureOpenAI:
                     _http_client = None
                 _client_instance = None
         
-        # Fallback: Use YOUR EXACT simple function implementation
+        # Try with HTTP/1.1 if httpx is available but h2 is not
+        if HTTPX_AVAILABLE and not h2_available:
+            try:
+                logging.info("Creating optimized client with HTTP/1.1 (h2 not available)...")
+                
+                # Create HTTP client WITHOUT HTTP/2
+                _http_client = httpx.Client(
+                    limits=httpx.Limits(
+                        max_connections=10,
+                        max_keepalive_connections=5,
+                        keepalive_expiry=30.0,
+                    ),
+                    timeout=httpx.Timeout(
+                        timeout=120.0,
+                        connect=10.0,
+                        read=60.0,
+                        write=30.0,
+                        pool=5.0
+                    ),
+                    transport=httpx.HTTPTransport(
+                        retries=3,
+                        http2=False,  # Explicitly disable HTTP/2
+                    ),
+                    follow_redirects=True,
+                )
+                
+                _client_instance = AzureOpenAI(
+                    azure_endpoint=AZURE_ENDPOINT,
+                    api_key=AZURE_API_KEY,
+                    api_version=AZURE_API_VERSION,
+                    http_client=_http_client,
+                    max_retries=3,
+                )
+                
+                logging.info("Successfully created optimized AzureOpenAI client with HTTP/1.1")
+                return _client_instance
+                
+            except Exception as e:
+                logging.error(f"Failed to create HTTP/1.1 client: {type(e).__name__}: {e}")
+                
+                # Clean up
+                if _http_client:
+                    try:
+                        _http_client.close()
+                    except:
+                        pass
+                    _http_client = None
+                _client_instance = None
+        
+        # Final fallback: Use simple client (no custom http_client)
         try:
             logging.info("Creating simple AzureOpenAI client...")
             
-            # This is your exact simple implementation
             _client_instance = AzureOpenAI(
                 azure_endpoint=AZURE_ENDPOINT,
                 api_key=AZURE_API_KEY,
@@ -5544,7 +3795,6 @@ def create_client() -> AzureOpenAI:
             logging.critical(f"Failed to create even simple client: {type(e).__name__}: {e}")
             _client_instance = None
             raise
-
 def construct_download_url(request: Request, filename: str) -> str:
     """
     Construct the download URL for a file.
@@ -7258,10 +5508,10 @@ async def initiate_chat(
 
     # Create a vector store up front
     try:
-        vector_store =client.vector_stores.create(name=f"chat_init_store_{int(time.time())}")
+        vector_store = client.vector_stores.create(name=f"chat_init_store_{int(time.time())}")
         logging.info(f"Vector store created: {vector_store.id}")
     except Exception as e:
-        vector_store =client.beta.vector_stores.create(name=f"chat_init_store_{int(time.time())}")
+        vector_store = client.beta.vector_stores.create(name=f"chat_init_store_{int(time.time())}")
         logging.error(f"Creating vector store with beta: {e}")
     # Include file_search and add pandas_agent as a function tool
     assistant_tools = [
