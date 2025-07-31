@@ -328,9 +328,7 @@ CUSTOM_SWAGGER_CSS = """
 }
 
 body {
-    background: linear-gradient(-45deg, #f8f9fa, #ffffff, #f1f3f5, #e9ecef) !important;
-    background-size: 400% 400% !important;
-    animation: gradientShift 15s ease infinite !important;
+    background: #ffffff !important;  /* Force solid white background */
     margin: 0 !important;
     padding: 0 !important;
     min-height: 100vh !important;
@@ -1099,17 +1097,17 @@ def custom_openapi():
                                         "example": "Hello, can you help me analyze this data?",
                                         "title": "Prompt"
                                     },
-                                    "context": {
-                                        "type": "string",
-                                        "description": "Optional context for the conversation", 
-                                        "example": "I'm a financial analyst",
-                                        "title": "Context"
-                                    },
                                     "assistant": {
                                         "type": "string",
                                         "description": "Assistant ID",
                                         "example": "asst_xyz789",
                                         "title": "Assistant"
+                                    },
+                                    "context": {
+                                        "type": "string",
+                                        "description": "Additional context for stateless mode",
+                                        "example": "You are a data analyst",
+                                        "title": "Context"
                                     },
                                     "files": {
                                         "type": "array",
@@ -1117,91 +1115,10 @@ def custom_openapi():
                                             "type": "string",
                                             "format": "binary"
                                         },
-                                        "description": "Files to analyze with the query",
+                                        "description": "Multiple files to analyze with the query",
                                         "title": "Files"
                                     }
                                 }
-                            
-                            elif path == "/chat":
-                                # Define explicit schema for /chat POST
-                                new_properties = {
-                                    "session": {
-                                        "type": "string",
-                                        "description": "Session ID from /initiate-chat",
-                                        "example": "thread_abc123",
-                                        "title": "Session"
-                                    },
-                                    "prompt": {
-                                        "type": "string",
-                                        "description": "User message", 
-                                        "example": "Analyze the quarterly results",
-                                        "title": "Prompt"
-                                    },
-                                    "context": {
-                                        "type": "string",
-                                        "description": "Optional context for the conversation",
-                                        "example": "Focus on revenue trends", 
-                                        "title": "Context"
-                                    },
-                                    "assistant": {
-                                        "type": "string",
-                                        "description": "Assistant ID",
-                                        "example": "asst_xyz789",
-                                        "title": "Assistant"
-                                    },
-                                    "files": {
-                                        "type": "array",
-                                        "items": {
-                                            "type": "string",
-                                            "format": "binary"
-                                        },
-                                        "description": "Files to analyze with the query",
-                                        "title": "Files"
-                                    }
-                                }
-                            
-                            elif path == "/initiate-chat":
-                                # Define explicit schema for /initiate-chat POST
-                                new_properties = {
-                                    "file": {
-                                        "type": "string",
-                                        "format": "binary",
-                                        "description": "Initial file to process",
-                                        "title": "File"
-                                    },
-                                    "context": {
-                                        "type": "string",
-                                        "description": "User context or persona",
-                                        "example": "I am a data scientist working on sales analysis",
-                                        "title": "Context"
-                                    }
-                                }
-                            
-                            elif path == "/co-pilot":
-                                # Define explicit schema for /co-pilot POST
-                                new_properties = {
-                                    "assistant": {
-                                        "type": "string",
-                                        "description": "Existing Assistant ID",
-                                        "example": "asst_abc123",
-                                        "title": "Assistant",
-                                        "required": True
-                                    },
-                                    "vector_store": {
-                                        "type": "string",
-                                        "description": "Existing Vector Store ID",
-                                        "example": "vs_def456",
-                                        "title": "Vector Store",
-                                        "required": True
-                                    },
-                                    "context": {
-                                        "type": "string",
-                                        "description": "Optional context for the new session",
-                                        "example": "Continue our previous analysis",
-                                        "title": "Context"
-                                    }
-                                }
-                            
                             elif path == "/upload-file":
                                 # Define explicit schema for /upload-file POST
                                 new_properties = {
@@ -1209,81 +1126,62 @@ def custom_openapi():
                                         "type": "string",
                                         "format": "binary",
                                         "description": "File to upload",
-                                        "title": "File",
-                                        "required": True
+                                        "title": "File"
                                     },
                                     "assistant": {
                                         "type": "string",
                                         "description": "Assistant ID to attach file to",
-                                        "example": "asst_xyz789",
-                                        "title": "Assistant",
-                                        "required": True
+                                        "example": "asst_abc123",
+                                        "title": "Assistant"
                                     },
                                     "session": {
                                         "type": "string",
-                                        "description": "Session ID for context",
-                                        "example": "thread_abc123",
+                                        "description": "Session ID for context (optional)",
+                                        "example": "thread_xyz789",
                                         "title": "Session"
                                     },
                                     "context": {
                                         "type": "string",
-                                        "description": "File context description",
+                                        "description": "File context description (optional)",
                                         "example": "This is Q4 2023 financial data",
                                         "title": "Context"
                                     },
                                     "prompt": {
                                         "type": "string",
-                                        "description": "Specific prompt for image analysis",
-                                        "example": "What objects are visible in this image?",
+                                        "description": "Specific prompt for image analysis (optional)",
+                                        "example": "What objects are in this image?",
                                         "title": "Prompt"
                                     }
                                 }
-                            
-                            elif path == "/completion":
-                                # Define explicit schema for /completion POST
+                                
+                                # Update the required fields
+                                schema["required"] = ["file", "assistant"]
+                            elif path == "/chat":
+                                # Define explicit schema for /chat POST
                                 new_properties = {
+                                    "session": {
+                                        "type": "string",
+                                        "description": "Session ID",
+                                        "example": "thread_abc123",
+                                        "title": "Session"
+                                    },
                                     "prompt": {
                                         "type": "string",
-                                        "description": "The user's message or question",
-                                        "example": "Explain quantum computing in simple terms",
-                                        "title": "Prompt",
-                                        "required": True
+                                        "description": "User message", 
+                                        "example": "What insights can you provide?",
+                                        "title": "Prompt"
                                     },
-                                    "model": {
+                                    "assistant": {
                                         "type": "string",
-                                        "description": "Model to use",
-                                        "default": "gpt-4.1",
-                                        "example": "gpt-4.1",
-                                        "title": "Model"
+                                        "description": "Assistant ID",
+                                        "example": "asst_xyz789",
+                                        "title": "Assistant"
                                     },
-                                    "temperature": {
-                                        "type": "number",
-                                        "description": "Response randomness (0-2)",
-                                        "default": 0.7,
-                                        "minimum": 0,
-                                        "maximum": 2,
-                                        "example": 0.7,
-                                        "title": "Temperature"
-                                    },
-                                    "max_tokens": {
-                                        "type": "integer",
-                                        "description": "Maximum response length",
-                                        "default": 1000,
-                                        "example": 1000,
-                                        "title": "Max Tokens"
-                                    },
-                                    "system_message": {
+                                    "context": {
                                         "type": "string",
-                                        "description": "Custom system prompt",
-                                        "example": "You are a helpful coding assistant",
-                                        "title": "System Message"
-                                    },
-                                    "output_format": {
-                                        "type": "string",
-                                        "description": "Output format for structured data",
-                                        "enum": ["text", "csv", "excel", "docx"],
-                                        "default": "text",
-                                        "title": "Output Format"
+                                        "description": "Additional context",
+                                        "example": "Focus on financial metrics",
+                                        "title": "Context"
                                     },
                                     "files": {
                                         "type": "array",
@@ -1291,126 +1189,26 @@ def custom_openapi():
                                             "type": "string",
                                             "format": "binary"
                                         },
-                                        "description": "Files to analyze",
+                                        "description": "Multiple files to analyze with the query",
                                         "title": "Files"
                                     }
                                 }
-                            
-                            elif path == "/extract-reviews":
-                                # Define explicit schema for /extract-reviews POST
+                                
+                            elif path == "/completion":
+                                # Define explicit schema for /completion POST
                                 new_properties = {
-                                    "file": {
-                                        "type": "string",
-                                        "format": "binary",
-                                        "description": "File containing reviews",
-                                        "title": "File"
-                                    },
-                                    "columns": {
-                                        "type": "string",
-                                        "description": "Comma-separated column names",
-                                        "default": "user,review,rating,date,source",
-                                        "example": "customer_name,feedback,rating,product,date",
-                                        "title": "Columns"
-                                    },
                                     "prompt": {
                                         "type": "string",
-                                        "description": "Custom extraction instructions",
-                                        "example": "Extract customer feedback with sentiment analysis",
+                                        "description": "The prompt/question to send to the AI",
+                                        "example": "Explain quantum computing in simple terms",
                                         "title": "Prompt"
                                     },
                                     "model": {
                                         "type": "string",
-                                        "description": "Model to use",
-                                        "default": "gpt-4.1",
-                                        "example": "gpt-4.1",
-                                        "title": "Model"
-                                    },
-                                    "temperature": {
-                                        "type": "number",
-                                        "description": "Extraction precision (0-1)",
-                                        "default": 0.1,
-                                        "minimum": 0,
-                                        "maximum": 1,
-                                        "example": 0.1,
-                                        "title": "Temperature"
-                                    },
-                                    "output_format": {
-                                        "type": "string",
-                                        "description": "Output format",
-                                        "enum": ["csv", "excel"],
-                                        "default": "csv",
-                                        "title": "Output Format"
-                                    },
-                                    "mode": {
-                                        "type": "string",
-                                        "description": "Processing mode",
-                                        "enum": ["extract", "generate", "auto"],
-                                        "default": "auto",
-                                        "title": "Mode"
-                                    },
-                                    "rows_to_generate": {
-                                        "type": "integer",
-                                        "description": "Number of rows to generate (generate mode)",
-                                        "default": 10,
-                                        "example": 50,
-                                        "title": "Rows to Generate"
-                                    }
-                                }
-                            
-                            elif path == "/extract-data":
-                                # Define explicit schema for /extract-data POST
-                                new_properties = {
-                                    "prompt": {
-                                        "type": "string",
-                                        "description": "Data extraction or generation instructions",
-                                        "example": "Extract product information with prices",
-                                        "title": "Prompt",
-                                        "required": True
-                                    },
-                                    "mode": {
-                                        "type": "string",
-                                        "description": "Processing mode",
-                                        "enum": ["extract", "generate", "auto"],
-                                        "default": "auto",
-                                        "title": "Mode"
-                                    },
-                                    "output_format": {
-                                        "type": "string",
-                                        "description": "Output format",
-                                        "enum": ["csv", "excel", "json"],
-                                        "default": "excel",
-                                        "title": "Output Format"
-                                    },
-                                    "rows_to_generate": {
-                                        "type": "integer",
-                                        "description": "Number of rows to generate",
-                                        "default": 10,
-                                        "example": 100,
-                                        "title": "Rows to Generate"
-                                    },
-                                    "raw_text": {
-                                        "type": "string",
-                                        "description": "Raw text data to extract from",
-                                        "example": "Product A: $50, Product B: $75",
-                                        "title": "Raw Text"
-                                    }
-                                }
-                            
-                            elif path == "/complete-data":
-                                # Define explicit schema for /complete-data POST
-                                new_properties = {
-                                    "prompt": {
-                                        "type": "string",
-                                        "description": "AI prompt for data processing",
-                                        "example": "Generate sales data for Q4 2023",
-                                        "title": "Prompt",
-                                        "required": True
-                                    },
-                                    "model": {
-                                        "type": "string",
-                                        "description": "Model to use",
-                                        "default": "gpt-4",
-                                        "example": "gpt-4",
+                                        "description": "AI model to use",
+                                        "default": "gpt-4.1-mini",
+                                        "enum": ["gpt-4o", "gpt-4", "gpt-4.1", "gpt-4.1-mini"],
+                                        "example": "gpt-4.1-mini",
                                         "title": "Model"
                                     },
                                     "temperature": {
@@ -1431,8 +1229,8 @@ def custom_openapi():
                                     },
                                     "context": {
                                         "type": "string",
-                                        "description": "Additional context",
-                                        "example": "Focus on tech products",
+                                        "description": "System context or personality",
+                                        "example": "You are a helpful assistant",
                                         "title": "Context"
                                     },
                                     "file": {
@@ -1442,42 +1240,136 @@ def custom_openapi():
                                         "title": "File"
                                     }
                                 }
+                                
+                           elif path == "/initiate-chat":
+                                # Define explicit schema for /initiate-chat POST
+                                new_properties = {
+                                    "file": {
+                                        "type": "string",
+                                        "format": "binary",
+                                        "description": "Initial file to process",
+                                        "title": "File",
+                                        "nullable": True,
+                                        "x-nullable": True
+                                    },
+                                    "context": {
+                                        "type": "string",
+                                        "description": "User context or persona",
+                                        "example": "I am a data analyst working on quarterly reports",
+                                        "title": "Context"
+                                    }
+                                }
+                                
+                                # Update the schema properties
+                                schema["properties"] = new_properties
+                                
+                                # Ensure neither field is marked as required
+                                if "required" in schema:
+                                    schema["required"] = [field for field in schema.get("required", []) if field not in ["file", "context"]]
                             
                             elif path == "/test-comprehensive":
                                 # Define explicit schema for /test-comprehensive POST
                                 new_properties = {
-                                    "feature": {
+                                    "test_mode": {
                                         "type": "string",
-                                        "description": "Feature to test",
-                                        "enum": ["basic", "context", "file_handling", "error_scenarios", "all"],
+                                        "description": "Test mode",
                                         "default": "all",
-                                        "title": "Feature"
+                                        "enum": ["all", "long_thread", "concurrent", "same_thread", "scaling", "tools"],
+                                        "title": "Test Mode"
                                     },
-                                    "test_file": {
-                                        "type": "string",
-                                        "format": "binary",
-                                        "description": "Test file for file handling tests",
-                                        "title": "Test File"
+                                    "test_duration": {
+                                        "type": "integer",
+                                        "description": "Test duration in seconds",
+                                        "default": 60,
+                                        "minimum": 10,
+                                        "maximum": 300,
+                                        "title": "Test Duration"
+                                    },
+                                    "concurrent_users": {
+                                        "type": "integer",
+                                        "description": "Number of concurrent users",
+                                        "default": 5,
+                                        "minimum": 1,
+                                        "maximum": 20,
+                                        "title": "Concurrent Users"
+                                    },
+                                    "messages_per_thread": {
+                                        "type": "integer",
+                                        "description": "Messages for long thread test",
+                                        "default": 60,
+                                        "minimum": 10,
+                                        "maximum": 200,
+                                        "title": "Messages Per Thread"
+                                    },
+                                    "verbose": {
+                                        "type": "boolean",
+                                        "description": "Include detailed logs",
+                                        "default": True,
+                                        "title": "Verbose"
                                     }
                                 }
                             
                             else:
-                                # For other endpoints, process properties normally
+                                # For other POST endpoints, use the existing logic
                                 for prop_name, prop_value in properties.items():
-                                    if isinstance(prop_value, dict):
-                                        if prop_value.get("type") == "array" and "items" in prop_value:
-                                            if prop_value["items"].get("type") == "string" and prop_value["items"].get("format") == "binary":
-                                                # This is a file array parameter
-                                                description = prop_value.get("description", f"Upload {prop_name}")
-                                                title = prop_value.get("title", prop_name.replace("_", " ").title())
-                                                
-                                                new_prop = {
-                                                    "type": "array",
-                                                    "items": {
-                                                        "type": "string",
-                                                        "format": "binary"
-                                                    }
-                                                }
+                                    # Check if this is a file-related field
+                                    is_file_field = False
+                                    
+                                    # Enhanced file field detection (PRESERVED FROM ORIGINAL)
+                                    if prop_name in ["file", "files"]:
+                                        is_file_field = True
+                                    elif isinstance(prop_value, dict):
+                                        # Check anyOf structure for file fields
+                                        if "anyOf" in prop_value:
+                                            for option in prop_value.get("anyOf", []):
+                                                if isinstance(option, dict):
+                                                    items = option.get("items", {})
+                                                    if isinstance(items, dict) and items.get("format") == "binary":
+                                                        is_file_field = True
+                                                        break
+                                    
+                                    # Process the field based on type
+                                    if is_file_field:
+                                        if prop_name == "file":
+                                            new_properties[prop_name] = {
+                                                "type": "string",
+                                                "format": "binary",
+                                                "description": prop_value.get("description", "File to upload"),
+                                                "title": prop_value.get("title", "File")
+                                            }
+                                        else:  # files
+                                            new_properties[prop_name] = {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "string",
+                                                    "format": "binary"
+                                                },
+                                                "description": prop_value.get("description", "Files to upload"),
+                                                "title": prop_value.get("title", "Files")
+                                            }
+                                    else:
+                                        # Handle non-file fields - clean up anyOf structures (PRESERVED FROM ORIGINAL)
+                                        if isinstance(prop_value, dict) and "anyOf" in prop_value:
+                                            # Extract base type and properties
+                                            base_type = None
+                                            base_props = {}
+                                            description = prop_value.get("description", "")
+                                            title = prop_value.get("title", "")
+                                            
+                                            # Analyze anyOf options
+                                            for option in prop_value["anyOf"]:
+                                                if isinstance(option, dict) and option.get("type") != "null":
+                                                    base_type = option.get("type")
+                                                    # Copy all properties except type
+                                                    for key, value in option.items():
+                                                        if key not in ["type", "description", "title"]:
+                                                            base_props[key] = value
+                                                    break
+                                            
+                                            if base_type:
+                                                # Reconstruct cleaner schema
+                                                new_prop = {"type": base_type}
+                                                new_prop.update(base_props)
                                                 
                                                 # Add metadata
                                                 if description:
@@ -1487,43 +1379,159 @@ def custom_openapi():
                                                     
                                                 new_properties[prop_name] = new_prop
                                             else:
-                                                # Keep array types as-is
+                                                # Fallback if we can't determine type
                                                 new_properties[prop_name] = prop_value
-                                        elif prop_value.get("anyOf"):
-                                            # Handle Union types (like file upload fields)
-                                            for option in prop_value["anyOf"]:
-                                                if isinstance(option, dict) and option.get("type") == "string" and option.get("format") == "binary":
-                                                    # This is a file upload parameter
-                                                    description = prop_value.get("description", f"Upload {prop_name}")
-                                                    title = prop_value.get("title", prop_name.replace("_", " ").title())
-                                                    
-                                                    new_prop = {
-                                                        "type": "string",
-                                                        "format": "binary"
-                                                    }
-                                                    
-                                                    # Add metadata
-                                                    if description:
-                                                        new_prop["description"] = description
-                                                    if title:
-                                                        new_prop["title"] = title
-                                                        
-                                                    new_properties[prop_name] = new_prop
-                                                    break
                                         else:
                                             # Keep simple types as-is
                                             new_properties[prop_name] = prop_value
+                        
+                        else:
+                            # For GET and other methods, use existing logic (PRESERVED FROM ORIGINAL)
+                            for prop_name, prop_value in properties.items():
+                                # Check if this is a file-related field
+                                is_file_field = False
+                                
+                                # Enhanced file field detection
+                                if prop_name in ["file", "files"]:
+                                    is_file_field = True
+                                elif isinstance(prop_value, dict):
+                                    # Check anyOf structure for file fields
+                                    if "anyOf" in prop_value:
+                                        for option in prop_value.get("anyOf", []):
+                                            if isinstance(option, dict):
+                                                items = option.get("items", {})
+                                                if isinstance(items, dict) and items.get("format") == "binary":
+                                                    is_file_field = True
+                                                    break
+                                
+                                # Process the field based on type
+                                if is_file_field:
+                                    if prop_name == "file":
+                                        new_properties[prop_name] = {
+                                            "type": "string",
+                                            "format": "binary",
+                                            "description": prop_value.get("description", "File to upload")
+                                        }
+                                    else:  # files
+                                        new_properties[prop_name] = {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "string",
+                                                "format": "binary"
+                                            },
+                                            "description": prop_value.get("description", "Files to upload")
+                                        }
+                                else:
+                                    # Handle non-file fields - clean up anyOf structures
+                                    if isinstance(prop_value, dict) and "anyOf" in prop_value:
+                                        # Extract base type and properties
+                                        base_type = None
+                                        base_props = {}
+                                        description = prop_value.get("description", "")
+                                        title = prop_value.get("title", "")
+                                        
+                                        # Analyze anyOf options
+                                        for option in prop_value["anyOf"]:
+                                            if isinstance(option, dict) and option.get("type") != "null":
+                                                base_type = option.get("type")
+                                                # Copy all properties except type
+                                                for key, value in option.items():
+                                                    if key not in ["type", "description", "title"]:
+                                                        base_props[key] = value
+                                                break
+                                        
+                                        if base_type:
+                                            # Reconstruct cleaner schema
+                                            new_prop = {"type": base_type}
+                                            new_prop.update(base_props)
+                                            
+                                            # Add metadata
+                                            if description:
+                                                new_prop["description"] = description
+                                            if title:
+                                                new_prop["title"] = title
+                                                
+                                            new_properties[prop_name] = new_prop
+                                        else:
+                                            # Fallback if we can't determine type
+                                            new_properties[prop_name] = prop_value
                                     else:
-                                        # Keep non-dict types as-is
+                                        # Keep simple types as-is
                                         new_properties[prop_name] = prop_value
                         
                         # Update schema with fixed properties
                         schema["properties"] = new_properties
                         
-                        # Also check if there are required fields that need adjustment
+                        # Also check if there are required fields that need adjustment (PRESERVED FROM ORIGINAL)
                         if "required" in schema:
                             # Keep required fields as is - the schema already handles this correctly
                             pass
+    
+    # Add enhanced streaming response documentation (PRESERVED FROM ORIGINAL)
+    streaming_paths = ["/conversation", "/test-comprehensive"]
+    
+    for path in streaming_paths:
+        if path in openapi_schema.get("paths", {}):
+            for method in openapi_schema["paths"][path]:
+                if "responses" in openapi_schema["paths"][path][method]:
+                    # Add comprehensive streaming response documentation
+                    openapi_schema["paths"][path][method]["responses"]["200"] = {
+                        "description": "Streaming response via Server-Sent Events (SSE) or NDJSON",
+                        "content": {
+                            "text/event-stream": {
+                                "schema": {
+                                    "type": "string",
+                                    "example": 'data: {"id": "chatcmpl-xxx", "object": "chat.completion.chunk", "created": 1234567890, "model": "gpt-4", "choices": [{"index": 0, "delta": {"content": "Hello"}, "finish_reason": null}]}\ndata: {"id": "chatcmpl-xxx", "object": "chat.completion.chunk", "created": 1234567890, "model": "gpt-4", "choices": [{"index": 0, "delta": {"content": " world!"}, "finish_reason": null}]}\ndata: [DONE]\n',
+                                    "description": "Server-Sent Events stream with chat completion chunks"
+                                }
+                            },
+                            "application/x-ndjson": {
+                                "schema": {
+                                    "type": "string", 
+                                    "example": '{"type": "test_started", "timestamp": "2024-01-01T00:00:00Z", "data": {"test_name": "concurrent_users", "parameters": {"users": 5}}}\n{"type": "progress", "timestamp": "2024-01-01T00:00:05Z", "data": {"completed": 2, "total": 5, "message": "Testing concurrent user 2..."}}\n{"type": "test_completed", "timestamp": "2024-01-01T00:00:10Z", "data": {"status": "passed", "summary": "All tests completed successfully"}}\n',
+                                    "description": "Newline-delimited JSON stream for real-time updates"
+                                }
+                            }
+                        }
+                    }
+    
+    # Add detailed examples for conversation endpoint (PRESERVED FROM ORIGINAL)
+    conversation_endpoints = ["/conversation", "/chat"]
+    for endpoint in conversation_endpoints:
+        if endpoint in openapi_schema.get("paths", {}):
+            for method in ["get", "post"]:
+                if method in openapi_schema["paths"][endpoint]:
+                    operation = openapi_schema["paths"][endpoint][method]
+                    
+                    # Enhance description with usage examples
+                    current_desc = operation.get("description", "")
+                    enhanced_desc = current_desc + """
+
+**Conversation Modes:**
+
+1. **Session-based with Assistant & Thread:**
+   - `session`: Valid thread ID from /initiate-chat
+   - `assistant`: Assistant ID
+   - `prompt`: Your message
+   
+2. **Invalid Thread Recovery:**
+   - System automatically creates new thread if invalid ID provided
+   - Returns new thread ID in response
+
+3. **Context-only Mode (Stateless):**
+   - `context`: User context or persona
+   - `prompt`: Your message
+   - No session/assistant needed
+
+4. **File-enhanced Mode (POST only):**
+   - Include files with your query
+   - System analyzes files in context
+
+**Response Format:**
+- `/conversation`: SSE stream with real-time chunks
+- `/chat`: Complete JSON response after processing"""
+                    
+                    operation["description"] = enhanced_desc
     
     # Cache the schema
     app.openapi_schema = openapi_schema
@@ -1610,7 +1618,6 @@ tags_metadata = [
         "description": "File upload, download, and management endpoints",
     },
 ]
-
 @app.get("/redoc", include_in_schema=False)
 async def redoc_html():
     """Serve ReDoc with native light theme"""
@@ -1626,13 +1633,19 @@ async def redoc_html():
                 body {{
                     margin: 0;
                     padding: 0;
+                    background-color: #ffffff !important;  /* Force white background */
+                }}
+                #redoc-container {{
+                    height: 100vh;
+                    overflow: auto;
+                    background-color: #ffffff !important;  /* Force white background */
                 }}
             </style>
         </head>
         <body>
             <div id="redoc-container"></div>
             
-            <!-- Redoc standalone bundle -->
+            <!-- Redoc standalone bundle - FIXED URL -->
             <script src="https://cdn.jsdelivr.net/npm/redoc@2.0.0/bundles/redoc.standalone.js"></script>
             
             <script>
@@ -1640,17 +1653,16 @@ async def redoc_html():
                 Redoc.init('/openapi.json', {{
                     theme: {{
                         // Use ReDoc's built-in light theme
-                        // Change to 'dark' if you want dark mode
                         mode: 'light',
                         
-                        // Optional: Customize colors to match your brand
+                        // Customize colors to match your brand
                         colors: {{
                             primary: {{
                                 main: '#5c7cfa'  // Match your Swagger accent color
                             }}
                         }},
                         
-                        // Optional: Customize fonts
+                        // Customize fonts
                         typography: {{
                             fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
                             code: {{
