@@ -1241,7 +1241,7 @@ def custom_openapi():
                                     }
                                 }
                                 
-                           elif path == "/initiate-chat":
+                            elif path == "/initiate-chat":
                                 # Define explicit schema for /initiate-chat POST
                                 new_properties = {
                                     "file": {
