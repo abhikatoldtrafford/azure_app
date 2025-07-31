@@ -938,24 +938,19 @@ body, body *, .swagger-ui, .swagger-ui * {
 </style>
 """
 
-
 @app.get("/docs", include_in_schema=False)
 async def custom_swagger_ui_html():
     """
     Simplified Swagger UI with custom styling only.
-    - Clean, modern interface with premium design
-    - All endpoints fully functional
-    - Streaming support built into /conversation endpoint
     """
-    return HTMLResponse(
-        content=f"""
+    html_template = '''
         <!DOCTYPE html>
         <html>
         <head>
-            <title>{app.title} - Swagger UI</title>
+            <title>{title} - Swagger UI</title>
             <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css">
             <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-            {CUSTOM_SWAGGER_CSS}
+            {custom_css}
         </head>
         <body>
             <div id="swagger-ui"></div>
@@ -963,8 +958,8 @@ async def custom_swagger_ui_html():
             <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
             <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-standalone-preset.js"></script>
             <script>
-            window.onload = function() {
-                window.ui = SwaggerUIBundle({
+            window.onload = function() {{
+                window.ui = SwaggerUIBundle({{
                     url: "/openapi.json",
                     dom_id: '#swagger-ui',
                     deepLinking: true,
@@ -981,21 +976,23 @@ async def custom_swagger_ui_html():
                     filter: true,
                     persistAuthorization: true,
                     tryItOutEnabled: true,
-                    supportedSubmitMethods: ['get', 'post', 'put', 'delete', 'patch'],
-                    onComplete: function() {
-                        console.log("Azure CoPilot V2 API loaded successfully!");
-                    }
-                });
-            };
+                    supportedSubmitMethods: ['get', 'post', 'put', 'delete', 'patch']
+                }});
+            }};
             </script>
         </body>
         </html>
-        """,
+    '''
+    
+    return HTMLResponse(
+        content=html_template.format(
+            title=app.title,
+            custom_css=CUSTOM_SWAGGER_CSS
+        ),
         headers={
             "Content-Type": "text/html; charset=utf-8",
         }
     )
-
 tags_metadata = [
     {
         "name": "System",
@@ -1150,7 +1147,7 @@ def custom_openapi():
         tags=tags_metadata
     )
     
-    # Fix file upload parameters in the schema - PRESERVED
+    # Fix file upload parameters in the schema
     if "paths" in openapi_schema:
         for path, methods in openapi_schema["paths"].items():
             for method, operation in methods.items():
@@ -1163,7 +1160,7 @@ def custom_openapi():
                         # Create a new properties dict to avoid modifying during iteration
                         new_properties = {}
                         
-                        # ENHANCED: Add specific schemas for known POST endpoints - PRESERVED
+                        # ENHANCED: Add specific schemas for known POST endpoints
                         if method == "post":
                             if path == "/conversation":
                                 # Define explicit schema for /conversation POST
@@ -1192,13 +1189,17 @@ def custom_openapi():
                                         "example": "asst_xyz789",
                                         "title": "Assistant"
                                     },
-                                    "file": {
-                                        "type": "string",
-                                        "format": "binary",
-                                        "description": "File to include in the conversation",
-                                        "title": "File"
+                                    "files": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string",
+                                            "format": "binary"
+                                        },
+                                        "description": "Files to analyze with the query",
+                                        "title": "Files"
                                     }
                                 }
+                            
                             elif path == "/chat":
                                 # Define explicit schema for /chat POST
                                 new_properties = {
@@ -1226,15 +1227,320 @@ def custom_openapi():
                                         "example": "asst_xyz789",
                                         "title": "Assistant"
                                     },
+                                    "files": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string",
+                                            "format": "binary"
+                                        },
+                                        "description": "Files to analyze with the query",
+                                        "title": "Files"
+                                    }
+                                }
+                            
+                            elif path == "/initiate-chat":
+                                # Define explicit schema for /initiate-chat POST
+                                new_properties = {
                                     "file": {
                                         "type": "string",
                                         "format": "binary",
-                                        "description": "File to include in the conversation",
+                                        "description": "Initial file to process",
+                                        "title": "File"
+                                    },
+                                    "context": {
+                                        "type": "string",
+                                        "description": "User context or persona",
+                                        "example": "I am a data scientist working on sales analysis",
+                                        "title": "Context"
+                                    }
+                                }
+                            
+                            elif path == "/co-pilot":
+                                # Define explicit schema for /co-pilot POST
+                                new_properties = {
+                                    "assistant": {
+                                        "type": "string",
+                                        "description": "Existing Assistant ID",
+                                        "example": "asst_abc123",
+                                        "title": "Assistant",
+                                        "required": True
+                                    },
+                                    "vector_store": {
+                                        "type": "string",
+                                        "description": "Existing Vector Store ID",
+                                        "example": "vs_def456",
+                                        "title": "Vector Store",
+                                        "required": True
+                                    },
+                                    "context": {
+                                        "type": "string",
+                                        "description": "Optional context for the new session",
+                                        "example": "Continue our previous analysis",
+                                        "title": "Context"
+                                    }
+                                }
+                            
+                            elif path == "/upload-file":
+                                # Define explicit schema for /upload-file POST
+                                new_properties = {
+                                    "file": {
+                                        "type": "string",
+                                        "format": "binary",
+                                        "description": "File to upload",
+                                        "title": "File",
+                                        "required": True
+                                    },
+                                    "assistant": {
+                                        "type": "string",
+                                        "description": "Assistant ID to attach file to",
+                                        "example": "asst_xyz789",
+                                        "title": "Assistant",
+                                        "required": True
+                                    },
+                                    "session": {
+                                        "type": "string",
+                                        "description": "Session ID for context",
+                                        "example": "thread_abc123",
+                                        "title": "Session"
+                                    },
+                                    "context": {
+                                        "type": "string",
+                                        "description": "File context description",
+                                        "example": "This is Q4 2023 financial data",
+                                        "title": "Context"
+                                    },
+                                    "prompt": {
+                                        "type": "string",
+                                        "description": "Specific prompt for image analysis",
+                                        "example": "What objects are visible in this image?",
+                                        "title": "Prompt"
+                                    }
+                                }
+                            
+                            elif path == "/completion":
+                                # Define explicit schema for /completion POST
+                                new_properties = {
+                                    "prompt": {
+                                        "type": "string",
+                                        "description": "The user's message or question",
+                                        "example": "Explain quantum computing in simple terms",
+                                        "title": "Prompt",
+                                        "required": True
+                                    },
+                                    "model": {
+                                        "type": "string",
+                                        "description": "Model to use",
+                                        "default": "gpt-4.1",
+                                        "example": "gpt-4.1",
+                                        "title": "Model"
+                                    },
+                                    "temperature": {
+                                        "type": "number",
+                                        "description": "Response randomness (0-2)",
+                                        "default": 0.7,
+                                        "minimum": 0,
+                                        "maximum": 2,
+                                        "example": 0.7,
+                                        "title": "Temperature"
+                                    },
+                                    "max_tokens": {
+                                        "type": "integer",
+                                        "description": "Maximum response length",
+                                        "default": 1000,
+                                        "example": 1000,
+                                        "title": "Max Tokens"
+                                    },
+                                    "system_message": {
+                                        "type": "string",
+                                        "description": "Custom system prompt",
+                                        "example": "You are a helpful coding assistant",
+                                        "title": "System Message"
+                                    },
+                                    "output_format": {
+                                        "type": "string",
+                                        "description": "Output format for structured data",
+                                        "enum": ["text", "csv", "excel", "docx"],
+                                        "default": "text",
+                                        "title": "Output Format"
+                                    },
+                                    "files": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "string",
+                                            "format": "binary"
+                                        },
+                                        "description": "Files to analyze",
+                                        "title": "Files"
+                                    }
+                                }
+                            
+                            elif path == "/extract-reviews":
+                                # Define explicit schema for /extract-reviews POST
+                                new_properties = {
+                                    "file": {
+                                        "type": "string",
+                                        "format": "binary",
+                                        "description": "File containing reviews",
+                                        "title": "File"
+                                    },
+                                    "columns": {
+                                        "type": "string",
+                                        "description": "Comma-separated column names",
+                                        "default": "user,review,rating,date,source",
+                                        "example": "customer_name,feedback,rating,product,date",
+                                        "title": "Columns"
+                                    },
+                                    "prompt": {
+                                        "type": "string",
+                                        "description": "Custom extraction instructions",
+                                        "example": "Extract customer feedback with sentiment analysis",
+                                        "title": "Prompt"
+                                    },
+                                    "model": {
+                                        "type": "string",
+                                        "description": "Model to use",
+                                        "default": "gpt-4.1",
+                                        "example": "gpt-4.1",
+                                        "title": "Model"
+                                    },
+                                    "temperature": {
+                                        "type": "number",
+                                        "description": "Extraction precision (0-1)",
+                                        "default": 0.1,
+                                        "minimum": 0,
+                                        "maximum": 1,
+                                        "example": 0.1,
+                                        "title": "Temperature"
+                                    },
+                                    "output_format": {
+                                        "type": "string",
+                                        "description": "Output format",
+                                        "enum": ["csv", "excel"],
+                                        "default": "csv",
+                                        "title": "Output Format"
+                                    },
+                                    "mode": {
+                                        "type": "string",
+                                        "description": "Processing mode",
+                                        "enum": ["extract", "generate", "auto"],
+                                        "default": "auto",
+                                        "title": "Mode"
+                                    },
+                                    "rows_to_generate": {
+                                        "type": "integer",
+                                        "description": "Number of rows to generate (generate mode)",
+                                        "default": 10,
+                                        "example": 50,
+                                        "title": "Rows to Generate"
+                                    }
+                                }
+                            
+                            elif path == "/extract-data":
+                                # Define explicit schema for /extract-data POST
+                                new_properties = {
+                                    "prompt": {
+                                        "type": "string",
+                                        "description": "Data extraction or generation instructions",
+                                        "example": "Extract product information with prices",
+                                        "title": "Prompt",
+                                        "required": True
+                                    },
+                                    "mode": {
+                                        "type": "string",
+                                        "description": "Processing mode",
+                                        "enum": ["extract", "generate", "auto"],
+                                        "default": "auto",
+                                        "title": "Mode"
+                                    },
+                                    "output_format": {
+                                        "type": "string",
+                                        "description": "Output format",
+                                        "enum": ["csv", "excel", "json"],
+                                        "default": "excel",
+                                        "title": "Output Format"
+                                    },
+                                    "rows_to_generate": {
+                                        "type": "integer",
+                                        "description": "Number of rows to generate",
+                                        "default": 10,
+                                        "example": 100,
+                                        "title": "Rows to Generate"
+                                    },
+                                    "raw_text": {
+                                        "type": "string",
+                                        "description": "Raw text data to extract from",
+                                        "example": "Product A: $50, Product B: $75",
+                                        "title": "Raw Text"
+                                    }
+                                }
+                            
+                            elif path == "/complete-data":
+                                # Define explicit schema for /complete-data POST
+                                new_properties = {
+                                    "prompt": {
+                                        "type": "string",
+                                        "description": "AI prompt for data processing",
+                                        "example": "Generate sales data for Q4 2023",
+                                        "title": "Prompt",
+                                        "required": True
+                                    },
+                                    "model": {
+                                        "type": "string",
+                                        "description": "Model to use",
+                                        "default": "gpt-4",
+                                        "example": "gpt-4",
+                                        "title": "Model"
+                                    },
+                                    "temperature": {
+                                        "type": "number",
+                                        "description": "Creativity level (0-1)",
+                                        "default": 0.3,
+                                        "minimum": 0,
+                                        "maximum": 1,
+                                        "example": 0.3,
+                                        "title": "Temperature"
+                                    },
+                                    "max_tokens": {
+                                        "type": "integer",
+                                        "description": "Maximum response length",
+                                        "default": 2000,
+                                        "example": 2000,
+                                        "title": "Max Tokens"
+                                    },
+                                    "context": {
+                                        "type": "string",
+                                        "description": "Additional context",
+                                        "example": "Focus on tech products",
+                                        "title": "Context"
+                                    },
+                                    "file": {
+                                        "type": "string",
+                                        "format": "binary",
+                                        "description": "Optional file for context",
                                         "title": "File"
                                     }
                                 }
+                            
+                            elif path == "/test-comprehensive":
+                                # Define explicit schema for /test-comprehensive POST
+                                new_properties = {
+                                    "feature": {
+                                        "type": "string",
+                                        "description": "Feature to test",
+                                        "enum": ["basic", "context", "file_handling", "error_scenarios", "all"],
+                                        "default": "all",
+                                        "title": "Feature"
+                                    },
+                                    "test_file": {
+                                        "type": "string",
+                                        "format": "binary",
+                                        "description": "Test file for file handling tests",
+                                        "title": "Test File"
+                                    }
+                                }
+                            
                             else:
-                                # For other endpoints, process properties normally - PRESERVED
+                                # For other endpoints, process properties normally
                                 for prop_name, prop_value in properties.items():
                                     if isinstance(prop_value, dict):
                                         if prop_value.get("type") == "array" and "items" in prop_value:
@@ -1262,7 +1568,7 @@ def custom_openapi():
                                                 # Keep array types as-is
                                                 new_properties[prop_name] = prop_value
                                         elif prop_value.get("anyOf"):
-                                            # Handle Union types (like file upload fields) - PRESERVED
+                                            # Handle Union types (like file upload fields)
                                             for option in prop_value["anyOf"]:
                                                 if isinstance(option, dict) and option.get("type") == "string" and option.get("format") == "binary":
                                                     # This is a file upload parameter
@@ -1281,24 +1587,23 @@ def custom_openapi():
                                                         new_prop["title"] = title
                                                         
                                                     new_properties[prop_name] = new_prop
-                                                else:
-                                                    # Fallback if we can't determine type
-                                                    new_properties[prop_name] = prop_value
+                                                    break
                                         else:
                                             # Keep simple types as-is
                                             new_properties[prop_name] = prop_value
                                     else:
-                                        # Keep simple types as-is
+                                        # Keep non-dict types as-is
                                         new_properties[prop_name] = prop_value
                         
                         # Update schema with fixed properties
                         schema["properties"] = new_properties
                         
-                        # Also check if there are required fields that need adjustment - PRESERVED
+                        # Also check if there are required fields that need adjustment
                         if "required" in schema:
                             # Keep required fields as is - the schema already handles this correctly
                             pass
     
+    # Cache the schema
     app.openapi_schema = openapi_schema
     return app.openapi_schema
 
