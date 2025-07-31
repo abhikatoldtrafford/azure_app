@@ -938,84 +938,6 @@ body, body *, .swagger-ui, .swagger-ui * {
 </style>
 """
 
-@app.get("/docs", include_in_schema=False)
-async def custom_swagger_ui_html():
-    """
-    Simplified Swagger UI with custom styling only.
-    """
-    html_template = '''
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>{title} - Swagger UI</title>
-            <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css">
-            <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-            {custom_css}
-        </head>
-        <body>
-            <div id="swagger-ui"></div>
-            
-            <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
-            <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-standalone-preset.js"></script>
-            <script>
-            window.onload = function() {{
-                window.ui = SwaggerUIBundle({{
-                    url: "/openapi.json",
-                    dom_id: '#swagger-ui',
-                    deepLinking: true,
-                    presets: [
-                        SwaggerUIBundle.presets.apis,
-                        SwaggerUIStandalonePreset
-                    ],
-                    plugins: [
-                        SwaggerUIBundle.plugins.DownloadUrl
-                    ],
-                    layout: "StandaloneLayout",
-                    defaultModelsExpandDepth: -1,
-                    displayRequestDuration: true,
-                    filter: true,
-                    persistAuthorization: true,
-                    tryItOutEnabled: true,
-                    supportedSubmitMethods: ['get', 'post', 'put', 'delete', 'patch']
-                }});
-            }};
-            </script>
-        </body>
-        </html>
-    '''
-    
-    return HTMLResponse(
-        content=html_template.format(
-            title=app.title,
-            custom_css=CUSTOM_SWAGGER_CSS
-        ),
-        headers={
-            "Content-Type": "text/html; charset=utf-8",
-        }
-    )
-tags_metadata = [
-    {
-        "name": "System",
-        "description": "System health, testing, and monitoring endpoints",
-    },
-    {
-        "name": "AI Operations", 
-        "description": "Core AI completion and generation endpoints",
-    },
-    {
-        "name": "Chat Operations",
-        "description": "Session-based chat functionality with streaming support",
-    },
-    {
-        "name": "Data Processing",
-        "description": "Data extraction, generation, and analysis endpoints",
-    },
-    {
-        "name": "File Operations",
-        "description": "File upload, download, and management endpoints",
-    },
-]
-
 # Initialize FastAPI with tags
 app = FastAPI(
     title="🚀 Azure CoPilot V2 - AI Powerhouse API",
@@ -1610,6 +1532,84 @@ def custom_openapi():
 # Override the default OpenAPI function
 app.openapi = custom_openapi
 # Serve custom Swagger UI with our CSS
+
+@app.get("/docs", include_in_schema=False)
+async def custom_swagger_ui_html():
+    """
+    Simplified Swagger UI with custom styling only.
+    """
+    html_template = '''
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>{title} - Swagger UI</title>
+            <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css">
+            <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+            {custom_css}
+        </head>
+        <body>
+            <div id="swagger-ui"></div>
+            
+            <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+            <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-standalone-preset.js"></script>
+            <script>
+            window.onload = function() {{
+                window.ui = SwaggerUIBundle({{
+                    url: "/openapi.json",
+                    dom_id: '#swagger-ui',
+                    deepLinking: true,
+                    presets: [
+                        SwaggerUIBundle.presets.apis,
+                        SwaggerUIStandalonePreset
+                    ],
+                    plugins: [
+                        SwaggerUIBundle.plugins.DownloadUrl
+                    ],
+                    layout: "StandaloneLayout",
+                    defaultModelsExpandDepth: -1,
+                    displayRequestDuration: true,
+                    filter: true,
+                    persistAuthorization: true,
+                    tryItOutEnabled: true,
+                    supportedSubmitMethods: ['get', 'post', 'put', 'delete', 'patch']
+                }});
+            }};
+            </script>
+        </body>
+        </html>
+    '''
+    
+    return HTMLResponse(
+        content=html_template.format(
+            title=app.title,
+            custom_css=CUSTOM_SWAGGER_CSS
+        ),
+        headers={
+            "Content-Type": "text/html; charset=utf-8",
+        }
+    )
+tags_metadata = [
+    {
+        "name": "System",
+        "description": "System health, testing, and monitoring endpoints",
+    },
+    {
+        "name": "AI Operations", 
+        "description": "Core AI completion and generation endpoints",
+    },
+    {
+        "name": "Chat Operations",
+        "description": "Session-based chat functionality with streaming support",
+    },
+    {
+        "name": "Data Processing",
+        "description": "Data extraction, generation, and analysis endpoints",
+    },
+    {
+        "name": "File Operations",
+        "description": "File upload, download, and management endpoints",
+    },
+]
 
 @app.get("/redoc", include_in_schema=False)
 async def redoc_html():
