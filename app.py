@@ -312,7 +312,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 CUSTOM_SWAGGER_CSS = """
 <style>
-/* 🎨 AZURE COPILOT V2 - ULTRA PREMIUM THEME WITH ENHANCED CONTRAST */
+/* 🎨 AZURE COPILOT V2 - ULTRA PREMIUM THEME WITH LIGHT MODE DEFAULT */
 
 /* Hide unwanted elements */
 .swagger-ui .topbar { display: none !important; }
@@ -320,7 +320,7 @@ CUSTOM_SWAGGER_CSS = """
 .swagger-ui section.models { display: none !important; }
 .swagger-ui .scheme-container { display: none !important; }
 
-/* Animated gradient background with better contrast */
+/* Animated gradient background - LIGHT MODE DEFAULT */
 @keyframes gradientShift {
     0% { background-position: 0% 50%; }
     50% { background-position: 100% 50%; }
@@ -328,7 +328,7 @@ CUSTOM_SWAGGER_CSS = """
 }
 
 body {
-    background: linear-gradient(-45deg, #0d1117, #161b22, #0d1117, #21262d) !important;
+    background: linear-gradient(-45deg, #f8f9fa, #ffffff, #f1f3f5, #e9ecef) !important;
     background-size: 400% 400% !important;
     animation: gradientShift 15s ease infinite !important;
     margin: 0 !important;
@@ -336,8 +336,33 @@ body {
     min-height: 100vh !important;
 }
 
-/* CSS Variables matching webpage.html design */
+/* Dark mode body background */
+body.dark-mode {
+    background: linear-gradient(-45deg, #0d1117, #161b22, #0d1117, #21262d) !important;
+}
+
+/* CSS Variables - LIGHT MODE DEFAULT */
 .swagger-ui {
+    --bg-primary: #ffffff;
+    --bg-secondary: #f8f9fa;
+    --bg-tertiary: #f1f3f5;
+    --accent: #5c7cfa;
+    --accent-hover: #4c6ef5;
+    --accent-active: #364fc7;
+    --text-primary: #212529;
+    --text-secondary: #495057;
+    --text-muted: #868e96;
+    --border: #dee2e6;
+    --success: #51cf66;
+    --error: #ff6b6b;
+    --warning: #ffd43b;
+    --info: #4dabf7;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
+    color: var(--text-primary) !important;
+}
+
+/* Dark Mode Variables */
+.swagger-ui.dark-mode {
     --bg-primary: #1a1a1a;
     --bg-secondary: #222;
     --bg-tertiary: #2a2a2a;
@@ -352,32 +377,41 @@ body {
     --error: #f87171;
     --warning: #fbbf24;
     --info: #60a5fa;
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
-    color: var(--text-primary) !important;
 }
 
-/* Main container with glassmorphism */
+/* Main container with glassmorphism - LIGHT MODE DEFAULT */
 .swagger-ui .wrapper {
-    background: rgba(26, 26, 26, 0.85) !important;
+    background: rgba(255, 255, 255, 0.95) !important;
     backdrop-filter: blur(20px) !important;
     -webkit-backdrop-filter: blur(20px) !important;
     padding: 40px !important;
     max-width: 1400px !important;
     margin: 0 auto !important;
     border-radius: 20px !important;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.08) !important;
+    border: 1px solid rgba(92, 124, 250, 0.1) !important;
+}
+
+.dark-mode .swagger-ui .wrapper {
+    background: rgba(26, 26, 26, 0.85) !important;
     box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5) !important;
     border: 1px solid rgba(120, 119, 198, 0.2) !important;
 }
 
-/* Header section with improved contrast */
+/* Header section - LIGHT MODE DEFAULT */
 .swagger-ui .info {
     margin-bottom: 50px !important;
     padding: 40px !important;
-    background: linear-gradient(135deg, rgba(120, 119, 198, 0.1) 0%, rgba(120, 119, 198, 0.05) 100%) !important;
+    background: linear-gradient(135deg, rgba(92, 124, 250, 0.05) 0%, rgba(92, 124, 250, 0.02) 100%) !important;
     border-radius: 16px !important;
-    border: 1px solid rgba(120, 119, 198, 0.3) !important;
+    border: 1px solid rgba(92, 124, 250, 0.2) !important;
     position: relative !important;
     overflow: hidden !important;
+}
+
+.dark-mode .swagger-ui .info {
+    background: linear-gradient(135deg, rgba(120, 119, 198, 0.1) 0%, rgba(120, 119, 198, 0.05) 100%) !important;
+    border: 1px solid rgba(120, 119, 198, 0.3) !important;
 }
 
 .swagger-ui .info::before {
@@ -387,8 +421,12 @@ body {
     right: -50% !important;
     width: 200% !important;
     height: 200% !important;
-    background: radial-gradient(circle, rgba(120, 119, 198, 0.1) 0%, transparent 70%) !important;
+    background: radial-gradient(circle, rgba(92, 124, 250, 0.05) 0%, transparent 70%) !important;
     animation: pulse 4s ease-in-out infinite !important;
+}
+
+.dark-mode .swagger-ui .info::before {
+    background: radial-gradient(circle, rgba(120, 119, 198, 0.1) 0%, transparent 70%) !important;
 }
 
 @keyframes pulse {
@@ -396,23 +434,27 @@ body {
     50% { transform: scale(1.1); opacity: 0.3; }
 }
 
-/* Title with high contrast */
+/* Title with proper contrast - LIGHT MODE DEFAULT */
 .swagger-ui .info .title {
     font-size: 3.5rem !important;
     font-weight: 900 !important;
-    background: linear-gradient(135deg, #f0f0f0 0%, #d0d0d0 100%) !important;
+    background: linear-gradient(135deg, #212529 0%, #343a40 100%) !important;
     -webkit-background-clip: text !important;
     -webkit-text-fill-color: transparent !important;
     background-clip: text !important;
     letter-spacing: -0.02em !important;
     margin-bottom: 16px !important;
-    text-shadow: 0 4px 12px rgba(120, 119, 198, 0.3) !important;
     position: relative !important;
     z-index: 1 !important;
 }
 
+.dark-mode .swagger-ui .info .title {
+    background: linear-gradient(135deg, #f0f0f0 0%, #d0d0d0 100%) !important;
+    text-shadow: 0 4px 12px rgba(120, 119, 198, 0.3) !important;
+}
+
 .swagger-ui .info .title small {
-    background: linear-gradient(135deg, #7877c6 0%, #9291d0 100%) !important;
+    background: linear-gradient(135deg, #5c7cfa 0%, #4c6ef5 100%) !important;
     -webkit-background-clip: text !important;
     -webkit-text-fill-color: transparent !important;
     background-clip: text !important;
@@ -422,6 +464,10 @@ body {
     text-transform: uppercase !important;
     display: block !important;
     margin-top: 8px !important;
+}
+
+.dark-mode .swagger-ui .info .title small {
+    background: linear-gradient(135deg, #7877c6 0%, #9291d0 100%) !important;
 }
 
 /* Description with better readability */
@@ -434,7 +480,7 @@ body {
     font-weight: 400 !important;
 }
 
-/* Enhanced operation blocks */
+/* Enhanced operation blocks - LIGHT MODE DEFAULT */
 .swagger-ui .opblock {
     background: var(--bg-secondary) !important;
     border: 1px solid var(--border) !important;
@@ -442,24 +488,40 @@ body {
     margin-bottom: 20px !important;
     overflow: hidden !important;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05) !important;
+}
+
+.dark-mode .swagger-ui .opblock {
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
 }
 
 .swagger-ui .opblock:hover {
     transform: translateY(-2px) !important;
-    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2) !important;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1) !important;
     border-color: var(--accent) !important;
 }
 
-/* Operation summary with high contrast */
+.dark-mode .swagger-ui .opblock:hover {
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2) !important;
+}
+
+/* Operation summary - LIGHT MODE DEFAULT */
 .swagger-ui .opblock-summary {
-    background: rgba(34, 34, 34, 0.8) !important;
+    background: rgba(255, 255, 255, 0.9) !important;
     padding: 16px 20px !important;
     cursor: pointer !important;
     border: none !important;
 }
 
+.dark-mode .swagger-ui .opblock-summary {
+    background: rgba(34, 34, 34, 0.8) !important;
+}
+
 .swagger-ui .opblock-summary:hover {
+    background: rgba(248, 249, 250, 0.95) !important;
+}
+
+.dark-mode .swagger-ui .opblock-summary:hover {
     background: rgba(42, 42, 42, 0.9) !important;
 }
 
@@ -472,37 +534,37 @@ body {
     font-size: 12px !important;
     letter-spacing: 0.05em !important;
     margin-right: 16px !important;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2) !important;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
     position: relative !important;
     overflow: hidden !important;
 }
 
-/* Method colors with glow effects and high contrast */
+/* Method colors with proper contrast for both themes */
 .swagger-ui .opblock.opblock-get .opblock-summary-method {
     background: #16a34a !important;
     color: #ffffff !important;
-    box-shadow: 0 4px 14px rgba(22, 163, 74, 0.4) !important;
+    box-shadow: 0 4px 14px rgba(22, 163, 74, 0.3) !important;
 }
 
 .swagger-ui .opblock.opblock-post .opblock-summary-method {
     background: #2563eb !important;
     color: #ffffff !important;
-    box-shadow: 0 4px 14px rgba(37, 99, 235, 0.4) !important;
+    box-shadow: 0 4px 14px rgba(37, 99, 235, 0.3) !important;
 }
 
 .swagger-ui .opblock.opblock-put .opblock-summary-method {
     background: #ea580c !important;
     color: #ffffff !important;
-    box-shadow: 0 4px 14px rgba(234, 88, 12, 0.4) !important;
+    box-shadow: 0 4px 14px rgba(234, 88, 12, 0.3) !important;
 }
 
 .swagger-ui .opblock.opblock-delete .opblock-summary-method {
     background: #dc2626 !important;
     color: #ffffff !important;
-    box-shadow: 0 4px 14px rgba(220, 38, 38, 0.4) !important;
+    box-shadow: 0 4px 14px rgba(220, 38, 38, 0.3) !important;
 }
 
-/* Path with improved visibility */
+/* Path and description */
 .swagger-ui .opblock-summary-path,
 .swagger-ui .opblock-summary-path__deprecated {
     color: var(--text-primary) !important;
@@ -517,19 +579,23 @@ body {
     margin-left: 12px !important;
 }
 
-/* Operation body with better contrast */
+/* Operation body */
 .swagger-ui .opblock-body {
     background: var(--bg-primary) !important;
     padding: 24px !important;
 }
 
-/* Parameters section with enhanced readability */
+/* Parameters section */
 .swagger-ui .opblock-section-header {
-    background: rgba(120, 119, 198, 0.1) !important;
+    background: rgba(92, 124, 250, 0.08) !important;
     padding: 12px 20px !important;
     border-radius: 8px !important;
     margin-bottom: 16px !important;
     border-left: 4px solid var(--accent) !important;
+}
+
+.dark-mode .swagger-ui .opblock-section-header {
+    background: rgba(120, 119, 198, 0.1) !important;
 }
 
 .swagger-ui .opblock-section-header h4 {
@@ -541,7 +607,7 @@ body {
     margin: 0 !important;
 }
 
-/* Table improvements for parameters */
+/* Table improvements */
 .swagger-ui .table-container {
     background: var(--bg-secondary) !important;
     border-radius: 8px !important;
@@ -550,10 +616,14 @@ body {
 }
 
 .swagger-ui .parameters-col_name {
-    color: #60a5fa !important;
+    color: #4c6ef5 !important;
     font-weight: 600 !important;
     font-family: 'JetBrains Mono', monospace !important;
     font-size: 14px !important;
+}
+
+.dark-mode .swagger-ui .parameters-col_name {
+    color: #60a5fa !important;
 }
 
 .swagger-ui .parameters-col_description {
@@ -563,13 +633,17 @@ body {
 }
 
 .swagger-ui .parameter__type {
-    color: #a78bfa !important;
+    color: #7c3aed !important;
     font-family: 'JetBrains Mono', monospace !important;
     font-size: 12px !important;
     font-weight: 600 !important;
 }
 
-/* Input fields with high contrast */
+.dark-mode .swagger-ui .parameter__type {
+    color: #a78bfa !important;
+}
+
+/* Input fields - LIGHT MODE DEFAULT */
 .swagger-ui input[type=text],
 .swagger-ui input[type=password],
 .swagger-ui input[type=email],
@@ -578,7 +652,7 @@ body {
 .swagger-ui select {
     background: var(--bg-primary) !important;
     color: var(--text-primary) !important;
-    border: 2px solid var(--border) !important;
+    border: 1px solid var(--border) !important;
     border-radius: 8px !important;
     padding: 10px 14px !important;
     font-size: 14px !important;
@@ -591,11 +665,18 @@ body {
 .swagger-ui select:focus {
     border-color: var(--accent) !important;
     outline: none !important;
+    box-shadow: 0 0 0 3px rgba(92, 124, 250, 0.15) !important;
+    background: var(--bg-primary) !important;
+}
+
+.dark-mode .swagger-ui input:focus,
+.dark-mode .swagger-ui textarea:focus,
+.dark-mode .swagger-ui select:focus {
     box-shadow: 0 0 0 4px rgba(120, 119, 198, 0.2) !important;
     background: var(--bg-secondary) !important;
 }
 
-/* Buttons with improved contrast */
+/* Buttons */
 .swagger-ui .btn {
     background: var(--accent) !important;
     color: #ffffff !important;
@@ -608,12 +689,16 @@ body {
     letter-spacing: 0.05em !important;
     transition: all 0.2s ease !important;
     cursor: pointer !important;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1) !important;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05) !important;
 }
 
 .swagger-ui .btn:hover {
     background: var(--accent-hover) !important;
     transform: translateY(-2px) !important;
+    box-shadow: 0 4px 8px rgba(92, 124, 250, 0.2) !important;
+}
+
+.dark-mode .swagger-ui .btn:hover {
     box-shadow: 0 8px 16px rgba(120, 119, 198, 0.3) !important;
 }
 
@@ -621,9 +706,9 @@ body {
     transform: translateY(0) !important;
 }
 
-/* Try it out button with special styling */
+/* Try it out button */
 .swagger-ui .btn.try-out__btn {
-    background: linear-gradient(135deg, #7877c6 0%, #9291d0 100%) !important;
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%) !important;
     color: #ffffff !important;
     position: relative !important;
     overflow: hidden !important;
@@ -647,12 +732,30 @@ body {
     height: 300px !important;
 }
 
-/* Execute button with animation */
+/* Execute button */
 .swagger-ui .btn.execute {
     background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%) !important;
     color: #ffffff !important;
     font-size: 16px !important;
     padding: 12px 32px !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.1em !important;
+    position: relative !important;
+}
+
+.swagger-ui .btn.execute::after {
+    content: '🚀' !important;
+    margin-left: 8px !important;
+    font-size: 18px !important;
+    display: inline-block !important;
+    animation: bounce 2s infinite !important;
+}
+
+@keyframes bounce {
+    0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
+    40% { transform: translateY(-5px); }
+    60% { transform: translateY(-3px); }
 }
 
 .swagger-ui .btn.cancel {
@@ -666,13 +769,17 @@ body {
     border-color: var(--text-muted) !important;
 }
 
-/* Response section with improved visibility */
+/* Response section */
 .swagger-ui .responses-wrapper {
     margin-top: 32px !important;
     padding: 24px !important;
-    background: rgba(34, 34, 34, 0.5) !important;
+    background: rgba(248, 249, 250, 0.5) !important;
     border-radius: 12px !important;
     border: 1px solid var(--border) !important;
+}
+
+.dark-mode .swagger-ui .responses-wrapper {
+    background: rgba(34, 34, 34, 0.5) !important;
 }
 
 .swagger-ui .responses-inner {
@@ -687,7 +794,7 @@ body {
     overflow: hidden !important;
 }
 
-/* Loading animation with better visibility */
+/* Loading animation */
 .swagger-ui .loading-container {
     padding: 40px !important;
     text-align: center !important;
@@ -719,48 +826,68 @@ body {
     100% { transform: rotate(360deg); }
 }
 
-/* Enhanced copy button */
+/* Copy button */
 .swagger-ui .copy-to-clipboard {
-    background: rgba(120, 119, 198, 0.2) !important;
-    border: 2px solid var(--accent) !important;
+    background: rgba(92, 124, 250, 0.1) !important;
+    border: 1px solid var(--accent) !important;
     border-radius: 8px !important;
     padding: 6px 12px !important;
     transition: all 0.3s ease !important;
     color: var(--accent) !important;
 }
 
+.dark-mode .swagger-ui .copy-to-clipboard {
+    background: rgba(120, 119, 198, 0.2) !important;
+    border: 2px solid var(--accent) !important;
+}
+
 .swagger-ui .copy-to-clipboard:hover {
     background: var(--accent) !important;
     color: #ffffff !important;
     transform: translateY(-1px) !important;
+    box-shadow: 0 4px 12px rgba(92, 124, 250, 0.3) !important;
+}
+
+.dark-mode .swagger-ui .copy-to-clipboard:hover {
     box-shadow: 0 4px 12px rgba(120, 119, 198, 0.3) !important;
 }
 
-/* Code blocks with high contrast syntax highlighting */
+/* Code blocks - LIGHT MODE DEFAULT */
 .swagger-ui .highlight-code pre,
 .swagger-ui pre {
-    background: #0d1117 !important;
+    background: #f6f8fa !important;
     border: 1px solid var(--border) !important;
     border-radius: 12px !important;
     padding: 20px !important;
     font-family: 'JetBrains Mono', monospace !important;
     font-size: 14px !important;
     line-height: 1.6 !important;
-    color: #e6edf3 !important;
-    box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+    color: #24292e !important;
     overflow-x: auto !important;
 }
 
+.dark-mode .swagger-ui .highlight-code pre,
+.dark-mode .swagger-ui pre {
+    background: #0d1117 !important;
+    color: #e6edf3 !important;
+    box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.3) !important;
+}
+
 .swagger-ui code {
-    background: rgba(120, 119, 198, 0.15) !important;
-    color: #f0a0ff !important;
+    background: rgba(92, 124, 250, 0.1) !important;
+    color: #5c7cfa !important;
     padding: 2px 6px !important;
     border-radius: 4px !important;
     font-family: 'JetBrains Mono', monospace !important;
     font-size: 0.9em !important;
 }
 
-/* Response status badges with better visibility */
+.dark-mode .swagger-ui code {
+    background: rgba(120, 119, 198, 0.15) !important;
+    color: #f0a0ff !important;
+}
+
+/* Response status badges */
 .swagger-ui .response-col_status {
     font-weight: 800 !important;
     padding: 6px 16px !important;
@@ -772,27 +899,42 @@ body {
 }
 
 .swagger-ui .response[data-code^="2"] .response-col_status {
+    background: rgba(22, 163, 74, 0.1) !important;
+    color: #16a34a !important;
+    border: 2px solid #16a34a !important;
+}
+
+.dark-mode .swagger-ui .response[data-code^="2"] .response-col_status {
     background: rgba(22, 163, 74, 0.2) !important;
     color: #4ade80 !important;
-    border: 2px solid #16a34a !important;
     box-shadow: 0 0 20px rgba(22, 163, 74, 0.4) !important;
 }
 
 .swagger-ui .response[data-code^="4"] .response-col_status {
+    background: rgba(234, 88, 12, 0.1) !important;
+    color: #ea580c !important;
+    border: 2px solid #ea580c !important;
+}
+
+.dark-mode .swagger-ui .response[data-code^="4"] .response-col_status {
     background: rgba(234, 88, 12, 0.2) !important;
     color: #fbbf24 !important;
-    border: 2px solid #ea580c !important;
     box-shadow: 0 0 20px rgba(234, 88, 12, 0.4) !important;
 }
 
 .swagger-ui .response[data-code^="5"] .response-col_status {
+    background: rgba(220, 38, 38, 0.1) !important;
+    color: #dc2626 !important;
+    border: 2px solid #dc2626 !important;
+}
+
+.dark-mode .swagger-ui .response[data-code^="5"] .response-col_status {
     background: rgba(220, 38, 38, 0.2) !important;
     color: #f87171 !important;
-    border: 2px solid #dc2626 !important;
     box-shadow: 0 0 20px rgba(220, 38, 38, 0.4) !important;
 }
 
-/* Model/Schema display improvements */
+/* Model/Schema display */
 .swagger-ui .model-container {
     background: var(--bg-secondary) !important;
     border: 1px solid var(--border) !important;
@@ -814,14 +956,22 @@ body {
 }
 
 .swagger-ui .prop-type {
+    color: #7c3aed !important;
+}
+
+.dark-mode .swagger-ui .prop-type {
     color: #a78bfa !important;
 }
 
 .swagger-ui .prop-format {
+    color: #2563eb !important;
+}
+
+.dark-mode .swagger-ui .prop-format {
     color: #60a5fa !important;
 }
 
-/* Enhanced scrollbar */
+/* Scrollbar */
 ::-webkit-scrollbar {
     width: 12px !important;
     height: 12px !important;
@@ -842,7 +992,7 @@ body {
     background: linear-gradient(135deg, var(--accent-hover) 0%, var(--accent-active) 100%) !important;
 }
 
-/* Floating action indicator for ALL THE AWESOME FEATURES */
+/* Floating action indicator */
 .swagger-ui::after {
     content: '✨ Enhanced with Awesome Features' !important;
     position: fixed !important;
@@ -854,7 +1004,7 @@ body {
     pointer-events: none !important;
 }
 
-/* Links with better contrast */
+/* Links */
 .swagger-ui a {
     color: var(--accent) !important;
     text-decoration: none !important;
@@ -866,31 +1016,43 @@ body {
     text-decoration: underline !important;
 }
 
-/* Error messages with better visibility */
+/* Error messages */
 .swagger-ui .errors-wrapper {
-    background: rgba(220, 38, 38, 0.1) !important;
+    background: rgba(220, 38, 38, 0.05) !important;
     border: 2px solid #dc2626 !important;
     border-radius: 8px !important;
     padding: 16px !important;
     margin: 16px 0 !important;
 }
 
+.dark-mode .swagger-ui .errors-wrapper {
+    background: rgba(220, 38, 38, 0.1) !important;
+}
+
 .swagger-ui .errors-wrapper .error {
-    color: #f87171 !important;
+    color: #dc2626 !important;
     font-weight: 500 !important;
 }
 
-/* Select dropdowns with proper contrast */
+.dark-mode .swagger-ui .errors-wrapper .error {
+    color: #f87171 !important;
+}
+
+/* Select dropdowns - LIGHT MODE DEFAULT */
 .swagger-ui select {
     appearance: none !important;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%23c0c0c0'%3E%3Cpath fill-rule='evenodd' d='M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z' clip-rule='evenodd'/%3E%3C/svg%3E") !important;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%23495057'%3E%3Cpath fill-rule='evenodd' d='M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z' clip-rule='evenodd'/%3E%3C/svg%3E") !important;
     background-repeat: no-repeat !important;
     background-position: right 10px center !important;
     background-size: 20px !important;
     padding-right: 40px !important;
 }
 
-/* Tabs with improved contrast */
+.dark-mode .swagger-ui select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%23c0c0c0'%3E%3Cpath fill-rule='evenodd' d='M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z' clip-rule='evenodd'/%3E%3C/svg%3E") !important;
+}
+
+/* Tabs */
 .swagger-ui .tab {
     color: var(--text-secondary) !important;
     background: transparent !important;
@@ -902,6 +1064,10 @@ body {
 
 .swagger-ui .tab:hover {
     color: var(--text-primary) !important;
+    background: rgba(92, 124, 250, 0.05) !important;
+}
+
+.dark-mode .swagger-ui .tab:hover {
     background: rgba(120, 119, 198, 0.1) !important;
 }
 
@@ -910,55 +1076,33 @@ body {
     border-bottom-color: var(--accent) !important;
 }
 
-/* Authorization improvements */
+/* Authorization button */
 .swagger-ui .authorization__btn {
     background: linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%) !important;
     color: #ffffff !important;
-    border: none !important;
-    padding: 10px 20px !important;
+    padding: 10px 24px !important;
     border-radius: 8px !important;
     font-weight: 600 !important;
+    transition: all 0.2s ease !important;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1) !important;
 }
 
 .swagger-ui .authorization__btn:hover {
     transform: translateY(-2px) !important;
+    box-shadow: 0 8px 16px rgba(92, 124, 250, 0.3) !important;
+}
+
+.dark-mode .swagger-ui .authorization__btn:hover {
     box-shadow: 0 8px 16px rgba(120, 119, 198, 0.3) !important;
 }
 
-/* Modal improvements */
-.swagger-ui .modal-ux {
-    background: rgba(0, 0, 0, 0.8) !important;
-}
-
-.swagger-ui .modal-ux-content {
-    background: var(--bg-primary) !important;
-    border: 2px solid var(--accent) !important;
-    border-radius: 12px !important;
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5) !important;
-}
-
-.swagger-ui .modal-ux-header {
-    background: var(--bg-secondary) !important;
-    border-bottom: 1px solid var(--border) !important;
-    padding: 20px !important;
-}
-
-.swagger-ui .modal-ux-header h3 {
-    color: var(--text-primary) !important;
-    font-weight: 700 !important;
-}
-
-/* Ensure all text has proper contrast */
-.swagger-ui * {
-    text-shadow: none !important;
-}
-
-.swagger-ui h1, .swagger-ui h2, .swagger-ui h3, .swagger-ui h4, .swagger-ui h5 {
-    color: var(--text-primary) !important;
-}
-
-.swagger-ui p, .swagger-ui span, .swagger-ui div {
-    color: var(--text-secondary) !important;
+/* Smooth transitions for theme switching */
+body, body *, .swagger-ui, .swagger-ui * {
+    transition: background-color 0.3s ease, 
+                color 0.3s ease, 
+                border-color 0.3s ease, 
+                box-shadow 0.3s ease,
+                fill 0.3s ease !important;
 }
 </style>
 """
@@ -1596,6 +1740,7 @@ app.openapi = custom_openapi
 async def custom_swagger_ui_html():
     """
     SUPER AWESOME Feature-rich custom Swagger UI with:
+    - Light mode as default (with dark mode option)
     - Real-time streaming visualization with EventSource
     - Live connection status monitoring
     - Response analytics and timing
@@ -1617,27 +1762,33 @@ async def custom_swagger_ui_html():
             <style>
             /* SUPER AWESOME FEATURES STYLING - ALL EXISTING FEATURES PRESERVED */
             
-            /* Floating Feature Panel */
+            /* Floating Feature Panel - LIGHT MODE DEFAULT */
             .awesome-features {{
                 position: fixed;
                 bottom: 20px;
                 right: 20px;
-                background: rgba(17, 24, 39, 0.95);
+                background: rgba(255, 255, 255, 0.95);
                 backdrop-filter: blur(20px);
-                border: 1px solid rgba(120, 119, 198, 0.3);
+                border: 1px solid rgba(92, 124, 250, 0.2);
                 border-radius: 12px;
                 padding: 16px;
-                box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+                box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
                 z-index: 9999;
                 display: flex;
                 gap: 12px;
                 align-items: center;
             }}
             
-            .feature-btn {{
-                background: rgba(120, 119, 198, 0.2);
+            .dark-mode .awesome-features {{
+                background: rgba(17, 24, 39, 0.95);
                 border: 1px solid rgba(120, 119, 198, 0.3);
-                color: #e5e7eb;
+                box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            }}
+            
+            .feature-btn {{
+                background: rgba(92, 124, 250, 0.1);
+                border: 1px solid rgba(92, 124, 250, 0.3);
+                color: #364fc7;
                 padding: 8px 12px;
                 border-radius: 8px;
                 cursor: pointer;
@@ -1648,33 +1799,55 @@ async def custom_swagger_ui_html():
                 gap: 6px;
             }}
             
+            .dark-mode .feature-btn {{
+                background: rgba(120, 119, 198, 0.2);
+                border-color: rgba(120, 119, 198, 0.3);
+                color: #e5e7eb;
+            }}
+            
             .feature-btn:hover {{
-                background: rgba(120, 119, 198, 0.3);
+                background: rgba(92, 124, 250, 0.2);
                 transform: translateY(-2px);
+                box-shadow: 0 4px 12px rgba(92, 124, 250, 0.2);
+            }}
+            
+            .dark-mode .feature-btn:hover {{
+                background: rgba(120, 119, 198, 0.3);
                 box-shadow: 0 4px 12px rgba(120, 119, 198, 0.3);
             }}
             
             .feature-btn.active {{
+                background: rgba(92, 124, 250, 0.3);
+                border-color: #5c7cfa;
+            }}
+            
+            .dark-mode .feature-btn.active {{
                 background: rgba(120, 119, 198, 0.5);
                 border-color: #7877c6;
             }}
             
-            /* Live Connection Status */
+            /* Live Connection Status - LIGHT MODE DEFAULT */
             .connection-status {{
                 position: fixed;
                 top: 20px;
                 right: 20px;
-                background: rgba(17, 24, 39, 0.9);
+                background: rgba(255, 255, 255, 0.95);
                 backdrop-filter: blur(10px);
-                border: 1px solid rgba(120, 119, 198, 0.3);
+                border: 1px solid rgba(92, 124, 250, 0.2);
                 border-radius: 8px;
                 padding: 8px 16px;
                 display: flex;
                 align-items: center;
                 gap: 8px;
                 font-size: 13px;
-                color: #e5e7eb;
+                color: #212529;
                 z-index: 9998;
+            }}
+            
+            .dark-mode .connection-status {{
+                background: rgba(17, 24, 39, 0.9);
+                border: 1px solid rgba(120, 119, 198, 0.3);
+                color: #e5e7eb;
             }}
             
             .status-dot {{
@@ -1701,447 +1874,305 @@ async def custom_swagger_ui_html():
                 to {{ transform: translateY(100px); opacity: 0; }}
             }}
             
-            /* REAL-TIME STREAMING VIEWER */
+            /* REAL-TIME STREAMING VIEWER - LIGHT MODE DEFAULT */
             .streaming-viewer {{
                 position: fixed;
                 top: 50%;
                 left: 50%;
                 transform: translate(-50%, -50%);
-                width: 80%;
+                width: 90%;
                 max-width: 800px;
-                max-height: 80vh;
-                background: rgba(17, 24, 39, 0.98);
+                height: 80vh;
+                background: rgba(255, 255, 255, 0.98);
                 backdrop-filter: blur(20px);
-                border: 1px solid rgba(120, 119, 198, 0.3);
+                border: 1px solid var(--border);
                 border-radius: 16px;
-                padding: 24px;
-                box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-                z-index: 10001;
+                box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15);
+                z-index: 10000;
                 display: none;
                 flex-direction: column;
+                overflow: hidden;
+            }}
+            
+            .dark-mode .streaming-viewer {{
+                background: rgba(17, 24, 39, 0.98);
+                border: 2px solid rgba(120, 119, 198, 0.3);
+                box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
             }}
             
             .streaming-header {{
+                padding: 20px;
+                background: var(--bg-secondary);
+                border-bottom: 1px solid var(--border);
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-                margin-bottom: 20px;
-                padding-bottom: 16px;
-                border-bottom: 1px solid rgba(120, 119, 198, 0.2);
             }}
             
             .streaming-title {{
-                color: #7dd3fc;
                 font-size: 18px;
                 font-weight: 600;
+                color: var(--text-primary);
                 display: flex;
                 align-items: center;
                 gap: 10px;
             }}
             
             .streaming-close {{
-                background: rgba(239, 68, 68, 0.2);
-                border: 1px solid rgba(239, 68, 68, 0.3);
-                color: #ef4444;
-                padding: 6px 12px;
-                border-radius: 6px;
+                background: transparent;
+                border: 1px solid var(--border);
+                padding: 8px 16px;
+                border-radius: 8px;
                 cursor: pointer;
-                font-size: 12px;
+                color: var(--text-secondary);
                 transition: all 0.2s;
             }}
             
             .streaming-close:hover {{
-                background: rgba(239, 68, 68, 0.3);
+                background: var(--bg-tertiary);
+                color: var(--text-primary);
             }}
             
             .streaming-controls {{
+                padding: 16px 20px;
+                background: var(--bg-tertiary);
                 display: flex;
+                gap: 12px;
+                align-items: center;
+            }}
+            
+            .control-btn {{
+                background: rgba(92, 124, 250, 0.1);
+                color: var(--accent);
+                border: 1px solid var(--accent);
+                padding: 6px 12px;
+                border-radius: 6px;
+                cursor: pointer;
+                font-size: 13px;
+                transition: all 0.2s;
+                display: flex;
+                align-items: center;
+                gap: 6px;
+            }}
+            
+            .dark-mode .control-btn {{
+                background: rgba(120, 119, 198, 0.1);
+            }}
+            
+            .control-btn:hover {{
+                background: rgba(92, 124, 250, 0.2);
+                transform: translateY(-1px);
+            }}
+            
+            .dark-mode .control-btn:hover {{
+                background: rgba(120, 119, 198, 0.2);
+            }}
+            
+            .streaming-status {{
+                margin-left: auto;
+                display: flex;
+                align-items: center;
                 gap: 8px;
-                margin-bottom: 16px;
+                color: var(--text-secondary);
+                font-size: 13px;
+            }}
+            
+            .streaming-indicator {{
+                width: 10px;
+                height: 10px;
+                border-radius: 50%;
+                background: #10b981;
+                animation: pulse-dot 1s infinite;
             }}
             
             .streaming-content {{
                 flex: 1;
                 overflow-y: auto;
-                background: rgba(0, 0, 0, 0.3);
-                border: 1px solid rgba(255, 255, 255, 0.1);
-                border-radius: 8px;
-                padding: 16px;
-                font-family: 'JetBrains Mono', monospace;
-                font-size: 13px;
+                padding: 20px;
+                background: var(--bg-primary);
             }}
             
             .stream-chunk {{
-                margin-bottom: 8px;
-                padding: 8px;
-                background: rgba(16, 185, 129, 0.1);
-                border: 1px solid rgba(16, 185, 129, 0.2);
-                border-radius: 6px;
-                word-break: break-word;
-                animation: chunkAppear 0.3s ease-out;
+                margin-bottom: 12px;
+                padding: 12px;
+                background: var(--bg-secondary);
+                border: 1px solid var(--border);
+                border-radius: 8px;
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 13px;
+                animation: fadeIn 0.3s ease;
             }}
             
-            @keyframes chunkAppear {{
+            @keyframes fadeIn {{
                 from {{ opacity: 0; transform: translateY(10px); }}
                 to {{ opacity: 1; transform: translateY(0); }}
             }}
             
             .stream-chunk.raw {{
-                background: rgba(59, 130, 246, 0.1);
-                border-color: rgba(59, 130, 246, 0.2);
-                white-space: pre-wrap;
+                background: #f6f8fa;
+                color: #24292e;
+            }}
+            
+            .dark-mode .stream-chunk.raw {{
+                background: #0d1117;
+                color: #e6edf3;
             }}
             
             .chunk-header {{
-                font-size: 11px;
-                color: #9ca3af;
-                margin-bottom: 4px;
                 display: flex;
                 justify-content: space-between;
+                margin-bottom: 8px;
+                font-size: 11px;
+                color: var(--text-muted);
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
             }}
             
             .chunk-content {{
-                color: #e6edf3;
+                color: var(--text-primary);
                 line-height: 1.5;
-            }}
-            
-            .accumulated-message {{
-                background: rgba(16, 185, 129, 0.1);
-                border: 1px solid rgba(16, 185, 129, 0.3);
-                border-radius: 8px;
-                padding: 16px;
-                margin-top: 16px;
-            }}
-            
-            .accumulated-message h5 {{
-                color: #10b981;
-                margin: 0 0 12px 0;
-                font-size: 14px;
-                font-weight: 600;
-                display: flex;
-                align-items: center;
-                gap: 8px;
-            }}
-            
-            .accumulated-content {{
-                color: #e6edf3;
-                line-height: 1.6;
-                font-size: 14px;
                 white-space: pre-wrap;
                 word-break: break-word;
             }}
             
-            /* Streaming Test Button */
-            .stream-test-btn {{
-                background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
-                color: white;
-                border: none;
-                padding: 8px 16px;
-                border-radius: 6px;
-                cursor: pointer;
-                font-size: 12px;
-                font-weight: 600;
-                display: inline-flex;
-                align-items: center;
-                gap: 6px;
-                margin-left: 12px;
-                transition: all 0.2s;
-            }}
-            
-            .stream-test-btn:hover {{
-                transform: translateY(-1px);
-                box-shadow: 0 4px 12px rgba(6, 182, 212, 0.3);
-            }}
-            
-            /* Enhanced Response Container */
-            .streaming-response-container {{
-                background: rgba(17, 24, 39, 0.8);
-                border: 1px solid rgba(120, 119, 198, 0.3);
-                border-radius: 12px;
+            .accumulated-message {{
+                margin-top: 20px;
                 padding: 20px;
+                background: var(--bg-tertiary);
+                border: 2px solid var(--accent);
+                border-radius: 12px;
+            }}
+            
+            .accumulated-message h5 {{
+                margin: 0 0 12px 0;
+                color: var(--accent);
+                font-size: 16px;
+                font-weight: 600;
+            }}
+            
+            .accumulated-content {{
+                color: var(--text-primary);
+                line-height: 1.6;
+                font-size: 14px;
+            }}
+            
+            /* Response Formatting Styles */
+            .streaming-response-container {{
+                position: relative;
                 margin-top: 16px;
-                font-family: 'JetBrains Mono', monospace;
+                padding: 16px;
+                background: var(--bg-secondary);
+                border: 1px solid var(--border);
+                border-radius: 8px;
             }}
             
             .response-header {{
                 display: flex;
                 justify-content: space-between;
                 align-items: center;
-                margin-bottom: 16px;
+                margin-bottom: 12px;
                 padding-bottom: 12px;
-                border-bottom: 1px solid rgba(120, 119, 198, 0.2);
+                border-bottom: 1px solid var(--border);
             }}
             
-            .response-title {{
-                color: #7dd3fc;
-                font-size: 16px;
+            .response-type {{
+                font-size: 12px;
                 font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+                color: var(--text-muted);
+            }}
+            
+            .response-actions {{
                 display: flex;
-                align-items: center;
                 gap: 8px;
             }}
             
-            .response-controls {{
-                display: flex;
-                gap: 8px;
-            }}
-            
-            .control-btn {{
-                background: rgba(120, 119, 198, 0.2);
-                border: 1px solid rgba(120, 119, 198, 0.3);
-                color: #e5e7eb;
+            .action-btn {{
+                background: transparent;
+                border: 1px solid var(--border);
                 padding: 4px 8px;
-                border-radius: 6px;
+                border-radius: 4px;
                 cursor: pointer;
                 font-size: 12px;
+                color: var(--text-secondary);
                 transition: all 0.2s;
             }}
             
-            .control-btn:hover {{
-                background: rgba(120, 119, 198, 0.3);
+            .action-btn:hover {{
+                background: var(--bg-tertiary);
+                color: var(--text-primary);
             }}
             
-            .control-btn.active {{
-                background: #7877c6;
+            .stream-message {{
+                padding: 8px 12px;
+                margin: 4px 0;
+                background: var(--bg-tertiary);
+                border-left: 3px solid var(--accent);
+                border-radius: 4px;
+                font-family: 'JetBrains Mono', monospace;
+                font-size: 13px;
+                line-height: 1.5;
+                animation: slideIn 0.2s ease;
+            }}
+            
+            @keyframes slideIn {{
+                from {{ opacity: 0; transform: translateX(-10px); }}
+                to {{ opacity: 1; transform: translateX(0); }}
+            }}
+            
+            .stream-error {{
+                border-left-color: var(--error);
+                background: rgba(255, 107, 107, 0.1);
+                color: var(--error);
+            }}
+            
+            .stream-info {{
+                border-left-color: var(--info);
+                background: rgba(77, 171, 247, 0.1);
+            }}
+            
+            .fullscreen {{
+                width: 100vw !important;
+                height: 100vh !important;
+                max-width: none !important;
+                border-radius: 0 !important;
+                top: 0 !important;
+                left: 0 !important;
+                transform: none !important;
+            }}
+            
+            /* Toast notification styling */
+            .toast {{
+                position: fixed;
+                bottom: 20px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: var(--bg-elevated);
+                color: var(--text-primary);
+                padding: 12px 24px;
+                border-radius: 8px;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+                z-index: 10001;
+                animation: slideUp 0.3s ease;
+            }}
+            
+            .toast.error {{
+                background: var(--error);
                 color: white;
             }}
             
-            /* Stream Event Styling */
-            .stream-event {{
-                background: rgba(0, 0, 0, 0.3);
-                border: 1px solid rgba(255, 255, 255, 0.1);
-                border-radius: 8px;
-                padding: 12px;
-                margin-bottom: 8px;
-                position: relative;
-                overflow: hidden;
+            .toast.success {{
+                background: var(--success);
+                color: white;
             }}
             
-            .stream-event.type-content {{
-                border-color: rgba(16, 185, 129, 0.3);
-                background: rgba(16, 185, 129, 0.05);
+            .toast.hiding {{
+                animation: slideDown 0.3s ease;
             }}
             
-            .stream-event.type-complete {{
-                border-color: rgba(59, 130, 246, 0.3);
-                background: rgba(59, 130, 246, 0.05);
-            }}
-            
-            .event-header {{
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                margin-bottom: 8px;
-                font-size: 11px;
-                color: #9ca3af;
-            }}
-            
-            .event-type {{
-                background: rgba(120, 119, 198, 0.2);
-                padding: 2px 6px;
-                border-radius: 4px;
-                font-weight: 600;
-                text-transform: uppercase;
-                letter-spacing: 0.05em;
-            }}
-            
-            .event-timestamp {{
-                font-family: 'JetBrains Mono', monospace;
-                opacity: 0.7;
-            }}
-            
-            .event-content {{
-                color: #e6edf3;
-                line-height: 1.5;
-                word-break: break-word;
-            }}
-            
-            /* Response Analytics */
-            .response-analytics {{
-                background: rgba(0, 0, 0, 0.2);
-                border-radius: 8px;
-                padding: 12px;
-                margin-bottom: 16px;
-                display: flex;
-                gap: 20px;
-                flex-wrap: wrap;
-            }}
-            
-            .analytics-item {{
-                display: flex;
-                flex-direction: column;
-                gap: 4px;
-            }}
-            
-            .analytics-label {{
-                font-size: 11px;
-                color: #9ca3af;
-                text-transform: uppercase;
-                letter-spacing: 0.05em;
-            }}
-            
-            .analytics-value {{
-                font-size: 20px;
-                font-weight: 700;
-                color: #7877c6;
-            }}
-            
-            /* Export Options */
-            .export-options {{
-                display: flex;
-                gap: 8px;
-                margin-top: 12px;
-            }}
-            
-            .export-btn {{
-                background: rgba(120, 119, 198, 0.2);
-                border: 1px solid rgba(120, 119, 198, 0.3);
-                color: #e5e7eb;
-                padding: 6px 12px;
-                border-radius: 6px;
-                cursor: pointer;
-                font-size: 12px;
-                transition: all 0.2s;
-                display: flex;
-                align-items: center;
-                gap: 6px;
-            }}
-            
-            .export-btn:hover {{
-                background: rgba(120, 119, 198, 0.3);
-                transform: translateY(-1px);
-            }}
-            
-            /* Raw JSON Display */
-            .raw-json {{
-                background: #0d1117;
-                border: 1px solid rgba(255, 255, 255, 0.1);
-                border-radius: 8px;
-                padding: 16px;
-                overflow-x: auto;
-                font-family: 'JetBrains Mono', monospace;
-                font-size: 13px;
-                line-height: 1.5;
-                color: #e6edf3;
-            }}
-            
-            /* Formatted JSON Display */
-            .formatted-json {{
-                background: #0d1117;
-                border: 1px solid rgba(255, 255, 255, 0.1);
-                border-radius: 8px;
-                padding: 16px;
-                overflow-x: auto;
-            }}
-            
-            .json-key {{
-                color: #7dd3fc;
-                font-weight: 600;
-            }}
-            
-            .json-string {{
-                color: #a5f3fc;
-            }}
-            
-            .json-number {{
-                color: #f9a8d4;
-            }}
-            
-            .json-boolean {{
-                color: #c084fc;
-            }}
-            
-            .json-null {{
-                color: #6b7280;
-            }}
-            
-            /* Conversation Mode Examples */
-            .mode-examples {{
-                background: rgba(59, 130, 246, 0.1);
-                border: 1px solid rgba(59, 130, 246, 0.3);
-                border-radius: 8px;
-                padding: 16px;
-                margin: 16px 0;
-            }}
-            
-            .mode-examples h4 {{
-                color: #3b82f6;
-                margin: 0 0 12px 0;
-                font-size: 14px;
-                font-weight: 600;
-            }}
-            
-            .example-item {{
-                background: rgba(0, 0, 0, 0.2);
-                border-radius: 6px;
-                padding: 12px;
-                margin-bottom: 8px;
-            }}
-            
-            .example-title {{
-                color: #7dd3fc;
-                font-weight: 600;
-                font-size: 13px;
-                margin-bottom: 4px;
-            }}
-            
-            .example-code {{
-                font-family: 'JetBrains Mono', monospace;
-                font-size: 12px;
-                color: #e6edf3;
-                line-height: 1.4;
-            }}
-            
-            /* Fullscreen Mode */
-            .fullscreen {{
-                position: fixed !important;
-                top: 0 !important;
-                left: 0 !important;
-                right: 0 !important;
-                bottom: 0 !important;
-                z-index: 10000 !important;
-                background: #0a0a0a !important;
-                padding: 20px !important;
-                overflow: auto !important;
-            }}
-            
-            /* Loading Animation */
-            .loading-spinner {{
-                display: inline-block;
-                width: 16px;
-                height: 16px;
-                border: 2px solid rgba(120, 119, 198, 0.3);
-                border-top-color: #7877c6;
-                border-radius: 50%;
-                animation: spin 0.8s linear infinite;
-            }}
-            
-            @keyframes spin {{
-                to {{ transform: rotate(360deg); }}
-            }}
-            
-            /* Streaming Status */
-            .streaming-status {{
-                display: flex;
-                align-items: center;
-                gap: 8px;
-                padding: 8px 12px;
-                background: rgba(6, 182, 212, 0.1);
-                border: 1px solid rgba(6, 182, 212, 0.3);
-                border-radius: 6px;
-                font-size: 12px;
-                color: #06b6d4;
-            }}
-            
-            .streaming-indicator {{
-                width: 8px;
-                height: 8px;
-                background: #06b6d4;
-                border-radius: 50%;
-                animation: pulse-stream 1s infinite;
-            }}
-            
-            @keyframes pulse-stream {{
+            /* Pulse animation for awesome features indicator */
+            @keyframes pulse {{
                 0% {{ opacity: 1; transform: scale(1); }}
                 50% {{ opacity: 0.5; transform: scale(1.5); }}
                 100% {{ opacity: 1; transform: scale(1); }}
@@ -2159,8 +2190,8 @@ async def custom_swagger_ui_html():
             
             <!-- Awesome Features Panel -->
             <div class="awesome-features">
-                <button class="feature-btn" onclick="toggleDarkMode()" title="Toggle dark mode">
-                    <i class="fas fa-moon"></i> Dark
+                <button class="feature-btn" onclick="toggleDarkMode()" title="Toggle theme">
+                    <i class="fas fa-sun"></i> Light
                 </button>
                 <button class="feature-btn" id="rawModeBtn" onclick="toggleRawMode()" title="Toggle raw/parsed view">
                     <i class="fas fa-code"></i> Raw
@@ -2208,9 +2239,9 @@ async def custom_swagger_ui_html():
             <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
             <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-standalone-preset.js"></script>
             <script>
-            // 🎯 Global State
+            // 🎯 Global State - DEFAULT TO LIGHT MODE
             const awesomeState = {{
-                darkMode: true,
+                darkMode: localStorage.getItem('swagger-theme') === 'dark', // Default is light
                 rawMode: false,
                 streamRawMode: false,
                 animations: true,
@@ -2244,320 +2275,204 @@ async def custom_swagger_ui_html():
                     persistAuthorization: true,
                     onComplete: function() {{
                         console.log("🚀 Azure CoPilot V2 API loaded!");
+                        
+                        // Initialize theme
+                        initializeTheme();
+                        
+                        // Enhance conversation documentation
+                        enhanceConversationDocs();
                         enhanceStreamingResponses();
-                        addConversationExamples();
-                        setupKeyboardShortcuts();
-                        monitorApiCalls();
-                        addStreamTestButtons();
+                        
+                        // Initialize keyboard shortcuts
+                        initKeyboardShortcuts();
                     }}
                 }});
-                
-                // 🔥 Check API health
-                checkApiHealth();
             }};
             
-            // 🚀 Plugin to enhance streaming endpoints
+            // 🌙 Toggle dark/light mode with persistence
+            function toggleDarkMode() {{
+                const body = document.body;
+                const swaggerUI = document.querySelector('.swagger-ui');
+                const darkModeBtn = document.querySelector('.feature-btn[title*="Toggle"]');
+                
+                // Toggle state
+                awesomeState.darkMode = !awesomeState.darkMode;
+                
+                // Toggle classes
+                if (awesomeState.darkMode) {{
+                    body.classList.add('dark-mode');
+                    swaggerUI.classList.add('dark-mode');
+                }} else {{
+                    body.classList.remove('dark-mode');
+                    swaggerUI.classList.remove('dark-mode');
+                }}
+                
+                // Update button
+                if (darkModeBtn) {{
+                    darkModeBtn.innerHTML = awesomeState.darkMode ? 
+                        '<i class="fas fa-moon"></i> Dark' : 
+                        '<i class="fas fa-sun"></i> Light';
+                }}
+                
+                // Save preference
+                localStorage.setItem('swagger-theme', awesomeState.darkMode ? 'dark' : 'light');
+                
+                // Show toast
+                showToast(awesomeState.darkMode ? 
+                    'Switched to Dark Mode 🌙' : 
+                    'Switched to Light Mode ☀️'
+                );
+            }}
+            
+            // Initialize theme on load - DEFAULT TO LIGHT
+            function initializeTheme() {{
+                if (awesomeState.darkMode) {{
+                    document.body.classList.add('dark-mode');
+                    const swaggerUI = document.querySelector('.swagger-ui');
+                    if (swaggerUI) {{
+                        swaggerUI.classList.add('dark-mode');
+                    }}
+                    
+                    // Update button after a short delay
+                    setTimeout(() => {{
+                        const darkModeBtn = document.querySelector('.feature-btn[title*="Toggle"]');
+                        if (darkModeBtn) {{
+                            darkModeBtn.innerHTML = '<i class="fas fa-moon"></i> Dark';
+                        }}
+                    }}, 100);
+                }} else {{
+                    // Default light mode - update button to show sun
+                    setTimeout(() => {{
+                        const darkModeBtn = document.querySelector('.feature-btn[title*="Toggle"]');
+                        if (darkModeBtn) {{
+                            darkModeBtn.innerHTML = '<i class="fas fa-sun"></i> Light';
+                        }}
+                    }}, 100);
+                }}
+            }}
+            
+            // 🚀 Plugin: Enhance Conversation Mode Documentation
+            function EnhanceConversationDocs() {{
+                return {{
+                    wrapComponents: {{
+                        // Enhance operation descriptions
+                        OperationSummary: (Original, system) => (props) => {{
+                            setTimeout(() => {{
+                                enhanceOperationDescriptions();
+                            }}, 100);
+                            return Original(props);
+                        }}
+                    }}
+                }};
+            }}
+            
+            // 🚀 Plugin: Enhance Streaming Endpoints
             function StreamingEndpointEnhancer() {{
                 return {{
                     wrapComponents: {{
                         ResponseBody: (Original, system) => (props) => {{
-                            const isStreamingEndpoint = (
-                                props.path?.includes('/conversation') || 
-                                props.path?.includes('/test-comprehensive')
-                            ) && props.method === 'post';
-                            
-                            if (isStreamingEndpoint && props.content?.includes('data:')) {{
-                                // This is a streaming response
+                            if (props.path?.includes('/conversation')) {{
                                 setTimeout(() => {{
-                                    enhanceStreamingDisplay(props);
+                                    addStreamingControls(props.content);
                                 }}, 100);
                             }}
-                            
-                            return system.React.createElement(Original, props);
+                            return Original(props);
                         }}
                     }}
                 }};
             }}
             
-            // 📚 Plugin to enhance conversation documentation
-            function EnhanceConversationDocs() {{
-                return {{
-                    wrapComponents: {{
-                        Response: (Original, system) => (props) => {{
-                            const isConversationEndpoint = props.path?.includes('/conversation') || 
-                                                          props.path?.includes('/chat');
-                            if (isConversationEndpoint) {{
-                                addConversationModeDocumentation(props);
-                            }}
-                            return system.React.createElement(Original, props);
-                        }}
-                    }}
-                }};
-            }}
-            
-            // 🎯 Add real-time stream test buttons
-            function addStreamTestButtons() {{
-                // Add test buttons to streaming endpoints
-                const observer = new MutationObserver((mutations) => {{
-                    mutations.forEach((mutation) => {{
-                        mutation.addedNodes.forEach((node) => {{
-                            if (node.nodeType === 1) {{
-                                const executeBtn = node.querySelector?.('.btn.execute');
-                                if (executeBtn) {{
-                                    const opblock = executeBtn.closest('.opblock');
-                                    const path = opblock?.querySelector('.opblock-summary-path')?.textContent;
-                                    
-                                    if (path && (path.includes('/conversation') || path.includes('/test-comprehensive'))) {{
-                                        if (!opblock.querySelector('.stream-test-btn')) {{
-                                            const streamBtn = document.createElement('button');
-                                            streamBtn.className = 'stream-test-btn';
-                                            streamBtn.innerHTML = '<i class="fas fa-play"></i> Test Real-time Stream';
-                                            streamBtn.onclick = () => testRealTimeStream(opblock);
-                                            executeBtn.parentElement.appendChild(streamBtn);
-                                        }}
-                                    }}
-                                }}
-                            }}
-                        }});
-                    }});
-                }});
-                
-                observer.observe(document.body, {{
-                    childList: true,
-                    subtree: true
-                }});
-            }}
-            
-            // 🚀 Test real-time streaming
-            function testRealTimeStream(opblock) {{
-                const path = opblock.querySelector('.opblock-summary-path')?.textContent;
-                const method = opblock.querySelector('.opblock-summary-method')?.textContent?.toLowerCase();
-                
-                // Get form data
-                const formData = new FormData();
-                const inputs = opblock.querySelectorAll('input, textarea, select');
-                
-                inputs.forEach(input => {{
-                    const paramName = input.getAttribute('data-param-name') || input.name;
-                    if (paramName && input.value) {{
-                        formData.append(paramName, input.value);
-                    }}
-                }});
-                
-                // Open streaming viewer
-                openStreamingViewer();
-                
-                // Start streaming
-                if (path.includes('/conversation')) {{
-                    startConversationStream(formData);
-                }} else if (path.includes('/test-comprehensive')) {{
-                    startTestStream(formData);
-                }}
-            }}
-            
-            // 🎯 Start conversation streaming
-            function startConversationStream(formData) {{
-                // Close any existing stream
-                if (awesomeState.currentEventSource) {{
-                    awesomeState.currentEventSource.close();
-                }}
-                
-                // Build query string
-                const params = new URLSearchParams();
-                for (let [key, value] of formData.entries()) {{
-                    params.append(key, value);
-                }}
-                
-                const url = `/conversation?${{params.toString()}}`;
-                const eventSource = new EventSource(url);
-                awesomeState.currentEventSource = eventSource;
-                awesomeState.streamingActive = true;
-                awesomeState.accumulatedMessage = '';
-                
-                // Show streaming status
-                document.getElementById('streamingStatus').style.display = 'flex';
-                
-                eventSource.onmessage = (event) => {{
-                    if (event.data === '[DONE]') {{
-                        eventSource.close();
-                        awesomeState.streamingActive = false;
-                        document.getElementById('streamingStatus').style.display = 'none';
-                        showAccumulatedMessage();
-                        return;
+            // 🎯 Initialize keyboard shortcuts
+            function initKeyboardShortcuts() {{
+                document.addEventListener('keydown', (e) => {{
+                    // Ctrl/Cmd + K for search
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {{
+                        e.preventDefault();
+                        const searchInput = document.querySelector('.filter-container input');
+                        if (searchInput) searchInput.focus();
                     }}
                     
-                    try {{
-                        const data = JSON.parse(event.data);
-                        if (data.choices?.[0]?.delta?.content) {{
-                            const content = data.choices[0].delta.content;
-                            awesomeState.accumulatedMessage += content;
-                            
-                            // Add chunk to display
-                            addStreamChunk(content, event.data);
-                        }}
-                    }} catch (e) {{
-                        // Handle non-JSON data
-                        addStreamChunk(event.data, event.data, true);
+                    // Ctrl/Cmd + S for streaming viewer
+                    if ((e.ctrlKey || e.metaKey) && e.key === 's') {{
+                        e.preventDefault();
+                        openStreamingViewer();
                     }}
-                }};
-                
-                eventSource.onerror = (error) => {{
-                    console.error('Stream error:', error);
-                    eventSource.close();
-                    awesomeState.streamingActive = false;
-                    document.getElementById('streamingStatus').style.display = 'none';
-                    showToast('Stream connection error', 'error');
-                }};
+                    
+                    // Ctrl/Cmd + R for raw mode toggle
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'r') {{
+                        e.preventDefault();
+                        toggleRawMode();
+                    }}
+                    
+                    // Ctrl/Cmd + E for export
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'e') {{
+                        e.preventDefault();
+                        exportAllResponses();
+                    }}
+                    
+                    // Escape to close streaming viewer
+                    if (e.key === 'Escape') {{
+                        const viewer = document.getElementById('streamingViewer');
+                        if (viewer.style.display !== 'none') {{
+                            closeStreamingViewer();
+                        }}
+                    }}
+                }});
             }}
             
-            // 🎯 Add stream chunk to display
-            function addStreamChunk(content, rawData, isRaw = false) {{
-                const container = document.getElementById('streamingContent');
-                const chunk = document.createElement('div');
-                chunk.className = awesomeState.streamRawMode ? 'stream-chunk raw' : 'stream-chunk';
+            // 🎨 Enhance operation descriptions with better formatting
+            function enhanceOperationDescriptions() {{
+                const conversationEndpoint = document.querySelector('[data-path="/conversation"] .opblock-summary-description');
+                const chatEndpoint = document.querySelector('[data-path="/chat"] .opblock-summary-description');
                 
-                if (awesomeState.streamRawMode) {{
-                    chunk.innerHTML = `
-                        <div class="chunk-header">
-                            <span>Raw Data</span>
-                            <span>${{new Date().toLocaleTimeString()}}</span>
-                        </div>
-                        <div class="chunk-content">${{escapeHtml('data: ' + rawData)}}</div>
-                    `;
-                }} else {{
-                    chunk.innerHTML = `
-                        <div class="chunk-header">
-                            <span>Chunk #${{container.children.length + 1}}</span>
-                            <span>${{new Date().toLocaleTimeString()}}</span>
-                        </div>
-                        <div class="chunk-content">${{escapeHtml(content)}}</div>
+                if (conversationEndpoint && !conversationEndpoint.dataset.enhanced) {{
+                    conversationEndpoint.dataset.enhanced = 'true';
+                    conversationEndpoint.innerHTML = `
+                        <span style="color: var(--success); font-weight: 600;">
+                            🚀 SSE Streaming Endpoint
+                        </span> - Real-time AI responses with <code>text/event-stream</code>
                     `;
                 }}
                 
-                container.appendChild(chunk);
-                container.scrollTop = container.scrollHeight;
-            }}
-            
-            // 🎯 Show accumulated message
-            function showAccumulatedMessage() {{
-                if (!awesomeState.accumulatedMessage) return;
-                
-                const container = document.getElementById('accumulatedMessageContainer');
-                container.innerHTML = `
-                    <div class="accumulated-message">
-                        <h5><i class="fas fa-comment-alt"></i> Complete Message</h5>
-                        <div class="accumulated-content">${{escapeHtml(awesomeState.accumulatedMessage)}}</div>
-                    </div>
-                `;
-            }}
-            
-            // 🎯 Streaming viewer controls
-            function openStreamingViewer() {{
-                document.getElementById('streamingViewer').style.display = 'flex';
-                clearStreamContent();
-            }}
-            
-            function closeStreamingViewer() {{
-                document.getElementById('streamingViewer').style.display = 'none';
-                if (awesomeState.currentEventSource) {{
-                    awesomeState.currentEventSource.close();
-                    awesomeState.currentEventSource = null;
+                if (chatEndpoint && !chatEndpoint.dataset.enhanced) {{
+                    chatEndpoint.dataset.enhanced = 'true';
+                    chatEndpoint.innerHTML = `
+                        <span style="color: var(--info); font-weight: 600;">
+                            💬 Complete Response Endpoint
+                        </span> - Full AI response in single JSON payload
+                    `;
                 }}
-            }}
-            
-            function toggleStreamRaw() {{
-                awesomeState.streamRawMode = !awesomeState.streamRawMode;
-                document.getElementById('streamRawBtn').classList.toggle('active');
-            }}
-            
-            function clearStreamContent() {{
-                document.getElementById('streamingContent').innerHTML = '';
-                document.getElementById('accumulatedMessageContainer').innerHTML = '';
-                awesomeState.accumulatedMessage = '';
-            }}
-            
-            function exportStreamContent() {{
-                const content = {{
-                    raw: Array.from(document.querySelectorAll('.stream-chunk')).map(el => el.textContent),
-                    accumulated: awesomeState.accumulatedMessage,
-                    timestamp: new Date().toISOString()
-                }};
                 
-                const blob = new Blob([JSON.stringify(content, null, 2)], {{ type: 'application/json' }});
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `stream-content-${{new Date().toISOString()}}.json`;
-                a.click();
-                URL.revokeObjectURL(url);
-                
-                showToast('Stream content exported!');
-            }}
-            
-            // 📝 Add conversation mode documentation
-            function addConversationModeDocumentation(props) {{
+                // Add visual examples for conversation modes
                 setTimeout(() => {{
-                    const operationEl = document.querySelector(`[data-path="${{props.path}}"]`);
-                    if (operationEl && !operationEl.querySelector('.mode-examples')) {{
-                        const descEl = operationEl.querySelector('.opblock-description-wrapper');
-                        if (descEl) {{
+                    const descriptions = document.querySelectorAll('.opblock-description-wrapper');
+                    descriptions.forEach(desc => {{
+                        if (desc.textContent.includes('Flexible conversation modes') && !desc.dataset.examplesAdded) {{
+                            desc.dataset.examplesAdded = 'true';
                             const examplesHtml = `
-                                <div class="mode-examples">
-                                    <h4>🎯 Conversation Modes & Examples</h4>
-                                    
-                                    <div class="example-item">
-                                        <div class="example-title">1️⃣ Session-Based Mode (with Assistant & Thread)</div>
-                                        <div class="example-code">
-session=thread_abc123
-assistant=asst_def456
-prompt="Analyze the uploaded data"
+                                <div style="margin-top: 20px; padding: 16px; background: var(--bg-tertiary); border-radius: 8px; border: 1px solid var(--border);">
+                                    <h4 style="margin: 0 0 12px 0; color: var(--accent); font-size: 14px;">
+                                        <i class="fas fa-code"></i> Quick Examples:
+                                    </h4>
+                                    <div style="display: grid; gap: 12px;">
+                                        <div style="padding: 12px; background: var(--bg-primary); border-radius: 6px; border: 1px solid var(--border);">
+                                            <strong style="color: var(--text-primary);">Session Mode:</strong>
+                                            <code style="display: block; margin-top: 4px; font-size: 12px;">
+                                                ?session=thread_abc&assistant=asst_xyz&prompt=Hello
+                                            </code>
                                         </div>
-                                    </div>
-                                    
-                                    <div class="example-item">
-                                        <div class="example-title">2️⃣ Invalid Thread Recovery</div>
-                                        <div class="example-code">
-session=invalid_thread_id  // System creates new thread
-assistant=asst_def456
-prompt="Start fresh analysis"
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="example-item">
-                                        <div class="example-title">3️⃣ Context-Only Mode (Stateless)</div>
-                                        <div class="example-code">
-context="I'm a data scientist"
-prompt="Generate sample dataset"
-// No session or assistant needed
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="example-item">
-                                        <div class="example-title">4️⃣ File-Enhanced Mode</div>
-                                        <div class="example-code">
-session=thread_abc123
-assistant=asst_def456
-files=[spreadsheet.xlsx, report.pdf]
-prompt="Compare these documents"
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="example-item">
-                                        <div class="example-title">5️⃣ Raw Streaming Response Format</div>
-                                        <div class="example-code">
-// Toggle Raw Mode to see actual SSE format:
-data: {{"id": "chatcmpl-xxx", "object": "chat.completion.chunk", "choices": [{{"delta": {{"content": "Hello"}}, "index": 0}}]}}
-
-data: {{"id": "chatcmpl-xxx", "object": "chat.completion.chunk", "choices": [{{"delta": {{"content": " world"}}, "index": 0}}]}}
-
-data: [DONE]
+                                        <div style="padding: 12px; background: var(--bg-primary); border-radius: 6px; border: 1px solid var(--border);">
+                                            <strong style="color: var(--text-primary);">Context Mode:</strong>
+                                            <code style="display: block; margin-top: 4px; font-size: 12px;">
+                                                ?context=You are helpful&prompt=Explain AI
+                                            </code>
                                         </div>
                                     </div>
                                 </div>
                             `;
-                            descEl.insertAdjacentHTML('beforeend', examplesHtml);
+                            desc.insertAdjacentHTML('beforeend', examplesHtml);
                         }}
-                    }}
+                    }});
                 }}, 100);
             }}
             
@@ -2618,360 +2533,520 @@ data: [DONE]
                     // Regular JSON
                     try {{
                         const json = JSON.parse(text);
-                        formattedHTML = `
-                            <div class="streaming-response-container">
-                                <h4 style="color: #7dd3fc; margin-bottom: 16px;">📋 JSON Response</h4>
-                                <div class="formatted-json">${{formatJSON(json)}}</div>
-                            </div>
-                        `;
+                        formattedHTML = awesomeState.rawMode ?
+                            \`<pre style="margin: 0;">${{JSON.stringify(json, null, 2)}}</pre>\` :
+                            formatParsedJSONResponse(json);
                     }} catch {{
-                        formattedHTML = `<div class="raw-json">${{escapeHtml(text)}}</div>`;
+                        formattedHTML = \`<pre style="margin: 0;">${{escapeHtml(text)}}</pre>\`;
                     }}
                 }}
                 
                 element.innerHTML = formattedHTML;
             }}
             
-            // 📊 Format Raw SSE Response
+            // 🎨 Format SSE response (raw mode)
             function formatRawSSEResponse(text) {{
-                return `
+                const lines = text.split('\\n');
+                return \`
                     <div class="streaming-response-container">
                         <div class="response-header">
-                            <div class="response-title">
-                                <i class="fas fa-stream"></i> Raw SSE Stream
-                            </div>
-                            <div class="response-controls">
-                                <button class="control-btn" onclick="copyToClipboard(\`${{escapeHtml(text)}}\`)">
+                            <span class="response-type">Server-Sent Events (SSE)</span>
+                            <div class="response-actions">
+                                <button class="action-btn" onclick="copyResponse(this)">
                                     <i class="fas fa-copy"></i> Copy
                                 </button>
-                            </div>
-                        </div>
-                        <div class="raw-json">${{escapeHtml(text)}}</div>
-                    </div>
-                `;
-            }}
-            
-            // 🎯 Format Parsed SSE Response
-            function formatParsedSSEResponse(text) {{
-                const events = parseSSEResponse(text);
-                let accumulatedContent = '';
-                
-                let html = `
-                    <div class="streaming-response-container">
-                        <div class="response-header">
-                            <div class="response-title">
-                                <i class="fas fa-comments"></i> Parsed Conversation Stream
-                            </div>
-                            <div class="response-controls">
-                                <button class="control-btn" onclick="exportResponse('json')">
+                                <button class="action-btn" onclick="exportResponse('sse')">
                                     <i class="fas fa-download"></i> Export
                                 </button>
                             </div>
                         </div>
-                `;
-                
-                // Analytics
-                const contentEvents = events.filter(e => e.data && e.data.includes('delta'));
-                const totalEvents = events.length;
-                
-                html += `
-                    <div class="response-analytics">
-                        <div class="analytics-item">
-                            <span class="analytics-label">Total Events</span>
-                            <span class="analytics-value">${{totalEvents}}</span>
-                        </div>
-                        <div class="analytics-item">
-                            <span class="analytics-label">Content Chunks</span>
-                            <span class="analytics-value">${{contentEvents.length}}</span>
-                        </div>
-                        <div class="analytics-item">
-                            <span class="analytics-label">Stream Status</span>
-                            <span class="analytics-value">${{events.some(e => e.data === '[DONE]') ? 'Complete' : 'Partial'}}</span>
-                        </div>
+                        <pre style="margin: 0; font-size: 12px;">${{lines.map(line => 
+                            line.startsWith('data:') ? 
+                                \`<span style="color: var(--accent);">data:</span> ${{escapeHtml(line.substring(5))}}\` :
+                                escapeHtml(line)
+                        ).join('\\n')}}</pre>
                     </div>
-                `;
+                \`;
+            }}
+            
+            // 🎨 Format SSE response (parsed mode)
+            function formatParsedSSEResponse(text) {{
+                const messages = [];
+                const lines = text.split('\\n');
                 
-                // Process events
-                events.forEach((event, index) => {{
-                    if (event.data === '[DONE]') {{
-                        html += `
-                            <div class="stream-event type-complete">
-                                <div class="event-header">
-                                    <span class="event-type">COMPLETE</span>
-                                    <span class="event-timestamp">Event #${{index + 1}}</span>
-                                </div>
-                                <div class="event-content">Stream completed successfully</div>
-                            </div>
-                        `;
-                    }} else if (event.data) {{
-                        try {{
-                            const parsed = JSON.parse(event.data);
-                            if (parsed.choices?.[0]?.delta?.content) {{
-                                const content = parsed.choices[0].delta.content;
-                                accumulatedContent += content;
-                                
-                                html += `
-                                    <div class="stream-event type-content">
-                                        <div class="event-header">
-                                            <span class="event-type">CONTENT</span>
-                                            <span class="event-timestamp">Chunk #${{index + 1}}</span>
-                                        </div>
-                                        <div class="event-content">${{escapeHtml(content)}}</div>
-                                    </div>
-                                `;
+                lines.forEach(line => {{
+                    if (line.startsWith('data: ')) {{
+                        const data = line.substring(6);
+                        if (data === '[DONE]') {{
+                            messages.push({{
+                                type: 'done',
+                                content: 'Stream completed'
+                            }});
+                        }} else {{
+                            try {{
+                                const parsed = JSON.parse(data);
+                                if (parsed.choices?.[0]?.delta?.content) {{
+                                    messages.push({{
+                                        type: 'content',
+                                        content: parsed.choices[0].delta.content
+                                    }});
+                                }}
+                            }} catch {{
+                                messages.push({{
+                                    type: 'raw',
+                                    content: data
+                                }});
                             }}
-                        }} catch (e) {{
-                            // Handle parse errors
                         }}
                     }}
                 }});
                 
-                // Show accumulated message
-                if (accumulatedContent) {{
-                    html += `
-                        <div class="accumulated-message">
-                            <h5><i class="fas fa-comment-alt"></i> Complete Message</h5>
-                            <div class="accumulated-content">${{escapeHtml(accumulatedContent)}}</div>
-                        </div>
-                    `;
-                }}
+                const fullMessage = messages
+                    .filter(m => m.type === 'content')
+                    .map(m => m.content)
+                    .join('');
                 
-                html += '</div>';
-                return html;
+                return \`
+                    <div class="streaming-response-container">
+                        <div class="response-header">
+                            <span class="response-type">Streaming Response (Parsed)</span>
+                            <div class="response-actions">
+                                <button class="action-btn" onclick="toggleFullscreen(this)">
+                                    <i class="fas fa-expand"></i> Fullscreen
+                                </button>
+                                <button class="action-btn" onclick="copyResponse(this)">
+                                    <i class="fas fa-copy"></i> Copy
+                                </button>
+                            </div>
+                        </div>
+                        <div style="max-height: 400px; overflow-y: auto;">
+                            ${{messages.map(msg => \`
+                                <div class="stream-message ${{msg.type === 'done' ? 'stream-info' : ''}}">
+                                    ${{msg.type === 'done' ? 
+                                        '<i class="fas fa-check-circle"></i> ' : 
+                                        ''}}${{escapeHtml(msg.content)}}
+                                </div>
+                            \`).join('')}}
+                        </div>
+                        ${{fullMessage ? \`
+                            <div style="margin-top: 16px; padding: 16px; background: var(--bg-tertiary); border-radius: 8px;">
+                                <h5 style="margin: 0 0 8px 0; color: var(--accent); font-size: 14px;">
+                                    <i class="fas fa-comment-alt"></i> Complete Message:
+                                </h5>
+                                <div style="color: var(--text-primary); line-height: 1.6;">
+                                    ${{escapeHtml(fullMessage)}}
+                                </div>
+                            </div>
+                        \` : ''}}
+                    </div>
+                \`;
             }}
             
-            // 🔧 Parse SSE Response (with proper empty line handling)
-            function parseSSEResponse(text) {{
-                const lines = text.split('\\n');
+            // 🎨 Format NDJSON response (raw mode)
+            function formatRawNDJSONResponse(text) {{
+                const lines = text.split('\\n').filter(line => line.trim());
+                return \`
+                    <div class="streaming-response-container">
+                        <div class="response-header">
+                            <span class="response-type">NDJSON Stream</span>
+                            <div class="response-actions">
+                                <button class="action-btn" onclick="copyResponse(this)">
+                                    <i class="fas fa-copy"></i> Copy
+                                </button>
+                                <button class="action-btn" onclick="exportResponse('ndjson')">
+                                    <i class="fas fa-download"></i> Export
+                                </button>
+                            </div>
+                        </div>
+                        <pre style="margin: 0; font-size: 12px;">${{lines.map(line => {{
+                            try {{
+                                const json = JSON.parse(line);
+                                return JSON.stringify(json, null, 2);
+                            }} catch {{
+                                return escapeHtml(line);
+                            }}
+                        }}).join('\\n\\n')}}</pre>
+                    </div>
+                \`;
+            }}
+            
+            // 🎨 Format NDJSON response (parsed mode)
+            function formatParsedNDJSONResponse(text) {{
+                const lines = text.split('\\n').filter(line => line.trim());
                 const events = [];
-                let currentEvent = {{}};
                 
                 lines.forEach(line => {{
-                    if (line.startsWith('data: ')) {{
-                        currentEvent.data = line.substring(6);
-                        events.push({{...currentEvent}});
-                        currentEvent = {{}};
-                    }} else if (line.startsWith('id: ')) {{
-                        currentEvent.id = line.substring(4);
-                    }} else if (line.startsWith('event: ')) {{
-                        currentEvent.event = line.substring(7);
-                    }}
-                }});
-                
-                return events;
-            }}
-            
-            // 📊 Format NDJSON responses
-            function formatRawNDJSONResponse(text) {{
-                return `
-                    <div class="streaming-response-container">
-                        <div class="response-header">
-                            <div class="response-title">
-                                <i class="fas fa-bars"></i> Raw NDJSON Stream
-                            </div>
-                        </div>
-                        <div class="raw-json">${{escapeHtml(text)}}</div>
-                    </div>
-                `;
-            }}
-            
-            function formatParsedNDJSONResponse(text) {{
-                const lines = text.trim().split('\\n');
-                let html = `
-                    <div class="streaming-response-container">
-                        <div class="response-header">
-                            <div class="response-title">
-                                <i class="fas fa-tasks"></i> Test Results Stream
-                            </div>
-                        </div>
-                `;
-                
-                lines.forEach((line, index) => {{
                     try {{
                         const event = JSON.parse(line);
-                        html += `
-                            <div class="stream-event">
-                                <div class="event-header">
-                                    <span class="event-type">${{event.type || 'UPDATE'}}</span>
-                                    <span class="event-timestamp">${{event.timestamp || `Line ${{index + 1}}`}}</span>
-                                </div>
-                                <div class="event-content">${{formatJSON(event.data || event)}}</div>
-                            </div>
-                        `;
+                        events.push(event);
                     }} catch {{
-                        // Skip invalid lines
+                        events.push({{ error: 'Failed to parse', raw: line }});
                     }}
                 }});
                 
-                html += '</div>';
-                return html;
+                const fullContent = events
+                    .filter(e => e.content)
+                    .map(e => e.content)
+                    .join('');
+                
+                return \`
+                    <div class="streaming-response-container">
+                        <div class="response-header">
+                            <span class="response-type">NDJSON Stream (Parsed)</span>
+                            <div class="response-actions">
+                                <button class="action-btn" onclick="toggleFullscreen(this)">
+                                    <i class="fas fa-expand"></i> Fullscreen
+                                </button>
+                            </div>
+                        </div>
+                        <div style="max-height: 400px; overflow-y: auto;">
+                            ${{events.map(event => {{
+                                if (event.error) {{
+                                    return \`<div class="stream-message stream-error">
+                                        <i class="fas fa-exclamation-triangle"></i> Parse Error
+                                    </div>\`;
+                                }}
+                                
+                                const timestamp = event.timestamp ? 
+                                    new Date(event.timestamp).toLocaleTimeString() : '';
+                                
+                                return \`
+                                    <div class="stream-message">
+                                        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                                            <span style="color: var(--accent); font-size: 11px;">
+                                                ${{event.type || 'message'}}
+                                            </span>
+                                            <span style="color: var(--text-muted); font-size: 11px;">
+                                                ${{timestamp}}
+                                            </span>
+                                        </div>
+                                        <div>${{escapeHtml(event.content || JSON.stringify(event))}}</div>
+                                    </div>
+                                \`;
+                            }}).join('')}}
+                        </div>
+                        ${{fullContent ? \`
+                            <div style="margin-top: 16px; padding: 16px; background: var(--bg-tertiary); border-radius: 8px;">
+                                <h5 style="margin: 0 0 8px 0; color: var(--accent); font-size: 14px;">
+                                    <i class="fas fa-comment-alt"></i> Complete Message:
+                                </h5>
+                                <div style="color: var(--text-primary); line-height: 1.6;">
+                                    ${{escapeHtml(fullContent)}}
+                                </div>
+                            </div>
+                        \` : ''}}
+                    </div>
+                \`;
             }}
             
-            // 🎨 Format JSON with syntax highlighting
-            function formatJSON(obj) {{
-                return JSON.stringify(obj, null, 2)
-                    .replace(/"([^"]+)":/g, '<span class="json-key">"$1":</span>')
-                    .replace(/: "([^"]*)"/g, ': <span class="json-string">"$1"</span>')
-                    .replace(/: ([0-9.]+)/g, ': <span class="json-number">$1</span>')
-                    .replace(/: (true|false)/g, ': <span class="json-boolean">$1</span>')
-                    .replace(/: null/g, ': <span class="json-null">null</span>');
+            // 🎨 Format JSON response (parsed mode)
+            function formatParsedJSONResponse(json) {{
+                if (json.response) {{
+                    return \`
+                        <div class="streaming-response-container">
+                            <div class="response-header">
+                                <span class="response-type">AI Response</span>
+                                <div class="response-actions">
+                                    <button class="action-btn" onclick="copyResponse(this)">
+                                        <i class="fas fa-copy"></i> Copy
+                                    </button>
+                                </div>
+                            </div>
+                            <div style="padding: 16px; background: var(--bg-tertiary); border-radius: 8px;">
+                                <div style="color: var(--text-primary); line-height: 1.6; white-space: pre-wrap;">
+                                    ${{escapeHtml(json.response)}}
+                                </div>
+                                ${{json.session ? \`
+                                    <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);">
+                                        <span style="color: var(--text-muted); font-size: 12px;">
+                                            Session: <code>${{json.session}}</code>
+                                        </span>
+                                    </div>
+                                \` : ''}}
+                            </div>
+                        </div>
+                    \`;
+                }}
+                
+                return \`<pre style="margin: 0;">${{JSON.stringify(json, null, 2)}}</pre>\`;
             }}
             
-            // 🛡️ HTML Escape
+            // 🛠️ Utility functions
             function escapeHtml(text) {{
                 const div = document.createElement('div');
                 div.textContent = text;
                 return div.innerHTML;
             }}
             
-            // 📋 Copy to clipboard
-            function copyToClipboard(text) {{
-                navigator.clipboard.writeText(text).then(() => {{
-                    showToast('Copied to clipboard!');
-                }});
-            }}
-            
-            // 🎯 Show toast notification
             function showToast(message, type = 'success') {{
                 const toast = document.createElement('div');
-                toast.style.cssText = `
-                    position: fixed;
-                    bottom: 20px;
-                    left: 50%;
-                    transform: translateX(-50%);
-                    background: ${{type === 'error' ? '#dc2626' : '#10b981'}};
-                    color: white;
-                    padding: 12px 24px;
-                    border-radius: 8px;
-                    font-size: 14px;
-                    font-weight: 500;
-                    z-index: 10000;
-                    animation: slideUp 0.3s ease-out;
-                `;
+                toast.className = \`toast ${{type}}\`;
                 toast.textContent = message;
                 document.body.appendChild(toast);
                 
                 setTimeout(() => {{
-                    toast.style.animation = 'slideDown 0.3s ease-out';
+                    toast.classList.add('hiding');
                     setTimeout(() => toast.remove(), 300);
                 }}, 3000);
             }}
             
-            // ⌨️ Keyboard shortcuts
-            function setupKeyboardShortcuts() {{
-                document.addEventListener('keydown', (e) => {{
-                    if (e.ctrlKey || e.metaKey) {{
-                        switch(e.key) {{
-                            case 'k':
-                                e.preventDefault();
-                                document.querySelector('.swagger-ui input[type="text"]')?.focus();
-                                break;
-                            case 'r':
-                                e.preventDefault();
-                                toggleRawMode();
-                                break;
-                            case 'e':
-                                e.preventDefault();
-                                exportAllResponses();
-                                break;
-                            case 's':
-                                e.preventDefault();
-                                if (document.getElementById('streamingViewer').style.display === 'flex') {{
-                                    closeStreamingViewer();
-                                }} else {{
-                                    openStreamingViewer();
-                                }}
-                                break;
-                        }}
-                    }} else if (e.key === 'Escape') {{
-                        if (document.getElementById('streamingViewer').style.display === 'flex') {{
-                            closeStreamingViewer();
-                        }}
-                    }}
+            function copyResponse(button) {{
+                const container = button.closest('.streaming-response-container');
+                const text = container.querySelector('pre')?.textContent || 
+                           container.querySelector('.stream-message')?.textContent || '';
+                
+                navigator.clipboard.writeText(text).then(() => {{
+                    showToast('Response copied to clipboard!');
                 }});
             }}
             
-            // 📊 Monitor API calls
-            function monitorApiCalls() {{
-                let originalFetch = window.fetch;
-                window.fetch = function(...args) {{
-                    const startTime = Date.now();
-                    return originalFetch.apply(this, args).then(response => {{
-                        const endTime = Date.now();
-                        const duration = endTime - startTime;
-                        
-                        // Update connection status
-                        const statusEl = document.querySelector('.connection-status span');
-                        if (statusEl) {{
-                            statusEl.textContent = `API Connected (${{duration}}ms)`;
-                        }}
-                        
-                        return response;
-                    }});
-                }};
-            }}
-            
-            // 🏥 Check API health
+            // 🎯 Check API health
             async function checkApiHealth() {{
                 try {{
                     const response = await fetch('/health');
-                    const data = await response.json();
-                    
                     const statusDot = document.querySelector('.status-dot');
-                    if (data.status === 'healthy') {{
+                    const statusText = document.querySelector('.connection-status span');
+                    
+                    if (response.ok) {{
                         statusDot.style.background = '#10b981';
+                        statusText.textContent = 'API Connected';
                     }} else {{
                         statusDot.style.background = '#f59e0b';
+                        statusText.textContent = 'API Issues';
                     }}
                 }} catch (error) {{
                     const statusDot = document.querySelector('.status-dot');
+                    const statusText = document.querySelector('.connection-status span');
                     statusDot.style.background = '#ef4444';
+                    statusText.textContent = 'API Disconnected';
                 }}
             }}
             
-            // 📥 Export all responses
+            // 🎯 Export all responses
             function exportAllResponses() {{
-                const responses = Array.from(document.querySelectorAll('.response-body')).map(el => {{
-                    return {{
-                        endpoint: el.closest('.opblock')?.querySelector('.opblock-summary-path')?.textContent,
-                        method: el.closest('.opblock')?.querySelector('.opblock-summary-method')?.textContent,
+                const responses = [];
+                document.querySelectorAll('.response-body').forEach((el, index) => {{
+                    responses.push({{
+                        index: index + 1,
+                        endpoint: el.closest('.opblock')?.querySelector('.opblock-summary-path')?.textContent || 'Unknown',
                         content: el.textContent
-                    }};
+                    }});
                 }});
+                
+                if (responses.length === 0) {{
+                    showToast('No responses to export', 'error');
+                    return;
+                }}
                 
                 const blob = new Blob([JSON.stringify(responses, null, 2)], {{ type: 'application/json' }});
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = `api-responses-${{new Date().toISOString()}}.json`;
+                a.download = \`api-responses-${{new Date().toISOString()}}.json\`;
                 a.click();
                 URL.revokeObjectURL(url);
                 
-                showToast('Exported all responses!');
+                showToast(\`Exported ${{responses.length}} responses!\`);
+            }}
+            
+            // 🎯 Add streaming controls to conversation endpoint
+            function addStreamingControls(content) {{
+                const controlsHTML = \`
+                    <div style="margin-top: 16px; padding: 12px; background: var(--bg-tertiary); border-radius: 8px; border: 1px solid var(--accent);">
+                        <h5 style="margin: 0 0 8px 0; color: var(--accent); font-size: 14px;">
+                            <i class="fas fa-play-circle"></i> Test Streaming Response
+                        </h5>
+                        <button class="btn" style="background: var(--accent);" onclick="testStreamingEndpoint()">
+                            Open Streaming Viewer
+                        </button>
+                    </div>
+                \`;
+                
+                const responseBody = document.querySelector('[data-path="/conversation"] .response-body');
+                if (responseBody && !responseBody.dataset.controlsAdded) {{
+                    responseBody.dataset.controlsAdded = 'true';
+                    responseBody.insertAdjacentHTML('beforeend', controlsHTML);
+                }}
+            }}
+            
+            // 🎯 Test streaming endpoint
+            function testStreamingEndpoint() {{
+                openStreamingViewer();
+                
+                // Get form data from the swagger UI
+                const form = document.querySelector('[data-path="/conversation"] form');
+                if (!form) {{
+                    showToast('Please try the endpoint first', 'error');
+                    return;
+                }}
+                
+                const formData = new FormData(form);
+                
+                // Close any existing connection
+                if (awesomeState.currentEventSource) {{
+                    awesomeState.currentEventSource.close();
+                }}
+                
+                // Build query string
+                const params = new URLSearchParams();
+                for (let [key, value] of formData.entries()) {{
+                    params.append(key, value);
+                }}
+                
+                const url = \`/conversation?${{params.toString()}}\`;
+                const eventSource = new EventSource(url);
+                awesomeState.currentEventSource = eventSource;
+                awesomeState.streamingActive = true;
+                awesomeState.accumulatedMessage = '';
+                
+                // Show streaming status
+                document.getElementById('streamingStatus').style.display = 'flex';
+                
+                eventSource.onmessage = (event) => {{
+                    if (event.data === '[DONE]') {{
+                        eventSource.close();
+                        awesomeState.streamingActive = false;
+                        document.getElementById('streamingStatus').style.display = 'none';
+                        showAccumulatedMessage();
+                        return;
+                    }}
+                    
+                    try {{
+                        const data = JSON.parse(event.data);
+                        if (data.choices?.[0]?.delta?.content) {{
+                            const content = data.choices[0].delta.content;
+                            awesomeState.accumulatedMessage += content;
+                            
+                            // Add chunk to display
+                            addStreamChunk(content, event.data);
+                        }}
+                    }} catch (e) {{
+                        // Handle non-JSON data
+                        addStreamChunk(event.data, event.data, true);
+                    }}
+                }};
+                
+                eventSource.onerror = (error) => {{
+                    console.error('Stream error:', error);
+                    eventSource.close();
+                    awesomeState.streamingActive = false;
+                    document.getElementById('streamingStatus').style.display = 'none';
+                    showToast('Stream connection error', 'error');
+                }};
+            }}
+            
+            // 🎯 Add stream chunk to display
+            function addStreamChunk(content, rawData, isRaw = false) {{
+                const container = document.getElementById('streamingContent');
+                const chunk = document.createElement('div');
+                chunk.className = awesomeState.streamRawMode ? 'stream-chunk raw' : 'stream-chunk';
+                
+                if (awesomeState.streamRawMode) {{
+                    chunk.innerHTML = \`
+                        <div class="chunk-header">
+                            <span>Raw Data</span>
+                            <span>${{new Date().toLocaleTimeString()}}</span>
+                        </div>
+                        <div class="chunk-content">${{escapeHtml('data: ' + rawData)}}</div>
+                    \`;
+                }} else {{
+                    chunk.innerHTML = \`
+                        <div class="chunk-header">
+                            <span>Chunk #${{container.children.length + 1}}</span>
+                            <span>${{new Date().toLocaleTimeString()}}</span>
+                        </div>
+                        <div class="chunk-content">${{escapeHtml(content)}}</div>
+                    \`;
+                }}
+                
+                container.appendChild(chunk);
+                container.scrollTop = container.scrollHeight;
+            }}
+            
+            // 🎯 Show accumulated message
+            function showAccumulatedMessage() {{
+                if (!awesomeState.accumulatedMessage) return;
+                
+                const container = document.getElementById('accumulatedMessageContainer');
+                container.innerHTML = \`
+                    <div class="accumulated-message">
+                        <h5><i class="fas fa-comment-alt"></i> Complete Message</h5>
+                        <div class="accumulated-content">${{escapeHtml(awesomeState.accumulatedMessage)}}</div>
+                    </div>
+                \`;
+            }}
+            
+            // 🎯 Streaming viewer controls
+            function openStreamingViewer() {{
+                document.getElementById('streamingViewer').style.display = 'flex';
+                clearStreamContent();
+            }}
+            
+            function closeStreamingViewer() {{
+                document.getElementById('streamingViewer').style.display = 'none';
+                if (awesomeState.currentEventSource) {{
+                    awesomeState.currentEventSource.close();
+                    awesomeState.currentEventSource = null;
+                }}
+            }}
+            
+            function toggleStreamRaw() {{
+                awesomeState.streamRawMode = !awesomeState.streamRawMode;
+                const btn = document.getElementById('streamRawBtn');
+                btn.classList.toggle('active');
+                showToast(awesomeState.streamRawMode ? 'Raw stream mode' : 'Parsed stream mode');
+            }}
+            
+            function clearStreamContent() {{
+                document.getElementById('streamingContent').innerHTML = '';
+                document.getElementById('accumulatedMessageContainer').innerHTML = '';
+                awesomeState.accumulatedMessage = '';
+            }}
+            
+            function exportStreamContent() {{
+                const chunks = [];
+                document.querySelectorAll('.stream-chunk').forEach(chunk => {{
+                    chunks.push(chunk.textContent);
+                }});
+                
+                if (chunks.length === 0) {{
+                    showToast('No stream content to export', 'error');
+                    return;
+                }}
+                
+                const blob = new Blob([chunks.join('\\n\\n')], {{ type: 'text/plain' }});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = \`stream-export-${{new Date().toISOString()}}.txt\`;
+                a.click();
+                URL.revokeObjectURL(url);
+                
+                showToast('Stream content exported!');
             }}
             
             // 🎯 Show keyboard shortcuts
             function showKeyboardShortcuts() {{
-                const shortcuts = `
-                    <div style="background: rgba(17, 24, 39, 0.95); color: white; padding: 20px; border-radius: 8px;">
-                        <h3 style="margin-top: 0; color: #7877c6;">⌨️ Keyboard Shortcuts</h3>
+                const shortcuts = \`
+                    <div style="background: var(--bg-elevated); color: var(--text-primary); padding: 20px; border-radius: 8px;">
+                        <h3 style="margin-top: 0; color: var(--accent);">⌨️ Keyboard Shortcuts</h3>
                         <p><strong>Ctrl/Cmd + K</strong> - Focus search</p>
                         <p><strong>Ctrl/Cmd + R</strong> - Toggle raw mode</p>
                         <p><strong>Ctrl/Cmd + E</strong> - Export responses</p>
                         <p><strong>Ctrl/Cmd + S</strong> - Toggle streaming viewer</p>
                         <p><strong>Esc</strong> - Close dialogs</p>
                     </div>
-                `;
+                \`;
                 
                 const modal = document.createElement('div');
-                modal.style.cssText = `
+                modal.style.cssText = \`
                     position: fixed;
                     top: 50%;
                     left: 50%;
                     transform: translate(-50%, -50%);
                     z-index: 10000;
-                    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
-                `;
+                    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+                \`;
                 modal.innerHTML = shortcuts;
                 document.body.appendChild(modal);
                 
@@ -2996,11 +3071,6 @@ data: [DONE]
                 showToast(awesomeState.animations ? 'Animations enabled' : 'Animations disabled');
             }}
             
-            // Placeholder for dark mode toggle (already dark by default)
-            function toggleDarkMode() {{
-                showToast('Already in dark mode - the best mode! 🌙');
-            }}
-            
             // Export response helper
             function exportResponse(format) {{
                 const responses = document.querySelectorAll('.response-body');
@@ -3016,7 +3086,7 @@ data: [DONE]
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = `response-${{new Date().toISOString()}}.${{format === 'json' ? 'json' : 'txt'}}`;
+                a.download = \`response-${{new Date().toISOString()}}.${{format === 'json' ? 'json' : 'txt'}}\`;
                 a.click();
                 URL.revokeObjectURL(url);
                 
@@ -3039,1420 +3109,78 @@ data: [DONE]
         """,
         status_code=200
     )
-# Serve custom ReDoc
+
 @app.get("/redoc", include_in_schema=False)
 async def redoc_html():
-    """Serve ReDoc with advanced beautiful dark mode theme with enhanced contrast"""
+    """Serve ReDoc with native light theme"""
     return HTMLResponse(
         content=f"""
         <!DOCTYPE html>
-        <html lang="en">
+        <html>
         <head>
             <title>{app.title} - API Documentation</title>
             <meta charset="utf-8"/>
             <meta name="viewport" content="width=device-width, initial-scale=1">
-            <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
             <style>
-                /* CSS Variables for Advanced Theme with Enhanced Contrast */
-                :root {{
-                    /* Premium Dark Color Palette - Enhanced for better contrast */
-                    --bg-primary: #1a1a1a;
-                    --bg-secondary: #222;
-                    --bg-tertiary: #2a2a2a;
-                    --bg-elevated: #333;
-                    --bg-overlay: rgba(26, 26, 26, 0.85);
-                    
-                    /* Advanced Gradients - ALL RETAINED */
-                    --gradient-primary: linear-gradient(135deg, #7877c6 0%, #9291d0 100%);
-                    --gradient-secondary: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-                    --gradient-success: linear-gradient(135deg, #16a34a 0%, #22c55e 100%);
-                    --gradient-warning: linear-gradient(135deg, #ea580c 0%, #f97316 100%);
-                    --gradient-danger: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
-                    --gradient-info: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%);
-                    
-                    /* Text Colors with Enhanced Contrast */
-                    --text-primary: #f0f0f0;
-                    --text-secondary: #c0c0c0;
-                    --text-tertiary: #999;
-                    --text-muted: #888;
-                    --text-disabled: #666;
-                    
-                    /* Accent Colors - Matching webpage.html */
-                    --accent-primary: #7877c6;
-                    --accent-secondary: #9291d0;
-                    --accent-hover: #9291d0;
-                    --accent-active: #5c5ba0;
-                    
-                    /* Semantic Colors with Better Visibility */
-                    --color-success: #4ade80;
-                    --color-warning: #fbbf24;
-                    --color-danger: #f87171;
-                    --color-info: #60a5fa;
-                    
-                    /* Borders and Shadows - ALL RETAINED */
-                    --border-default: #333;
-                    --border-subtle: #2a2a2a;
-                    --border-strong: #444;
-                    
-                    --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.3);
-                    --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.4);
-                    --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.5);
-                    --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.6);
-                    
-                    /* Transitions - ALL RETAINED */
-                    --transition-fast: 0.15s ease;
-                    --transition-base: 0.3s ease;
-                    --transition-slow: 0.5s ease;
-                    
-                    /* Layout - ALL RETAINED */
-                    --sidebar-width: 300px;
-                    --content-max-width: 900px;
-                }}
-                
-                /* Global Styles with Enhanced Contrast */
-                * {{
-                    box-sizing: border-box;
-                }}
-                
                 body {{
                     margin: 0;
                     padding: 0;
-                    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-                    background: linear-gradient(-45deg, #0d1117, #161b22, #0d1117, #21262d);
-                    background-size: 400% 400%;
-                    animation: gradientShift 15s ease infinite;
-                    color: var(--text-primary);
-                    line-height: 1.6;
-                    -webkit-font-smoothing: antialiased;
-                    -moz-osx-font-smoothing: grayscale;
-                }}
-                
-                @keyframes gradientShift {{
-                    0% {{ background-position: 0% 50%; }}
-                    50% {{ background-position: 100% 50%; }}
-                    100% {{ background-position: 0% 50%; }}
-                }}
-                
-                /* Enhanced Typography - ALL RETAINED WITH IMPROVEMENTS */
-                h1, h2, h3, h4, h5, h6 {{
-                    color: var(--text-primary) !important;
-                    font-weight: 700 !important;
-                    line-height: 1.3 !important;
-                    margin-top: 0 !important;
-                }}
-                
-                h1 {{
-                    font-size: 2.5rem !important;
-                    letter-spacing: -0.02em !important;
-                    background: linear-gradient(135deg, #f0f0f0 0%, #d0d0d0 100%) !important;
-                    -webkit-background-clip: text !important;
-                    -webkit-text-fill-color: transparent !important;
-                    background-clip: text !important;
-                    margin-bottom: 1.5rem !important;
-                    position: relative !important;
-                    padding-bottom: 16px !important;
-                }}
-                
-                h1::after {{
-                    content: '';
-                    position: absolute;
-                    bottom: 0;
-                    left: 0;
-                    width: 80px;
-                    height: 4px;
-                    background: var(--gradient-primary);
-                    border-radius: 2px;
-                }}
-                
-                h2 {{
-                    font-size: 2rem !important;
-                    color: var(--text-primary) !important;
-                    margin-bottom: 1rem !important;
-                    position: relative !important;
-                    padding-bottom: 12px !important;
-                }}
-                
-                h2::after {{
-                    content: '';
-                    position: absolute;
-                    bottom: 0;
-                    left: 0;
-                    width: 60px;
-                    height: 4px;
-                    background: var(--gradient-primary);
-                    border-radius: 2px;
-                }}
-                
-                h3 {{
-                    font-size: 1.5rem !important;
-                    color: var(--text-secondary) !important;
-                }}
-                
-                /* Paragraphs and Text with Enhanced Readability */
-                p {{
-                    color: var(--text-secondary) !important;
-                    line-height: 1.8 !important;
-                    margin: 1em 0 !important;
-                    font-size: 16px !important;
-                }}
-                
-                /* Links with Animations - ALL RETAINED */
-                a {{
-                    color: var(--accent-primary) !important;
-                    text-decoration: none !important;
-                    position: relative !important;
-                    transition: color var(--transition-fast) !important;
-                }}
-                
-                a::after {{
-                    content: '';
-                    position: absolute;
-                    bottom: -2px;
-                    left: 0;
-                    width: 0;
-                    height: 2px;
-                    background: var(--gradient-primary);
-                    transition: width var(--transition-base);
-                }}
-                
-                a:hover {{
-                    color: var(--accent-hover) !important;
-                }}
-                
-                a:hover::after {{
-                    width: 100%;
-                }}
-                
-                /* Code Blocks - Premium Styling with High Contrast - ALL FEATURES RETAINED */
-                pre {{
-                    background: linear-gradient(135deg, #0d1117 0%, #161b22 100%) !important;
-                    border: 1px solid var(--border-default) !important;
-                    border-radius: 12px !important;
-                    padding: 24px !important;
-                    overflow-x: auto !important;
-                    position: relative !important;
-                    box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.3) !important;
-                }}
-                
-                pre::before {{
-                    content: '';
-                    position: absolute;
-                    top: 12px;
-                    right: 12px;
-                    width: 12px;
-                    height: 12px;
-                    background: #ff5f56;
-                    border-radius: 50%;
-                    box-shadow: 20px 0 0 #ffbd2e, 40px 0 0 #27c93f;
-                }}
-                
-                pre code {{
-                    font-family: 'JetBrains Mono', 'Monaco', 'Consolas', monospace !important;
-                    font-size: 0.875rem !important;
-                    line-height: 1.7 !important;
-                    color: #e6edf3 !important;
-                }}
-                
-                /* Inline Code with Better Visibility */
-                :not(pre) > code {{
-                    background: rgba(120, 119, 198, 0.15) !important;
-                    color: #f0a0ff !important;
-                    padding: 2px 8px !important;
-                    border-radius: 6px !important;
-                    font-size: 0.875em !important;
-                    font-weight: 500 !important;
-                    border: 1px solid rgba(120, 119, 198, 0.3) !important;
-                    font-family: 'JetBrains Mono', monospace !important;
-                }}
-                
-                /* Tables - Modern Design with Enhanced Contrast - ALL RETAINED */
-                table {{
-                    width: 100% !important;
-                    border-collapse: separate !important;
-                    border-spacing: 0 !important;
-                    background: var(--bg-secondary) !important;
-                    border-radius: 12px !important;
-                    overflow: hidden !important;
-                    box-shadow: var(--shadow-md) !important;
-                    margin: 24px 0 !important;
-                }}
-                
-                thead {{
-                    background: var(--gradient-primary) !important;
-                }}
-                
-                th {{
-                    padding: 16px 20px !important;
-                    text-align: left !important;
-                    font-weight: 600 !important;
-                    color: white !important;
-                    font-size: 0.875rem !important;
-                    text-transform: uppercase !important;
-                    letter-spacing: 0.05em !important;
-                }}
-                
-                tbody tr {{
-                    transition: all var(--transition-fast) !important;
-                }}
-                
-                tbody tr:hover {{
-                    background: rgba(120, 119, 198, 0.05) !important;
-                }}
-                
-                td {{
-                    padding: 14px 20px !important;
-                    color: var(--text-secondary) !important;
-                    border-top: 1px solid var(--border-subtle) !important;
-                }}
-                
-                /* Parameter Tables with Better Visibility */
-                .param-name {{
-                    color: #60a5fa !important;
-                    font-family: 'JetBrains Mono', monospace !important;
-                    font-weight: 600 !important;
-                }}
-                
-                .param-type {{
-                    color: #a78bfa !important;
-                    font-size: 0.875rem !important;
-                    font-family: 'JetBrains Mono', monospace !important;
-                }}
-                
-                .param-description {{
-                    color: var(--text-secondary) !important;
-                    line-height: 1.6 !important;
-                }}
-                
-                /* Custom Scrollbar - ALL RETAINED */
-                ::-webkit-scrollbar {{
-                    width: 12px !important;
-                    height: 12px !important;
-                }}
-                
-                ::-webkit-scrollbar-track {{
-                    background: var(--bg-primary) !important;
-                    border-radius: 6px !important;
-                }}
-                
-                ::-webkit-scrollbar-thumb {{
-                    background: linear-gradient(var(--gradient-primary)) !important;
-                    border-radius: 6px !important;
-                    border: 2px solid var(--bg-primary) !important;
-                    transition: all var(--transition-base);
-                }}
-                
-                ::-webkit-scrollbar-thumb:hover {{
-                    background: var(--gradient-secondary);
-                    border-width: 2px;
-                }}
-                
-                /* Selection Styling - RETAINED */
-                ::selection {{
-                    background: rgba(120, 119, 198, 0.3);
-                    color: var(--text-primary);
-                }}
-                
-                /* Redoc Container Overrides with Enhanced Contrast */
-                #redoc-container {{
-                    background: var(--bg-primary) !important;
-                    min-height: 100vh;
-                }}
-                
-                /* Force Dark Mode on All Redoc Elements - ALL RETAINED */
-                [role="main"],
-                .api-content,
-                .api-info,
-                .operation-area,
-                .scrollbar-container,
-                .redoc-wrap,
-                div[data-section],
-                .api-content > div {{
-                    background: var(--bg-primary) !important;
-                    color: var(--text-secondary) !important;
-                }}
-                
-                /* API Info Section - Hero Style with Proper Contrast - ALL ANIMATIONS RETAINED */
-                .api-info {{
-                    padding: 60px 40px !important;
-                    background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%) !important;
-                    border-bottom: 1px solid var(--border-subtle);
-                    position: relative;
-                    overflow: hidden;
-                }}
-                
-                .api-info::before {{
-                    content: '';
-                    position: absolute;
-                    top: -50%;
-                    left: -50%;
-                    width: 200%;
-                    height: 200%;
-                    background: radial-gradient(circle, rgba(120, 119, 198, 0.1) 0%, transparent 70%);
-                    animation: pulse 15s ease-in-out infinite;
-                }}
-                
-                @keyframes pulse {{
-                    0%, 100% {{ transform: scale(1); opacity: 0.8; }}
-                    50% {{ transform: scale(1.1); opacity: 0.4; }}
-                }}
-                
-                .api-info h1 {{
-                    font-size: 3.5rem !important;
-                    font-weight: 900 !important;
-                    background: var(--gradient-primary);
-                    -webkit-background-clip: text;
-                    -webkit-text-fill-color: transparent;
-                    background-clip: text;
-                    letter-spacing: -0.02em;
-                    margin-bottom: 16px !important;
-                    animation: gradientShiftText 8s ease infinite;
-                    position: relative;
-                    z-index: 1;
-                }}
-                
-                @keyframes gradientShiftText {{
-                    0%, 100% {{ filter: hue-rotate(0deg); }}
-                    50% {{ filter: hue-rotate(30deg); }}
-                }}
-                
-                .api-info p {{
-                    font-size: 1.25rem !important;
-                    color: var(--text-secondary) !important;
-                    max-width: 800px !important;
-                    line-height: 1.8 !important;
-                    margin: 0 auto !important;
-                    position: relative;
-                    z-index: 1;
-                }}
-                
-                /* Menu Navigation with Enhanced Contrast - ALL FEATURES RETAINED */
-                .menu-content {{
-                    background: var(--bg-secondary) !important;
-                    border-right: 1px solid var(--border-default) !important;
-                    width: var(--sidebar-width) !important;
-                    box-shadow: var(--shadow-lg) !important;
-                }}
-                
-                .menu-item {{
-                    position: relative !important;
-                    transition: all var(--transition-fast) !important;
-                }}
-                
-                .menu-item-title {{
-                    color: var(--text-secondary) !important;
-                    padding: 12px 24px !important;
-                    display: block !important;
-                    font-weight: 500 !important;
-                    transition: all var(--transition-fast) !important;
-                    border-left: 3px solid transparent !important;
-                }}
-                
-                .menu-item-title:hover {{
-                    color: var(--text-primary) !important;
-                    background: rgba(120, 119, 198, 0.1) !important;
-                    border-left-color: var(--accent-primary) !important;
-                }}
-                
-                .menu-item.active .menu-item-title {{
-                    color: var(--accent-primary) !important;
-                    background: rgba(120, 119, 198, 0.15) !important;
-                    border-left-color: var(--accent-primary) !important;
-                    font-weight: 600 !important;
-                }}
-                
-                /* Operation Blocks with Enhanced Visibility - ALL ANIMATIONS RETAINED */
-                .operation-block {{
-                    background: var(--bg-secondary) !important;
-                    border: 1px solid var(--border-default) !important;
-                    border-radius: 12px !important;
-                    margin-bottom: 32px !important;
-                    padding: 24px !important;
-                    transition: all var(--transition-base) !important;
-                    box-shadow: var(--shadow-md) !important;
-                }}
-                
-                .operation-block:hover {{
-                    transform: translateY(-2px) !important;
-                    box-shadow: var(--shadow-xl) !important;
-                    border-color: var(--accent-primary) !important;
-                }}
-                
-                /* HTTP Method Badges with High Contrast - ALL ANIMATIONS RETAINED */
-                .http-verb {{
-                    display: inline-block !important;
-                    padding: 6px 16px !important;
-                    border-radius: 20px !important;
-                    font-weight: 700 !important;
-                    font-size: 0.75rem !important;
-                    text-transform: uppercase !important;
-                    letter-spacing: 0.05em !important;
-                    margin-right: 12px !important;
-                    position: relative !important;
-                    overflow: hidden !important;
-                }}
-                
-                .http-verb::before {{
-                    content: '' !important;
-                    position: absolute !important;
-                    top: 0 !important;
-                    left: -100% !important;
-                    width: 100% !important;
-                    height: 100% !important;
-                    background: rgba(255, 255, 255, 0.2) !important;
-                    transition: left var(--transition-base) !important;
-                }}
-                
-                .http-verb:hover::before {{
-                    left: 100% !important;
-                }}
-                
-                /* Method colors with enhanced contrast */
-                .http-verb.get {{
-                    background: #16a34a !important;
-                    color: white !important;
-                    box-shadow: 0 4px 14px rgba(22, 163, 74, 0.4) !important;
-                }}
-                
-                .http-verb.post {{
-                    background: #2563eb !important;
-                    color: white !important;
-                    box-shadow: 0 4px 14px rgba(37, 99, 235, 0.4) !important;
-                }}
-                
-                .http-verb.put {{
-                    background: #ea580c !important;
-                    color: white !important;
-                    box-shadow: 0 4px 14px rgba(234, 88, 12, 0.4) !important;
-                }}
-                
-                .http-verb.delete {{
-                    background: #dc2626 !important;
-                    color: white !important;
-                    box-shadow: 0 4px 14px rgba(220, 38, 38, 0.4) !important;
-                }}
-                
-                .http-verb.patch {{
-                    background: #8b5cf6 !important;
-                    color: white !important;
-                    box-shadow: 0 4px 14px rgba(139, 92, 246, 0.4) !important;
-                }}
-                
-                /* Request/Response Sections with Better Contrast */
-                .request-body,
-                .responses {{
-                    background: var(--bg-tertiary) !important;
-                    border: 1px solid var(--border-subtle) !important;
-                    border-radius: 8px !important;
-                    padding: 20px !important;
-                    margin-top: 20px !important;
-                }}
-                
-                /* Response status codes with enhanced visibility */
-                .response-code {{
-                    display: inline-block !important;
-                    padding: 4px 12px !important;
-                    border-radius: 16px !important;
-                    font-weight: 600 !important;
-                    font-size: 0.875rem !important;
-                    margin-right: 8px !important;
-                }}
-                
-                .response-code.success {{
-                    background: rgba(22, 163, 74, 0.2) !important;
-                    color: #4ade80 !important;
-                    border: 1px solid #16a34a !important;
-                }}
-                
-                .response-code.error {{
-                    background: rgba(220, 38, 38, 0.2) !important;
-                    color: #f87171 !important;
-                    border: 1px solid #dc2626 !important;
-                }}
-                
-                /* Enhanced Tabs - ALL FEATURES RETAINED */
-                .tabs {{
-                    border-bottom: 2px solid var(--border-default) !important;
-                    margin-bottom: 20px !important;
-                }}
-                
-                .tab {{
-                    background: transparent !important;
-                    border: none !important;
-                    color: var(--text-secondary) !important;
-                    padding: 12px 24px !important;
-                    cursor: pointer !important;
-                    font-weight: 500 !important;
-                    transition: all var(--transition-fast) !important;
-                    position: relative !important;
-                }}
-                
-                .tab::after {{
-                    content: '' !important;
-                    position: absolute !important;
-                    bottom: -2px !important;
-                    left: 0 !important;
-                    width: 0 !important;
-                    height: 2px !important;
-                    background: var(--gradient-primary) !important;
-                    transition: width var(--transition-base) !important;
-                }}
-                
-                .tab:hover {{
-                    color: var(--text-primary) !important;
-                    background: rgba(120, 119, 198, 0.05) !important;
-                }}
-                
-                .tab.active {{
-                    color: var(--accent-primary) !important;
-                }}
-                
-                .tab.active::after {{
-                    width: 100% !important;
-                }}
-                
-                /* Model/Schema Definitions with Enhanced Visibility */
-                .model {{
-                    background: var(--bg-tertiary) !important;
-                    border: 1px solid var(--border-default) !important;
-                    border-radius: 8px !important;
-                    padding: 20px !important;
-                    margin: 16px 0 !important;
-                }}
-                
-                .model-title {{
-                    color: var(--accent-primary) !important;
-                    font-weight: 700 !important;
-                    font-size: 1.125rem !important;
-                    margin-bottom: 12px !important;
-                }}
-                
-                .field-name {{
-                    color: #60a5fa !important;
-                    font-weight: 600 !important;
-                    font-family: 'JetBrains Mono', monospace !important;
-                }}
-                
-                .field-type {{
-                    color: #a78bfa !important;
-                    font-size: 0.875rem !important;
-                    font-family: 'JetBrains Mono', monospace !important;
-                }}
-                
-                .field-description {{
-                    color: var(--text-secondary) !important;
-                    margin-top: 4px !important;
-                }}
-                
-                /* Required Fields Indicator */
-                .required {{
-                    color: var(--color-danger) !important;
-                    font-weight: 700 !important;
-                    margin-left: 4px !important;
-                }}
-                
-                /* Search Box with Enhanced Contrast */
-                .search-box {{
-                    background: var(--bg-tertiary) !important;
-                    border: 2px solid var(--border-default) !important;
-                    color: var(--text-primary) !important;
-                    padding: 12px 20px !important;
-                    border-radius: 8px !important;
-                    font-size: 16px !important;
-                    width: 100% !important;
-                    transition: all var(--transition-fast) !important;
-                }}
-                
-                .search-box:focus {{
-                    border-color: var(--accent-primary) !important;
-                    outline: none !important;
-                    box-shadow: 0 0 0 4px rgba(120, 119, 198, 0.2) !important;
-                    background: var(--bg-secondary) !important;
-                }}
-                
-                /* Buttons with High Contrast */
-                button {{
-                    background: var(--accent-primary) !important;
-                    color: white !important;
-                    border: none !important;
-                    padding: 10px 20px !important;
-                    border-radius: 8px !important;
-                    font-weight: 600 !important;
-                    cursor: pointer !important;
-                    transition: all var(--transition-fast) !important;
-                    font-size: 14px !important;
-                    text-transform: uppercase !important;
-                    letter-spacing: 0.05em !important;
-                }}
-                
-                button:hover {{
-                    background: var(--accent-hover) !important;
-                    transform: translateY(-2px) !important;
-                    box-shadow: 0 8px 16px rgba(120, 119, 198, 0.3) !important;
-                }}
-                
-                /* Enhanced Accordions */
-                .accordion-header {{
-                    background: var(--bg-secondary) !important;
-                    padding: 16px 24px !important;
-                    cursor: pointer !important;
-                    border-radius: 8px !important;
-                    margin-bottom: 8px !important;
-                    transition: all var(--transition-fast) !important;
-                    border: 1px solid var(--border-default) !important;
-                }}
-                
-                .accordion-header:hover {{
-                    background: var(--bg-tertiary) !important;
-                    border-color: var(--accent-primary) !important;
-                }}
-                
-                .accordion-content {{
-                    padding: 20px !important;
-                    background: var(--bg-primary) !important;
-                    border-radius: 0 0 8px 8px !important;
-                    border: 1px solid var(--border-default) !important;
-                    border-top: none !important;
-                }}
-                
-                /* Loading States with Better Visibility - ALL ANIMATIONS RETAINED */
-                .loading {{
-                    color: var(--text-secondary) !important;
-                    text-align: center !important;
-                    padding: 40px !important;
-                }}
-                
-                .loading::after {{
-                    content: '' !important;
-                    display: inline-block !important;
-                    width: 20px !important;
-                    height: 20px !important;
-                    border: 3px solid var(--border-default) !important;
-                    border-top-color: var(--accent-primary) !important;
-                    border-radius: 50% !important;
-                    animation: spin 1s linear infinite !important;
-                    margin-left: 10px !important;
-                }}
-                
-                @keyframes spin {{
-                    0% {{ transform: rotate(0deg); }}
-                    100% {{ transform: rotate(360deg); }}
-                }}
-                
-                /* Tooltips with Enhanced Contrast */
-                .tooltip {{
-                    background: var(--bg-elevated) !important;
-                    color: var(--text-primary) !important;
-                    padding: 8px 12px !important;
-                    border-radius: 6px !important;
-                    font-size: 0.875rem !important;
-                    box-shadow: var(--shadow-lg) !important;
-                    border: 1px solid var(--border-default) !important;
-                }}
-                
-                /* Copy Code Button - ENHANCED WITH ALL FEATURES */
-                .copy-button {{
-                    position: absolute !important;
-                    top: 12px !important;
-                    right: 60px !important;
-                    background: rgba(120, 119, 198, 0.2) !important;
-                    border: 2px solid var(--accent-primary) !important;
-                    color: var(--accent-primary) !important;
-                    padding: 6px 12px !important;
-                    border-radius: 6px !important;
-                    font-size: 0.75rem !important;
-                    cursor: pointer !important;
-                    transition: all var(--transition-fast) !important;
-                    text-transform: uppercase !important;
-                    letter-spacing: 0.05em !important;
-                    font-weight: 600 !important;
-                }}
-                
-                .copy-button:hover {{
-                    background: var(--accent-primary) !important;
-                    color: white !important;
-                    transform: translateY(-1px) !important;
-                }}
-                
-                /* Response Examples with Better Contrast */
-                .response-example {{
-                    background: var(--bg-tertiary) !important;
-                    border: 1px solid var(--border-default) !important;
-                    border-radius: 8px !important;
-                    padding: 20px !important;
-                    margin: 16px 0 !important;
-                    position: relative !important;
-                }}
-                
-                .response-example::before {{
-                    content: 'EXAMPLE' !important;
-                    position: absolute !important;
-                    top: -12px !important;
-                    left: 20px !important;
-                    background: var(--bg-tertiary) !important;
-                    padding: 0 8px !important;
-                    color: var(--text-muted) !important;
-                    font-size: 0.75rem !important;
-                    font-weight: 600 !important;
-                    letter-spacing: 0.05em !important;
-                }}
-                
-                /* Additional ReDoc Specific Overrides */
-                [role="navigation"] {{
-                    background: var(--bg-secondary) !important;
-                    color: var(--text-secondary) !important;
-                }}
-                
-                [role="main"] {{
-                    background: var(--bg-primary) !important;
-                    color: var(--text-primary) !important;
-                    max-width: var(--content-max-width) !important;
-                    margin: 0 auto !important;
-                    padding: 40px !important;
-                }}
-                
-                /* Fix any remaining low-contrast elements */
-                div, span, p, li {{
-                    color: var(--text-secondary) !important;
-                }}
-                
-                strong, b {{
-                    color: var(--text-primary) !important;
-                    font-weight: 600 !important;
-                }}
-                
-                /* Ensure all backgrounds are dark */
-                * {{
-                    background-color: transparent !important;
-                }}
-                
-                body, #redoc-container {{
-                    background-color: var(--bg-primary) !important;
-                }}
-                
-                /* Mobile Responsive Adjustments - ALL RETAINED */
-                @media (max-width: 768px) {{
-                    .api-info {{
-                        padding: 40px 20px !important;
-                    }}
-                    
-                    .api-info h1 {{
-                        font-size: 2.5rem !important;
-                    }}
-                    
-                    .menu-content {{
-                        width: 260px !important;
-                    }}
-                    
-                    .operation-block {{
-                        padding: 20px !important;
-                    }}
-                    
-                    pre {{
-                        padding: 16px !important;
-                        font-size: 0.8rem !important;
-                    }}
-                }}
-                
-                /* Print Styles - ALL RETAINED */
-                @media print {{
-                    body {{
-                        background: white !important;
-                        color: black !important;
-                    }}
-                    
-                    .menu-content {{
-                        display: none !important;
-                    }}
-                    
-                    .http-verb, .response-code {{
-                        border: 1px solid black !important;
-                        background: none !important;
-                        color: black !important;
-                    }}
-                }}
-                
-                /* Advanced Animations - ALL RETAINED AND ENHANCED */
-                @keyframes fadeInUp {{
-                    from {{
-                        opacity: 0;
-                        transform: translateY(20px);
-                    }}
-                    to {{
-                        opacity: 1;
-                        transform: translateY(0);
-                    }}
-                }}
-                
-                .operation-block {{
-                    animation: fadeInUp 0.5s ease-out;
-                }}
-                
-                /* Glow Effects - ALL RETAINED */
-                .glow {{
-                    box-shadow: 0 0 20px rgba(120, 119, 198, 0.5) !important;
-                }}
-                
-                /* Premium Hover States - ALL RETAINED */
-                *:focus-visible {{
-                    outline: 2px solid var(--accent-primary) !important;
-                    outline-offset: 2px !important;
-                }}
-                
-                /* Extra animations for enhanced experience */
-                @keyframes shimmer {{
-                    0% {{ background-position: -200% 0; }}
-                    100% {{ background-position: 200% 0; }}
-                }}
-                
-                .shimmer {{
-                    background: linear-gradient(90deg, 
-                        transparent 0%, 
-                        rgba(120, 119, 198, 0.1) 50%, 
-                        transparent 100%);
-                    background-size: 200% 100%;
-                    animation: shimmer 2s infinite;
-                }}
-                
-                /* Breadcrumb navigation styling */
-                .breadcrumb {{
-                    display: flex;
-                    align-items: center;
-                    padding: 12px 0;
-                    font-size: 0.875rem;
-                    color: var(--text-muted);
-                }}
-                
-                .breadcrumb-item {{
-                    display: flex;
-                    align-items: center;
-                }}
-                
-                .breadcrumb-separator {{
-                    margin: 0 8px;
-                    color: var(--text-disabled);
-                }}
-                
-                /* Enhanced security badge styling */
-                .security-badge {{
-                    display: inline-flex;
-                    align-items: center;
-                    padding: 4px 12px;
-                    border-radius: 20px;
-                    font-size: 0.75rem;
-                    font-weight: 600;
-                    text-transform: uppercase;
-                    letter-spacing: 0.05em;
-                    background: rgba(120, 119, 198, 0.2);
-                    color: var(--accent-primary);
-                    border: 1px solid var(--accent-primary);
-                    margin-left: 8px;
-                }}
-                
-                .security-badge.oauth {{
-                    background: rgba(37, 99, 235, 0.2);
-                    color: #60a5fa;
-                    border-color: #2563eb;
-                }}
-                
-                .security-badge.apikey {{
-                    background: rgba(234, 88, 12, 0.2);
-                    color: #fbbf24;
-                    border-color: #ea580c;
-                }}
-                
-                /* Deprecated endpoint styling */
-                .deprecated {{
-                    opacity: 0.7;
-                    position: relative;
-                }}
-                
-                .deprecated::after {{
-                    content: 'DEPRECATED';
-                    position: absolute;
-                    top: -8px;
-                    right: -8px;
-                    background: var(--color-danger);
-                    color: white;
-                    font-size: 0.625rem;
-                    padding: 2px 8px;
-                    border-radius: 12px;
-                    font-weight: 700;
-                    letter-spacing: 0.05em;
-                }}
-                
-                /* Enhanced search results highlighting */
-                .search-highlight {{
-                    background: rgba(120, 119, 198, 0.3);
-                    color: var(--text-primary);
-                    padding: 2px 4px;
-                    border-radius: 4px;
-                    font-weight: 600;
-                }}
-                
-                /* Operation timing badges */
-                .timing-badge {{
-                    display: inline-flex;
-                    align-items: center;
-                    padding: 2px 8px;
-                    border-radius: 12px;
-                    font-size: 0.75rem;
-                    font-weight: 500;
-                    margin-left: 8px;
-                }}
-                
-                .timing-fast {{
-                    background: rgba(22, 163, 74, 0.2);
-                    color: var(--color-success);
-                }}
-                
-                .timing-medium {{
-                    background: rgba(234, 88, 12, 0.2);
-                    color: var(--color-warning);
-                }}
-                
-                .timing-slow {{
-                    background: rgba(220, 38, 38, 0.2);
-                    color: var(--color-danger);
-                }}
-                
-                /* Version selector styling */
-                .version-selector {{
-                    background: var(--bg-tertiary);
-                    border: 1px solid var(--border-default);
-                    border-radius: 8px;
-                    padding: 8px 16px;
-                    font-size: 0.875rem;
-                    color: var(--text-primary);
-                    cursor: pointer;
-                    transition: all var(--transition-fast);
-                }}
-                
-                .version-selector:hover {{
-                    border-color: var(--accent-primary);
-                    background: var(--bg-secondary);
-                }}
-                
-                /* Enhanced tag styling */
-                .tag {{
-                    display: inline-flex;
-                    align-items: center;
-                    padding: 4px 12px;
-                    background: rgba(120, 119, 198, 0.1);
-                    color: var(--accent-primary);
-                    border-radius: 20px;
-                    font-size: 0.75rem;
-                    font-weight: 500;
-                    margin: 2px;
-                    transition: all var(--transition-fast);
-                }}
-                
-                .tag:hover {{
-                    background: rgba(120, 119, 198, 0.2);
-                    transform: translateY(-1px);
-                }}
-                
-                /* Endpoint groups with enhanced styling */
-                .endpoint-group {{
-                    margin-bottom: 48px;
-                    padding: 24px;
-                    background: rgba(34, 34, 34, 0.3);
-                    border-radius: 16px;
-                    border: 1px solid var(--border-subtle);
-                }}
-                
-                .endpoint-group-title {{
-                    font-size: 1.75rem;
-                    font-weight: 700;
-                    color: var(--text-primary);
-                    margin-bottom: 16px;
-                    display: flex;
-                    align-items: center;
-                    gap: 12px;
-                }}
-                
-                .endpoint-group-description {{
-                    color: var(--text-secondary);
-                    font-size: 1rem;
-                    line-height: 1.6;
-                    margin-bottom: 24px;
-                }}
-                
-                /* Language selector for code samples */
-                .language-selector {{
-                    display: flex;
-                    gap: 8px;
-                    margin-bottom: 12px;
-                    border-bottom: 1px solid var(--border-default);
-                    padding-bottom: 8px;
-                }}
-                
-                .language-tab {{
-                    padding: 6px 12px;
-                    background: transparent;
-                    border: none;
-                    color: var(--text-secondary);
-                    cursor: pointer;
-                    font-size: 0.875rem;
-                    font-weight: 500;
-                    transition: all var(--transition-fast);
-                    border-radius: 4px 4px 0 0;
-                }}
-                
-                .language-tab:hover {{
-                    color: var(--text-primary);
-                    background: rgba(120, 119, 198, 0.1);
-                }}
-                
-                .language-tab.active {{
-                    color: var(--accent-primary);
-                    background: rgba(120, 119, 198, 0.2);
                 }}
             </style>
         </head>
         <body>
             <div id="redoc-container"></div>
+            
+            <!-- Redoc standalone bundle -->
             <script src="https://cdn.jsdelivr.net/npm/redoc@2.0.0/bundles/redoc.standalone.js"></script>
+            
             <script>
-                // Initialize ReDoc with advanced configuration - ALL FEATURES RETAINED AND ENHANCED
-                const initializeRedoc = () => {{
-                    Redoc.init('/openapi.json', {{
-                        theme: {{
-                            colors: {{
-                                primary: {{
-                                    main: '#7877c6',
-                                    light: '#9291d0',
-                                    dark: '#5c5ba0',
-                                    contrastText: '#ffffff'
-                                }},
-                                success: {{
-                                    main: '#4ade80',
-                                    light: '#86efac',
-                                    dark: '#16a34a',
-                                    contrastText: '#ffffff'
-                                }},
-                                warning: {{
-                                    main: '#fbbf24',
-                                    light: '#fde047',
-                                    dark: '#ea580c',
-                                    contrastText: '#000000'
-                                }},
-                                error: {{
-                                    main: '#f87171',
-                                    light: '#fca5a5',
-                                    dark: '#dc2626',
-                                    contrastText: '#ffffff'
-                                }},
-                                text: {{
-                                    primary: '#f0f0f0',
-                                    secondary: '#c0c0c0'
-                                }},
-                                border: {{
-                                    dark: '#333333',
-                                    light: '#444444'
-                                }},
-                                responses: {{
-                                    success: {{
-                                        color: '#4ade80',
-                                        backgroundColor: 'rgba(22, 163, 74, 0.1)'
-                                    }},
-                                    error: {{
-                                        color: '#f87171',
-                                        backgroundColor: 'rgba(220, 38, 38, 0.1)'
-                                    }},
-                                    redirect: {{
-                                        color: '#fbbf24',
-                                        backgroundColor: 'rgba(234, 88, 12, 0.1)'
-                                    }},
-                                    info: {{
-                                        color: '#60a5fa',
-                                        backgroundColor: 'rgba(37, 99, 235, 0.1)'
-                                    }}
-                                }}
-                            }},
-                            typography: {{
-                                fontSize: '16px',
-                                lineHeight: '1.6',
-                                fontWeightRegular: '400',
-                                fontWeightBold: '600',
-                                fontWeightLight: '300',
-                                fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
-                                headings: {{
-                                    fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, sans-serif',
-                                    fontWeight: '700'
-                                }},
-                                code: {{
-                                    fontSize: '14px',
-                                    fontFamily: 'JetBrains Mono, Monaco, Consolas, monospace',
-                                    fontWeight: '500',
-                                    color: '#e6edf3',
-                                    backgroundColor: '#0d1117',
-                                    wrap: true
-                                }},
-                                links: {{
-                                    color: '#7877c6',
-                                    visited: '#7877c6',
-                                    hover: '#9291d0'
-                                }}
-                            }},
-                            sidebar: {{
-                                width: '300px',
-                                backgroundColor: '#222222',
-                                textColor: '#c0c0c0',
-                                activeTextColor: '#7877c6',
-                                groupItems: true,
-                                level1Items: {{
-                                    textTransform: 'uppercase'
-                                }},
-                                arrow: {{
-                                    size: '1.5em',
-                                    color: '#7877c6'
-                                }}
-                            }},
-                            rightPanel: {{
-                                backgroundColor: '#1a1a1a',
-                                width: '40%',
-                                textColor: '#c0c0c0'
+                // Initialize ReDoc with light theme by default
+                Redoc.init('/openapi.json', {{
+                    theme: {{
+                        // Use ReDoc's built-in light theme
+                        // Change to 'dark' if you want dark mode
+                        mode: 'light',
+                        
+                        // Optional: Customize colors to match your brand
+                        colors: {{
+                            primary: {{
+                                main: '#5c7cfa'  // Match your Swagger accent color
                             }}
                         }},
-                        scrollYOffset: 0,
-                        hideDownloadButton: false,
-                        disableSearch: false,
-                        noAutoAuth: false,
-                        pathInMiddlePanel: false,
-                        untrustedSpec: false,
-                        expandResponses: '200,201',
-                        requiredPropsFirst: true,
-                        sortPropsAlphabetically: false,
-                        showExtensions: true,
-                        hideSingleRequestSampleTab: false,
-                        menuToggle: true,
-                        suppressWarnings: false,
-                        payloadSampleIdx: 0,
-                        expandSingleSchemaField: true,
-                        generateCodeSamples: {{
-                            languages: [
-                                {{ lang: 'curl', label: 'cURL' }},
-                                {{ lang: 'python', label: 'Python' }},
-                                {{ lang: 'javascript', label: 'JavaScript' }},
-                                {{ lang: 'go', label: 'Go' }},
-                                {{ lang: 'php', label: 'PHP' }},
-                                {{ lang: 'java', label: 'Java' }},
-                                {{ lang: 'csharp', label: 'C#' }}
-                            ]
-                        }}
-                    }}, document.getElementById('redoc-container'));
-                }};
-                
-                // Initialize Redoc
-                initializeRedoc();
-                
-                // Post-initialization enhancements - ALL RETAINED AND ENHANCED
-                setTimeout(() => {{
-                    // Force dark mode on any remaining light elements
-                    const enforceFullDarkMode = () => {{
-                        const allElements = document.querySelectorAll('*');
-                        allElements.forEach(el => {{
-                            const computedStyle = window.getComputedStyle(el);
-                            const bgColor = computedStyle.backgroundColor;
-                            const color = computedStyle.color;
-                            
-                            // Check for white/light backgrounds
-                            if (bgColor && (
-                                bgColor === 'rgb(255, 255, 255)' ||
-                                bgColor === 'white' ||
-                                bgColor.includes('255, 255, 255')
-                            )) {{
-                                el.style.backgroundColor = '#1a1a1a !important';
-                            }}
-                            
-                            // Check for black/dark text on dark background
-                            if (color && (
-                                color === 'rgb(0, 0, 0)' ||
-                                color === 'black' ||
-                                color.includes('0, 0, 0')
-                            )) {{
-                                el.style.color = '#c0c0c0 !important';
-                            }}
-                        }});
-                    }};
-                    
-                    enforceFullDarkMode();
-                    
-                    // Add smooth scroll behavior - RETAINED
-                    document.documentElement.style.scrollBehavior = 'smooth';
-                    
-                    // Add custom animations to elements as they appear - RETAINED
-                    const observerOptions = {{
-                        threshold: 0.1,
-                        rootMargin: '0px 0px -100px 0px'
-                    }};
-                    
-                    const observer = new IntersectionObserver((entries) => {{
-                        entries.forEach(entry => {{
-                            if (entry.isIntersecting) {{
-                                entry.target.style.animation = 'fadeInUp 0.5s ease-out forwards';
-                                observer.unobserve(entry.target);
-                            }}
-                        }});
-                    }}, observerOptions);
-                    
-                    // Observe operation blocks for animations - RETAINED
-                    const operationBlocks = document.querySelectorAll('[data-section-id]');
-                    operationBlocks.forEach(block => observer.observe(block));
-                    
-                    // Add glow effect on hover - RETAINED
-                    const addGlowEffects = () => {{
-                        const httpVerbs = document.querySelectorAll('.http-verb');
-                        httpVerbs.forEach(verb => {{
-                            verb.addEventListener('mouseenter', () => {{
-                                verb.classList.add('glow');
-                            }});
-                            verb.addEventListener('mouseleave', () => {{
-                                verb.classList.remove('glow');
-                            }});
-                        }});
-                    }};
-                    
-                    addGlowEffects();
-                    
-                    // Enhance code blocks with copy functionality - RETAINED AND ENHANCED
-                    const codeBlocks = document.querySelectorAll('pre');
-                    codeBlocks.forEach(block => {{
-                        if (!block.querySelector('.copy-button')) {{
-                            const copyBtn = document.createElement('button');
-                            copyBtn.className = 'copy-button';
-                            copyBtn.textContent = 'Copy';
-                            copyBtn.onclick = () => {{
-                                const code = block.textContent;
-                                navigator.clipboard.writeText(code).then(() => {{
-                                    copyBtn.textContent = 'Copied!';
-                                    copyBtn.style.background = '#16a34a';
-                                    copyBtn.style.borderColor = '#16a34a';
-                                    setTimeout(() => {{
-                                        copyBtn.textContent = 'Copy';
-                                        copyBtn.style.background = '';
-                                        copyBtn.style.borderColor = '';
-                                    }}, 2000);
-                                }}).catch(err => {{
-                                    console.error('Failed to copy:', err);
-                                    copyBtn.textContent = 'Failed';
-                                    setTimeout(() => {{
-                                        copyBtn.textContent = 'Copy';
-                                    }}, 2000);
-                                }});
-                            }};
-                            block.style.position = 'relative';
-                            block.appendChild(copyBtn);
-                        }}
-                    }});
-                    
-                    // Enhanced search functionality with highlighting
-                    const enhanceSearch = () => {{
-                        const searchInput = document.querySelector('.search-box');
-                        if (searchInput) {{
-                            searchInput.addEventListener('input', (e) => {{
-                                const searchTerm = e.target.value.toLowerCase();
-                                if (searchTerm.length > 2) {{
-                                    // Add search highlighting logic here
-                                    document.querySelectorAll('.operation-block').forEach(block => {{
-                                        const text = block.textContent.toLowerCase();
-                                        if (text.includes(searchTerm)) {{
-                                            block.style.border = '2px solid var(--accent-primary)';
-                                            block.style.boxShadow = '0 0 20px rgba(120, 119, 198, 0.3)';
-                                        }} else {{
-                                            block.style.border = '';
-                                            block.style.boxShadow = '';
-                                        }}
-                                    }});
-                                }}
-                            }});
-                        }}
-                    }};
-                    
-                    enhanceSearch();
-                    
-                    // Add loading shimmer effect to placeholders
-                    const addShimmerEffect = () => {{
-                        const placeholders = document.querySelectorAll('.loading-placeholder');
-                        placeholders.forEach(placeholder => {{
-                            placeholder.classList.add('shimmer');
-                        }});
-                    }};
-                    
-                    addShimmerEffect();
-                    
-                }}, 1000);
-                
-                // Add keyboard shortcuts - ALL RETAINED AND ENHANCED
-                document.addEventListener('keydown', (e) => {{
-                    // Ctrl/Cmd + K for search
-                    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {{
-                        e.preventDefault();
-                        const searchBox = document.querySelector('.search-box');
-                        if (searchBox) searchBox.focus();
-                    }}
-                    
-                    // Escape to close modals
-                    if (e.key === 'Escape') {{
-                        const modals = document.querySelectorAll('.modal');
-                        modals.forEach(modal => modal.style.display = 'none');
-                    }}
-                    
-                    // Ctrl/Cmd + / for keyboard shortcuts help
-                    if ((e.ctrlKey || e.metaKey) && e.key === '/') {{
-                        e.preventDefault();
-                        alert('Keyboard Shortcuts:\\n\\nCtrl/Cmd + K: Focus search\\nEscape: Close modals\\nCtrl/Cmd + /: Show this help');
-                    }}
-                }});
-                
-                // Performance optimization - lazy load images
-                const lazyLoadImages = () => {{
-                    const images = document.querySelectorAll('img[data-src]');
-                    const imageObserver = new IntersectionObserver((entries, observer) => {{
-                        entries.forEach(entry => {{
-                            if (entry.isIntersecting) {{
-                                const img = entry.target;
-                                img.src = img.dataset.src;
-                                img.removeAttribute('data-src');
-                                observer.unobserve(img);
-                            }}
-                        }});
-                    }});
-                    
-                    images.forEach(img => imageObserver.observe(img));
-                }};
-                
-                lazyLoadImages();
-                
-                // Add custom theme toggle (for future use)
-                window.toggleTheme = () => {{
-                    console.log('Theme toggle placeholder - already in optimal dark mode');
-                }};
-                
-                // Initialize tooltips
-                const initTooltips = () => {{
-                    const tooltipElements = document.querySelectorAll('[data-tooltip]');
-                    tooltipElements.forEach(element => {{
-                        element.addEventListener('mouseenter', (e) => {{
-                            const tooltip = document.createElement('div');
-                            tooltip.className = 'tooltip';
-                            tooltip.textContent = e.target.dataset.tooltip;
-                            document.body.appendChild(tooltip);
-                            
-                            const rect = e.target.getBoundingClientRect();
-                            tooltip.style.position = 'fixed';
-                            tooltip.style.top = `${{rect.top - tooltip.offsetHeight - 10}}px`;
-                            tooltip.style.left = `${{rect.left + rect.width / 2 - tooltip.offsetWidth / 2}}px`;
-                        }});
                         
-                        element.addEventListener('mouseleave', () => {{
-                            const tooltips = document.querySelectorAll('.tooltip');
-                            tooltips.forEach(t => t.remove());
-                        }});
-                    }});
-                }};
-                
-                setTimeout(initTooltips, 1500);
+                        // Optional: Customize fonts
+                        typography: {{
+                            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+                            code: {{
+                                fontFamily: '"JetBrains Mono", "Monaco", "Consolas", monospace'
+                            }}
+                        }}
+                    }},
+                    scrollYOffset: 0,
+                    hideDownloadButton: false,
+                    disableSearch: false,
+                    expandResponses: '200,201',
+                    requiredPropsFirst: true,
+                    sortPropsAlphabetically: false,
+                    showExtensions: true,
+                    hideSingleRequestSampleTab: false,
+                    menuToggle: true,
+                    suppressWarnings: false,
+                    payloadSampleIdx: 0,
+                    expandSingleSchemaField: true,
+                    generateCodeSamples: {{
+                        languages: [
+                            {{ lang: 'curl', label: 'cURL' }},
+                            {{ lang: 'python', label: 'Python' }},
+                            {{ lang: 'javascript', label: 'JavaScript' }},
+                            {{ lang: 'go', label: 'Go' }},
+                            {{ lang: 'php', label: 'PHP' }},
+                            {{ lang: 'java', label: 'Java' }},
+                            {{ lang: 'csharp', label: 'C#' }}
+                        ]
+                    }}
+                }}, document.getElementById('redoc-container'));
             </script>
         </body>
         </html>
@@ -8533,9 +7261,8 @@ async def initiate_chat(
         vector_store =client.vector_stores.create(name=f"chat_init_store_{int(time.time())}")
         logging.info(f"Vector store created: {vector_store.id}")
     except Exception as e:
-        logging.error(f"Failed to create vector store: {e}")
-        raise HTTPException(status_code=500, detail="Failed to create vector store")
-
+        vector_store =client.beta.vector_stores.create(name=f"chat_init_store_{int(time.time())}")
+        logging.error(f"Creating vector store with beta: {e}")
     # Include file_search and add pandas_agent as a function tool
     assistant_tools = [
         {"type": "file_search"},
@@ -11525,7 +10252,7 @@ async def conversation_get(
    - Prompt: "Summarize the key terms"
 
 2. **Compare Files**:
-   - Upload: `report1.xlsx`, `report2.xlsx`
+   - Upload: `report1.xlsx, `report2.xlsx`
    - Prompt: "Compare the revenue figures"
 
 3. **Image Analysis**:
