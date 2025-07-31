@@ -15,15 +15,15 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read #This is required for actions/checkout
-
+    
     steps:
       - uses: actions/checkout@v4
-
+      
       - name: Set up Python version
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-
+      
       - name: Create and start virtual environment
         run: |
           python -m venv venv
@@ -31,9 +31,24 @@ jobs:
       
       - name: Install dependencies
         run: pip install -r requirements.txt
-        
-      # Optional: Add step to run tests here (PyTest, Django test suites, etc.)
-
+      
+      # Clean up to reduce package size and prevent OOM
+      - name: Clean up unnecessary files
+        run: |
+          find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+          find . -type f -name "*.pyc" -delete 2>/dev/null || true
+          find . -type f -name "*.pyo" -delete 2>/dev/null || true
+          find . -type f -name "*.pyd" -delete 2>/dev/null || true
+          find . -type f -name ".DS_Store" -delete 2>/dev/null || true
+          rm -rf .git .github .pytest_cache .coverage htmlcov 2>/dev/null || true
+          
+      # Create deployment configuration inline (no external files needed)
+      - name: Create deployment configuration
+        run: |
+          echo '[config]' > .deployment
+          echo 'SCM_DO_BUILD_DURING_DEPLOYMENT = false' >> .deployment
+      
+      # Upload smaller artifact
       - name: Upload artifact for deployment jobs
         uses: actions/upload-artifact@v4
         with:
@@ -41,6 +56,23 @@ jobs:
           path: |
             .
             !venv/
+            !.git/
+            !.github/
+            !tests/
+            !test/
+            !__pycache__/
+            !*.pyc
+            !*.pyo
+            !*.pyd
+            !.coverage
+            !.pytest_cache/
+            !htmlcov/
+            !.DS_Store
+            !*.log
+            !*.md
+            !LICENSE
+            !.gitignore
+            !.env.example
 
   deploy:
     runs-on: ubuntu-latest
@@ -59,3 +91,4 @@ jobs:
           app-name: 'copilotv2'
           slot-name: 'Production'
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_AEBA9916BB2D411D863CCF8633AAEF18 }}
+          clean: true
