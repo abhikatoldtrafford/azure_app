@@ -60,8 +60,7 @@ except ImportError:
     logging.warning("Chart libraries not available. Chart generation disabled.")
 import asyncio
 from datetime import timedelta
-
-
+from PIL import Image as PILImage
 import chardet
 import pdfplumber
 # Try importing Unstructured components
@@ -13198,7 +13197,7 @@ def create_docx_from_content(content: str, images: Optional[List[bytes]] = None)
     Returns:
         DOCX file as bytes
     """
-    from PIL import Image as PILImage
+    
     
     # Create document
     doc = Document()
