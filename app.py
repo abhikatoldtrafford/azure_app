@@ -1,11 +1,5 @@
 import logging
 import threading
-try:
-    import httpx
-    HTTPX_AVAILABLE = True
-except ImportError:
-    HTTPX_AVAILABLE = False
-    logging.warning("httpx not available - will use simple client creation")
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Query, Request, Response, Path
 from fastapi.responses import JSONResponse, StreamingResponse, FileResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -3945,173 +3939,15 @@ def get_downloads_directory():
 
 # Update the global variable
 DOWNLOADS_DIR = get_downloads_directory()
-_client_instance = None
-_http_client = None
-_client_lock = threading.Lock()
-
 def create_client() -> AzureOpenAI:
-    """
-    Creates an AzureOpenAI client instance.
-    
-    Attempts to create an optimized client with connection pooling.
-    Falls back to simple client creation if optimization fails.
-    
-    Returns:
-        AzureOpenAI client instance
-    """
-    global _client_instance, _http_client
-    
-    # Fast path: return existing instance if available
-    if _client_instance is not None:
-        try:
-            # Quick health check - try to access a property
-            _ = _client_instance.api_key
-            return _client_instance
-        except Exception:
-            # Client might be in bad state, recreate it
-            logging.warning("Existing client instance appears invalid, recreating...")
-            _client_instance = None
-            if _http_client:
-                try:
-                    _http_client.close()
-                except:
-                    pass
-                _http_client = None
-    
-    # Thread-safe client creation
-    with _client_lock:
-        # Double-check pattern
-        if _client_instance is not None:
-            return _client_instance
-        
-        # Check if h2 module is actually available
-        h2_available = False
-        if HTTPX_AVAILABLE:
-            try:
-                import h2
-                h2_available = True
-            except ImportError:
-                logging.warning("h2 module not available - HTTP/2 will be disabled")
-        
-        # Try optimized client first (only if httpx and h2 are available)
-        if HTTPX_AVAILABLE and h2_available:
-            try:
-                logging.info("Attempting to create optimized client with connection pooling and HTTP/2...")
-                
-                # Create optimized HTTP client with HTTP/2
-                _http_client = httpx.Client(
-                    limits=httpx.Limits(
-                        max_connections=10,
-                        max_keepalive_connections=5,
-                        keepalive_expiry=30.0,
-                    ),
-                    timeout=httpx.Timeout(
-                        timeout=120.0,
-                        connect=10.0,
-                        read=60.0,
-                        write=30.0,
-                        pool=5.0
-                    ),
-                    transport=httpx.HTTPTransport(
-                        retries=3,
-                        http2=True,
-                    ),
-                    follow_redirects=True,
-                )
-                
-                # Create optimized client
-                _client_instance = AzureOpenAI(
-                    azure_endpoint=AZURE_ENDPOINT,
-                    api_key=AZURE_API_KEY,
-                    api_version=AZURE_API_VERSION,
-                    http_client=_http_client,
-                    max_retries=3,
-                )
-                
-                # Test the client with a minimal operation
-                test_client = _client_instance.with_options(timeout=5.0)
-                
-                logging.info("Successfully created optimized AzureOpenAI client with HTTP/2")
-                return _client_instance
-                
-            except Exception as e:
-                logging.error(f"Failed to create optimized client with HTTP/2: {type(e).__name__}: {e}")
-                
-                # Clean up failed attempts
-                if _http_client:
-                    try:
-                        _http_client.close()
-                    except:
-                        pass
-                    _http_client = None
-                _client_instance = None
-        
-        # Try with HTTP/1.1 if httpx is available but h2 is not
-        if HTTPX_AVAILABLE and not h2_available:
-            try:
-                logging.info("Creating optimized client with HTTP/1.1 (h2 not available)...")
-                
-                # Create HTTP client WITHOUT HTTP/2
-                _http_client = httpx.Client(
-                    limits=httpx.Limits(
-                        max_connections=10,
-                        max_keepalive_connections=5,
-                        keepalive_expiry=30.0,
-                    ),
-                    timeout=httpx.Timeout(
-                        timeout=120.0,
-                        connect=10.0,
-                        read=60.0,
-                        write=30.0,
-                        pool=5.0
-                    ),
-                    transport=httpx.HTTPTransport(
-                        retries=3,
-                        http2=False,  # Explicitly disable HTTP/2
-                    ),
-                    follow_redirects=True,
-                )
-                
-                _client_instance = AzureOpenAI(
-                    azure_endpoint=AZURE_ENDPOINT,
-                    api_key=AZURE_API_KEY,
-                    api_version=AZURE_API_VERSION,
-                    http_client=_http_client,
-                    max_retries=3,
-                )
-                
-                logging.info("Successfully created optimized AzureOpenAI client with HTTP/1.1")
-                return _client_instance
-                
-            except Exception as e:
-                logging.error(f"Failed to create HTTP/1.1 client: {type(e).__name__}: {e}")
-                
-                # Clean up
-                if _http_client:
-                    try:
-                        _http_client.close()
-                    except:
-                        pass
-                    _http_client = None
-                _client_instance = None
-        
-        # Final fallback: Use simple client (no custom http_client)
-        try:
-            logging.info("Creating simple AzureOpenAI client...")
-            
-            _client_instance = AzureOpenAI(
-                azure_endpoint=AZURE_ENDPOINT,
-                api_key=AZURE_API_KEY,
-                api_version=AZURE_API_VERSION,
-            )
-            
-            logging.info("Successfully created simple AzureOpenAI client")
-            return _client_instance
-            
-        except Exception as e:
-            logging.critical(f"Failed to create even simple client: {type(e).__name__}: {e}")
-            _client_instance = None
-            raise
+    """Creates an AzureOpenAI client instance with extended timeout."""
+    return AzureOpenAI(
+        azure_endpoint=AZURE_ENDPOINT,
+        api_key=AZURE_API_KEY,
+        api_version=AZURE_API_VERSION,
+        timeout=120.0,
+        max_retries=3
+    )
 def construct_download_url(request: Request, filename: str) -> str:
     """
     Construct the download URL for a file.
