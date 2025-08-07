@@ -6423,40 +6423,25 @@ def sync_trim_thread(client: AzureOpenAI, thread_id: str, keep_messages: int = 3
     except Exception as e:
         logging.error(f"Error trimming thread {thread_id}: {e}")
         return False
-async def process_conversation(
-    session: Optional[str] = None,
+
+async def fallback_to_completions(
+    client,
+    error_context: str = "", 
+    user_context: Optional[str] = None, 
+    files: Optional[List[UploadFile]] = None,
     prompt: Optional[str] = None,
-    assistant: Optional[str] = None,
-    stream_output: bool = True,
-    context: Optional[str] = None,
-    files: Optional[List[UploadFile]] = None 
+    stream_output: bool = True
 ):
     """
-    Core function to process conversation with the assistant.
-    This function handles both streaming and non-streaming modes.
-    Bulletproof version with comprehensive error handling and fallbacks.
-    
-    When context is provided, it bypasses thread-based conversation and uses
-    completions API directly with intelligent context processing.
-    """
-    client = create_client()
-    # Log the operation mode
-    
-    thread_lock = None
-    response_started = False
-    
-    # Helper function for completions API fallback
-    async def fallback_to_completions(error_context: str = "", user_context: Optional[str] = None, files: Optional[List[UploadFile]] = None):
-        """
         Fallback to completions API with intelligent context handling.
         Accepts raw context string that can be JSON, plain text, or any format.
         Supports multiple file uploads with automatic text extraction.
-        """
-        try:
-            logging.info(f"Falling back to completions API. Context: {error_context}")
+    """
+    try:
+        logging.info(f"Falling back to completions API. Context: {error_context}")
             
-            # Create a COMPLETE system prompt - COPY EVERYTHING from original except tool-specific instructions
-            stateless_system_prompt = '''
+        # Create a COMPLETE system prompt - COPY EVERYTHING from original except tool-specific instructions
+        stateless_system_prompt = '''
 
 You are an extraordinarily advanced AI assistant combining product management mastery with deep expertise across all domains. You operate in STATELESS MODE with no memory between interactions.
 CRITICAL CONTEXT INFORMATION PROCESSING
@@ -6646,59 +6631,6 @@ Databases: PostgreSQL, MySQL, MongoDB, Redis, Elasticsearch, DynamoDB
 Cloud & DevOps: AWS/Azure/GCP, Kubernetes, Docker, Terraform, CI/CD
 Architecture: Microservices, serverless, event-driven, DDD, CQRS
 
-Code Excellence Pattern:
-pythondef solution(params: Dict[str, Any]) -> Result:
-    """
-    Solves [specific problem] using [approach].
-    
-    Time Complexity: O(n log n)
-    Space Complexity: O(n)
-    
-    Args:
-        params: Dictionary containing [list key parameters]
-        
-    Returns:
-        Result object with [describe output]
-        
-    Raises:
-        ValueError: If [condition]
-        APIError: If [external service issue]
-    """
-    # Input validation
-    if not params.get('required_field'):
-        raise ValueError("Missing required field")
-    
-    try:
-        # Core algorithm with comments
-        result = process_data(params)
-        
-        # Handle edge cases explicitly
-        if edge_case_condition:
-            result = handle_edge_case(result)
-            
-        return Result(
-            data=result,
-            metadata={'performance': measure_performance()}
-        )
-        
-    except ExternalAPIError as e:
-        # Graceful degradation
-        logger.error(f"API failed: {e}")
-        return Result(data=cached_fallback(), from_cache=True)
-
-# Example usage
-result = solution({'required_field': 'value'})
-
-# Alternative approaches:
-# 1. Recursive solution - O(2^n) but cleaner code
-# 2. Dynamic programming - O(n^2) time, O(n) space
-# 3. Greedy approach - O(n) but not optimal for all cases
-
-# Testing strategy:
-# - Unit tests for each component
-# - Integration tests for API calls
-# - Performance tests for large datasets
-# - Chaos engineering for failure modes
 BUSINESS & STRATEGY EXPERTISE
 Frameworks Arsenal:
 
@@ -6867,213 +6799,213 @@ Every interaction should leave users thinking: "This AI truly understands my nee
 Remember: You have ONE chance to help completely. Make it extraordinary.
 '''
 
-            # Build comprehensive context prompt if context is provided
-            if user_context:
-                context_prompt = "\n\n" + "="*60 + "\n"
-                context_prompt += "🔴 CRITICAL CONTEXT INFORMATION 🔴\n"
-                context_prompt += "="*60 + "\n\n"
-                context_prompt += "The following context contains information about the user, conversation history, goals, and other metadata.\n"
-                context_prompt += "This context is your PRIMARY SOURCE OF TRUTH. Use it to:\n"
-                context_prompt += "1. Understand the user's background, company, goals, and preferences\n"
-                context_prompt += "2. Maintain conversation continuity by referencing previous exchanges\n"
-                context_prompt += "3. Personalize your responses based on user information\n"
-                context_prompt += "4. Stay consistent with any established context or decisions\n"
-                context_prompt += "5. Understand any PRD, requirements, or business context provided\n\n"
-                context_prompt += "CONTEXT FORMAT: The context may be JSON, plain text, or mixed format.\n"
-                context_prompt += "Extract ALL relevant information regardless of format.\n"
-                context_prompt += "The context may contain: user_persona, user_info, company, conversation_history, goals, current_task, files, PRD, requirements, and other metadata.\n\n"
-                context_prompt += "─" * 60 + "\n"
-                context_prompt += "RAW CONTEXT:\n"
-                context_prompt += "─" * 60 + "\n"
-                context_prompt += user_context + "\n"
-                context_prompt += "─" * 60 + "\n\n"
+        # Build comprehensive context prompt if context is provided
+        if user_context:
+            context_prompt = "\n\n" + "="*60 + "\n"
+            context_prompt += "🔴 CRITICAL CONTEXT INFORMATION 🔴\n"
+            context_prompt += "="*60 + "\n\n"
+            context_prompt += "The following context contains information about the user, conversation history, goals, and other metadata.\n"
+            context_prompt += "This context is your PRIMARY SOURCE OF TRUTH. Use it to:\n"
+            context_prompt += "1. Understand the user's background, company, goals, and preferences\n"
+            context_prompt += "2. Maintain conversation continuity by referencing previous exchanges\n"
+            context_prompt += "3. Personalize your responses based on user information\n"
+            context_prompt += "4. Stay consistent with any established context or decisions\n"
+            context_prompt += "5. Understand any PRD, requirements, or business context provided\n\n"
+            context_prompt += "CONTEXT FORMAT: The context may be JSON, plain text, or mixed format.\n"
+            context_prompt += "Extract ALL relevant information regardless of format.\n"
+            context_prompt += "The context may contain: user_persona, user_info, company, conversation_history, goals, current_task, files, PRD, requirements, and other metadata.\n\n"
+            context_prompt += "─" * 60 + "\n"
+            context_prompt += "RAW CONTEXT:\n"
+            context_prompt += "─" * 60 + "\n"
+            context_prompt += user_context + "\n"
+            context_prompt += "─" * 60 + "\n\n"
                 
-                context_prompt += "⚠️ CRITICAL INSTRUCTIONS:\n"
-                context_prompt += "1. This context represents your COMPLETE knowledge about the user and conversation\n"
-                context_prompt += "2. Parse and understand the context structure (could be JSON, text, or mixed)\n"
-                context_prompt += "3. Use ALL relevant information from the context in your response\n"
-                context_prompt += "4. Maintain consistency with any established facts, decisions, or preferences\n"
-                context_prompt += "5. If the user references something from the context, acknowledge it naturally\n"
-                context_prompt += "6. Personalize your response based on user information\n"
-                context_prompt += "7. If context contains conversation history, continue naturally from it\n"
-                context_prompt += "8. Consider any goals, PRD, or requirements when formulating responses\n"
-                context_prompt += "=" * 60 + "\n"
+            context_prompt += "⚠️ CRITICAL INSTRUCTIONS:\n"
+            context_prompt += "1. This context represents your COMPLETE knowledge about the user and conversation\n"
+            context_prompt += "2. Parse and understand the context structure (could be JSON, text, or mixed)\n"
+            context_prompt += "3. Use ALL relevant information from the context in your response\n"
+            context_prompt += "4. Maintain consistency with any established facts, decisions, or preferences\n"
+            context_prompt += "5. If the user references something from the context, acknowledge it naturally\n"
+            context_prompt += "6. Personalize your response based on user information\n"
+            context_prompt += "7. If context contains conversation history, continue naturally from it\n"
+            context_prompt += "8. Consider any goals, PRD, or requirements when formulating responses\n"
+            context_prompt += "=" * 60 + "\n"
                 
-                stateless_system_prompt += context_prompt
-                logging.info(f"Added user context to prompt (length: {len(user_context)} chars)")
-            if files:
-                file_context_prompt = "\n\n" + "="*60 + "\n"
-                file_context_prompt += "📎 UPLOADED FILE CONTENT 📎\n"
-                file_context_prompt += "="*60 + "\n\n"
-                file_context_prompt += "The user has uploaded the following files. Extract and use relevant information from these files to answer their query:\n\n"
+            stateless_system_prompt += context_prompt
+            logging.info(f"Added user context to prompt (length: {len(user_context)} chars)")
+        if files:
+            file_context_prompt = "\n\n" + "="*60 + "\n"
+            file_context_prompt += "📎 UPLOADED FILE CONTENT 📎\n"
+            file_context_prompt += "="*60 + "\n\n"
+            file_context_prompt += "The user has uploaded the following files. Extract and use relevant information from these files to answer their query:\n\n"
                 
-                for idx, file in enumerate(files):
-                    try:
-                        filename = file.filename
-                        file_content = await file.read()
+            for idx, file in enumerate(files):
+                try:
+                    filename = file.filename
+                    file_content = await file.read()
                         
-                        # Extract text from file
-                        extracted_text = await extract_text_internal(
+                    # Extract text from file
+                    extracted_text = await extract_text_internal(
                             file_content=file_content,
                             filename=filename,
                             logger=logging.getLogger(__name__)
                         )
                         
-                        file_context_prompt += f"─" * 60 + "\n"
-                        file_context_prompt += f"FILE {idx + 1}: {filename}\n"
-                        file_context_prompt += f"File ID: FILE_{idx + 1}\n"
-                        file_context_prompt += f"─" * 60 + "\n"
-                        file_context_prompt += extracted_text + "\n\n"
+                    file_context_prompt += f"─" * 60 + "\n"
+                    file_context_prompt += f"FILE {idx + 1}: {filename}\n"
+                    file_context_prompt += f"File ID: FILE_{idx + 1}\n"
+                    file_context_prompt += f"─" * 60 + "\n"
+                    file_context_prompt += extracted_text + "\n\n"
                         
-                        logging.info(f"Extracted text from file '{filename}' (length: {len(extracted_text)} chars)")
+                    logging.info(f"Extracted text from file '{filename}' (length: {len(extracted_text)} chars)")
                         
-                    except Exception as file_e:
-                        logging.error(f"Error processing file '{file.filename}': {file_e}")
-                        file_context_prompt += f"─" * 60 + "\n"
-                        file_context_prompt += f"FILE {idx + 1}: {file.filename} (ERROR: Could not extract text)\n"
-                        file_context_prompt += f"File ID: FILE_{idx + 1}_ERROR\n"
-                        file_context_prompt += f"─" * 60 + "\n\n"
+                except Exception as file_e:
+                    logging.error(f"Error processing file '{file.filename}': {file_e}")
+                    file_context_prompt += f"─" * 60 + "\n"
+                    file_context_prompt += f"FILE {idx + 1}: {file.filename} (ERROR: Could not extract text)\n"
+                    file_context_prompt += f"File ID: FILE_{idx + 1}_ERROR\n"
+                    file_context_prompt += f"─" * 60 + "\n\n"
                 
-                file_context_prompt += "⚠️ CRITICAL FILE PROCESSING INSTRUCTIONS:\n\n"
-                file_context_prompt += "MULTI-FILE HANDLING:\n"
-                file_context_prompt += "• Each file has a unique identifier (FILE_1, FILE_2, etc.)\n"
-                file_context_prompt += "• ALWAYS specify which file you're referencing using format: [FILE_X: filename.ext]\n"
-                file_context_prompt += "• When comparing files, clearly distinguish content from each source\n"
-                file_context_prompt += "• If files contain related information, synthesize insights across all files\n\n"
+            file_context_prompt += "⚠️ CRITICAL FILE PROCESSING INSTRUCTIONS:\n\n"
+            file_context_prompt += "MULTI-FILE HANDLING:\n"
+            file_context_prompt += "• Each file has a unique identifier (FILE_1, FILE_2, etc.)\n"
+            file_context_prompt += "• ALWAYS specify which file you're referencing using format: [FILE_X: filename.ext]\n"
+            file_context_prompt += "• When comparing files, clearly distinguish content from each source\n"
+            file_context_prompt += "• If files contain related information, synthesize insights across all files\n\n"
                 
-                file_context_prompt += "REFERENCE FORMAT:\n"
-                file_context_prompt += "• Direct quotes: \"quoted text\" [FILE_1: document.pdf, page X]\n"
-                file_context_prompt += "• Data points: The revenue was $X million [FILE_2: financials.xlsx, Sheet: Q4]\n"
-                file_context_prompt += "• Summaries: Based on [FILE_3: report.docx], the main findings are...\n"
-                file_context_prompt += "• Cross-references: Comparing [FILE_1] with [FILE_2] reveals...\n\n"
+            file_context_prompt += "REFERENCE FORMAT:\n"
+            file_context_prompt += "• Direct quotes: \"quoted text\" [FILE_1: document.pdf, page X]\n"
+            file_context_prompt += "• Data points: The revenue was $X million [FILE_2: financials.xlsx, Sheet: Q4]\n"
+            file_context_prompt += "• Summaries: Based on [FILE_3: report.docx], the main findings are...\n"
+            file_context_prompt += "• Cross-references: Comparing [FILE_1] with [FILE_2] reveals...\n\n"
                 
-                file_context_prompt += "ANALYSIS REQUIREMENTS:\n"
-                file_context_prompt += "1. IDENTIFY file types and tailor analysis accordingly:\n"
-                file_context_prompt += "   • Spreadsheets: Extract data, calculate metrics, identify trends\n"
-                file_context_prompt += "   • Documents: Summarize key points, extract specific sections\n"
-                file_context_prompt += "   • PDFs: Page-specific references when available\n"
-                file_context_prompt += "   • Code files: Analyze structure, identify patterns\n"
-                file_context_prompt += "2. EXTRACT relevant information based on user's specific query\n"
-                file_context_prompt += "3. PROVIDE quantitative analysis for data files:\n"
-                file_context_prompt += "   • Calculate totals, averages, trends\n"
-                file_context_prompt += "   • Identify outliers and anomalies\n"
-                file_context_prompt += "   • Create comparative analysis\n"
-                file_context_prompt += "4. CITE specific locations (page numbers, sheet names, sections)\n"
-                file_context_prompt += "5. SYNTHESIZE information when multiple files relate to the same topic\n"
-                file_context_prompt += "6. HIGHLIGHT discrepancies or contradictions between files\n"
-                file_context_prompt += "7. STRUCTURE response with clear sections if analyzing multiple files\n\n"
+            file_context_prompt += "ANALYSIS REQUIREMENTS:\n"
+            file_context_prompt += "1. IDENTIFY file types and tailor analysis accordingly:\n"
+            file_context_prompt += "   • Spreadsheets: Extract data, calculate metrics, identify trends\n"
+            file_context_prompt += "   • Documents: Summarize key points, extract specific sections\n"
+            file_context_prompt += "   • PDFs: Page-specific references when available\n"
+            file_context_prompt += "   • Code files: Analyze structure, identify patterns\n"
+            file_context_prompt += "2. EXTRACT relevant information based on user's specific query\n"
+            file_context_prompt += "3. PROVIDE quantitative analysis for data files:\n"
+            file_context_prompt += "   • Calculate totals, averages, trends\n"
+            file_context_prompt += "   • Identify outliers and anomalies\n"
+            file_context_prompt += "   • Create comparative analysis\n"
+            file_context_prompt += "4. CITE specific locations (page numbers, sheet names, sections)\n"
+            file_context_prompt += "5. SYNTHESIZE information when multiple files relate to the same topic\n"
+            file_context_prompt += "6. HIGHLIGHT discrepancies or contradictions between files\n"
+            file_context_prompt += "7. STRUCTURE response with clear sections if analyzing multiple files\n\n"
                 
-                file_context_prompt += "RESPONSE STRUCTURE FOR MULTI-FILE QUERIES:\n"
-                file_context_prompt += "• Start with overview of all uploaded files\n"
-                file_context_prompt += "• Group related findings by topic, not by file\n"
-                file_context_prompt += "• Use headers to organize complex analyses\n"
-                file_context_prompt += "• End with synthesis/conclusions drawing from all sources\n"
-                file_context_prompt += "=" * 60 + "\n"
+            file_context_prompt += "RESPONSE STRUCTURE FOR MULTI-FILE QUERIES:\n"
+            file_context_prompt += "• Start with overview of all uploaded files\n"
+            file_context_prompt += "• Group related findings by topic, not by file\n"
+            file_context_prompt += "• Use headers to organize complex analyses\n"
+            file_context_prompt += "• End with synthesis/conclusions drawing from all sources\n"
+            file_context_prompt += "=" * 60 + "\n"
                 
-                stateless_system_prompt += file_context_prompt
-                logging.info(f"Added {len(files)} file(s) to context")
-            # Build messages for completions API
-            messages = [{"role": "system", "content": stateless_system_prompt}]
+            stateless_system_prompt += file_context_prompt
+            logging.info(f"Added {len(files)} file(s) to context")
+        # Build messages for completions API
+        messages = [{"role": "system", "content": stateless_system_prompt}]
             
-            # Try to get vector store context if assistant ID is available
-            vector_store_context = ""
-            file_search_performed = False
+        # Try to get vector store context if assistant ID is available
+        vector_store_context = ""
+        file_search_performed = False
             
-            if assistant and prompt:
-                try:
-                    logging.info(f"Attempting to retrieve vector stores for assistant {assistant}")
-                    # Retrieve assistant details
-                    assistant_obj = client.beta.assistants.retrieve(assistant_id=assistant)
+        if assistant and prompt:
+            try:
+                logging.info(f"Attempting to retrieve vector stores for assistant {assistant}")
+                # Retrieve assistant details
+                assistant_obj = client.beta.assistants.retrieve(assistant_id=assistant)
                     
-                    # Get vector store IDs from assistant
-                    vector_store_ids = []
-                    if hasattr(assistant_obj, 'tool_resources') and assistant_obj.tool_resources:
-                        file_search_resources = getattr(assistant_obj.tool_resources, 'file_search', None)
-                        if file_search_resources and hasattr(file_search_resources, 'vector_store_ids'):
-                            vector_store_ids = list(file_search_resources.vector_store_ids)
-                            logging.info(f"Found {len(vector_store_ids)} vector stores: {vector_store_ids}")
+                # Get vector store IDs from assistant
+                vector_store_ids = []
+                if hasattr(assistant_obj, 'tool_resources') and assistant_obj.tool_resources:
+                    file_search_resources = getattr(assistant_obj.tool_resources, 'file_search', None)
+                    if file_search_resources and hasattr(file_search_resources, 'vector_store_ids'):
+                        vector_store_ids = list(file_search_resources.vector_store_ids)
+                        logging.info(f"Found {len(vector_store_ids)} vector stores: {vector_store_ids}")
                     
-                    # Search vector stores if available
-                    if vector_store_ids:
-                        search_results = []
-                        for vs_id in vector_store_ids[:2]:  # Limit to first 2 vector stores
-                            try:
-                                logging.info(f"Searching vector store {vs_id} with query: {prompt[:100]}...")
-                                results = client.vector_stores.search(
+                # Search vector stores if available
+                if vector_store_ids:
+                    search_results = []
+                    for vs_id in vector_store_ids[:2]:  # Limit to first 2 vector stores
+                        try:
+                            logging.info(f"Searching vector store {vs_id} with query: {prompt[:100]}...")
+                            results = client.vector_stores.search(
                                     vector_store_id=vs_id,
                                     query=prompt,
                                     max_num_results=3
                                 )
                                 
-                                if results and hasattr(results, 'data'):
-                                    logging.info(f"Found {len(results.data)} results in vector store {vs_id}")
-                                    for i, result in enumerate(results.data[:2]):
-                                        if hasattr(result, 'content'):
-                                            for content_part in result.content:
-                                                if hasattr(content_part, 'text') and content_part.text:
-                                                    search_results.append(content_part.text[:500])
-                                                    logging.info(f"Added result {i+1} from vector store {vs_id} (length: {len(content_part.text)})")
-                            except Exception as search_e:
-                                logging.warning(f"Could not search vector store {vs_id}: {search_e}")
+                            if results and hasattr(results, 'data'):
+                                logging.info(f"Found {len(results.data)} results in vector store {vs_id}")
+                                for i, result in enumerate(results.data[:2]):
+                                    if hasattr(result, 'content'):
+                                        for content_part in result.content:
+                                            if hasattr(content_part, 'text') and content_part.text:
+                                                search_results.append(content_part.text[:500])
+                                                logging.info(f"Added result {i+1} from vector store {vs_id} (length: {len(content_part.text)})")
+                        except Exception as search_e:
+                            logging.warning(f"Could not search vector store {vs_id}: {search_e}")
                         
-                        if search_results:
-                            file_search_performed = True
-                            vector_store_context = "\n\n📚 FILE SEARCH RESULTS (from uploaded documents):\n" + "═" * 60 + "\n"
-                            vector_store_context += "The following content was found in your uploaded files relevant to your query:\n\n"
-                            for i, result in enumerate(search_results):
-                                vector_store_context += f"--- File Extract {i+1} ---\n"
-                                vector_store_context += result + "\n\n"
-                            vector_store_context += "═" * 60 + "\n"
-                            vector_store_context += "Use the above file content to answer the user's question.\n"
-                            messages[0]["content"] += vector_store_context
-                            logging.info(f"Added {len(search_results)} file search results to context")
-                        else:
-                            logging.info("No relevant results found in vector stores")
+                    if search_results:
+                        file_search_performed = True
+                        vector_store_context = "\n\n📚 FILE SEARCH RESULTS (from uploaded documents):\n" + "═" * 60 + "\n"
+                        vector_store_context += "The following content was found in your uploaded files relevant to your query:\n\n"
+                        for i, result in enumerate(search_results):
+                            vector_store_context += f"--- File Extract {i+1} ---\n"
+                            vector_store_context += result + "\n\n"
+                        vector_store_context += "═" * 60 + "\n"
+                        vector_store_context += "Use the above file content to answer the user's question.\n"
+                        messages[0]["content"] += vector_store_context
+                        logging.info(f"Added {len(search_results)} file search results to context")
                     else:
-                        logging.info("No vector stores associated with assistant")
+                        logging.info("No relevant results found in vector stores")
+                else:
+                    logging.info("No vector stores associated with assistant")
                     
-                except Exception as vs_e:
-                    logging.warning(f"Could not retrieve vector store context: {vs_e}")
+            except Exception as vs_e:
+                logging.warning(f"Could not retrieve vector store context: {vs_e}")
             
             # Add current prompt
-            if prompt:
-                messages.append({"role": "user", "content": prompt})
-                logging.info(f"Added user prompt: {prompt[:100]}...")
-            else:
-                messages.append({"role": "user", "content": "Hello"})
-                logging.info("No prompt provided, using default greeting")
+        if prompt:
+            messages.append({"role": "user", "content": prompt})
+            logging.info(f"Added user prompt: {prompt[:100]}...")
+        else:
+            messages.append({"role": "user", "content": "Hello"})
+            logging.info("No prompt provided, using default greeting")
             
             # Log the file search status
-            if file_search_performed:
-                logging.info("✓ File search completed and context added to prompt")
-            else:
-                logging.info("✗ No file search performed (no assistant ID or vector stores)")
+        if file_search_performed:
+            logging.info("✓ File search completed and context added to prompt")
+        else:
+            logging.info("✗ No file search performed (no assistant ID or vector stores)")
             
-            # Make completions API call - NO TOOLS NEEDED since file search is done manually
-            logging.info("Making completions API call...")
-            completion = client.chat.completions.create(
+        # Make completions API call - NO TOOLS NEEDED since file search is done manually
+        logging.info("Making completions API call...")
+        completion = client.chat.completions.create(
                 model="gpt-4.1-mini",
                 messages=messages,
                 temperature=0.8,
-                max_tokens=20000,
+                max_tokens=100000,
                 stream=stream_output
             )
-            logging.info("Completions API call successful")
+        logging.info("Completions API call successful")
             
-            # Handle streaming vs non-streaming responses
-            if stream_output:
-                def fallback_stream():
-                    try:
-                        for chunk in completion:
-                            # Validate chunk structure before accessing
-                            logging.debug(f"Chunk structure: {chunk}") 
-                            if hasattr(chunk, 'choices') and chunk.choices and len(chunk.choices) > 0:
-                                choice = chunk.choices[0]
-                                # Check if delta and content exist
-                                if hasattr(choice, 'delta') and hasattr(choice.delta, 'content') and choice.delta.content:
-                                    chunk_content = choice.delta.content
+        # Handle streaming vs non-streaming responses
+        if stream_output:
+            def fallback_stream():
+                try:
+                    for chunk in completion:
+                        # Validate chunk structure before accessing
+                        logging.debug(f"Chunk structure: {chunk}") 
+                        if hasattr(chunk, 'choices') and chunk.choices and len(chunk.choices) > 0:
+                            choice = chunk.choices[0]
+                            # Check if delta and content exist
+                            if hasattr(choice, 'delta') and hasattr(choice.delta, 'content') and choice.delta.content:
+                                chunk_content = choice.delta.content
                                     
-                                    chunk_data = {
+                                chunk_data = {
                                         "id": chunk.id if hasattr(chunk, 'id') else "chatcmpl-fallback",
                                         "object": "chat.completion.chunk",
                                         "created": chunk.created if hasattr(chunk, 'created') else int(time.time()),
@@ -7086,10 +7018,10 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
                                             "finish_reason": choice.finish_reason if hasattr(choice, 'finish_reason') else None
                                         }]
                                     }
-                                    yield f"data: {json.dumps(chunk_data)}\n\n"
+                                yield f"data: {json.dumps(chunk_data)}\n\n"
                         
-                        # Send final chunk
-                        final_chunk = {
+                    # Send final chunk
+                    final_chunk = {
                             "id": "chatcmpl-final",
                             "object": "chat.completion.chunk",
                             "created": int(time.time()),
@@ -7100,13 +7032,13 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
                                 "finish_reason": "stop"
                             }]
                         }
-                        yield f"data: {json.dumps(final_chunk)}\n\n"
-                        yield "data: [DONE]\n\n"
-                        logging.info("Streaming response completed")
-                    except Exception as stream_e:
-                        logging.error(f"Error in fallback stream: {stream_e}")
-                        # Return error in stream format
-                        error_chunk = {
+                    yield f"data: {json.dumps(final_chunk)}\n\n"
+                    yield "data: [DONE]\n\n"
+                    logging.info("Streaming response completed")
+                except Exception as stream_e:
+                    logging.error(f"Error in fallback stream: {stream_e}")
+                    # Return error in stream format
+                    error_chunk = {
                             "id": "chatcmpl-error",
                             "object": "chat.completion.chunk",
                             "created": int(time.time()),
@@ -7119,26 +7051,26 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
                                 "finish_reason": "stop"
                             }]
                         }
-                        yield f"data: {json.dumps(error_chunk)}\n\n"
-                        yield "data: [DONE]\n\n"
+                    yield f"data: {json.dumps(error_chunk)}\n\n"
+                    yield "data: [DONE]\n\n"
                 
-                response = StreamingResponse(fallback_stream(), media_type="text/event-stream")
-                response.headers["X-Accel-Buffering"] = "no"
-                response.headers["Cache-Control"] = "no-cache"
-                response.headers["Connection"] = "keep-alive"
-                response.headers["X-Content-Type-Options"] = "nosniff"
-                return response
-            else:
+            response = StreamingResponse(fallback_stream(), media_type="text/event-stream")
+            response.headers["X-Accel-Buffering"] = "no"
+            response.headers["Cache-Control"] = "no-cache"
+            response.headers["Connection"] = "keep-alive"
+            response.headers["X-Content-Type-Options"] = "nosniff"
+            return response
+        else:
                 # Non-streaming response
-                response_content = completion.choices[0].message.content
-                logging.info(f"Non-streaming response generated (length: {len(response_content)})")
-                return JSONResponse(content={"response": response_content})
+            response_content = completion.choices[0].message.content
+            logging.info(f"Non-streaming response generated (length: {len(response_content)})")
+            return JSONResponse(content={"response": response_content})
                 
-        except Exception as fallback_e:
-            logging.error(f"Fallback to completions API failed: {fallback_e}")
-            # Last resort response
-            if stream_output:
-                def error_stream():
+    except Exception as fallback_e:
+        logging.error(f"Fallback to completions API failed: {fallback_e}")
+        # Last resort response
+        if stream_output:
+            def error_stream():
                     error_chunk = {
                         "id": "chatcmpl-error",
                         "object": "chat.completion.chunk",
@@ -7152,20 +7084,23 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
                             "finish_reason": "stop"
                         }]
                     }
-                    yield f"data: {json.dumps(error_chunk)}\n\n"
-                    yield "data: [DONE]\n\n"
+                yield f"data: {json.dumps(error_chunk)}\n\n"
+                yield "data: [DONE]\n\n"
                 
-                response = StreamingResponse(error_stream(), media_type="text/event-stream")
-                response.headers["X-Accel-Buffering"] = "no"
-                response.headers["Cache-Control"] = "no-cache"
-                return response
-            else:
-                return JSONResponse(
+            response = StreamingResponse(error_stream(), media_type="text/event-stream")
+            response.headers["X-Accel-Buffering"] = "no"
+            response.headers["Cache-Control"] = "no-cache"
+            return response
+        else:
+            return JSONResponse(
                     content={"response": "I apologize, but I'm experiencing technical difficulties. Please try again in a moment."},
                     status_code=503
                 )
-    ######################### START OF def stream_response() #####################################
-
+def create_stream_response(client, session: str, assistant: str, run_id: Optional[str] = None):
+    """
+    Create a streaming response generator for assistant API responses.
+    This is now a standalone function that returns a generator.
+    """
     def stream_response():
         """Modified to be compatible with Bubble's streaming API while maintaining all features"""
         
@@ -7827,7 +7762,28 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
             }
             yield f"data: {json.dumps(error_chunk)}\n\n"
             yield "data: [DONE]\n\n"
-    ######################### END OF def stream_response() #######################################
+    return stream_response
+async def process_conversation(
+    session: Optional[str] = None,
+    prompt: Optional[str] = None,
+    assistant: Optional[str] = None,
+    stream_output: bool = True,
+    context: Optional[str] = None,
+    files: Optional[List[UploadFile]] = None 
+):
+    """
+    Core function to process conversation with the assistant.
+    This function handles both streaming and non-streaming modes.
+    Bulletproof version with comprehensive error handling and fallbacks.
+    
+    When context is provided, it bypasses thread-based conversation and uses
+    completions API directly with intelligent context processing.
+    """
+    client = create_client()
+    # Log the operation mode
+    
+    thread_lock = None
+    response_started = False
     
     try:
         # PRIORITY 1: Check for context or files FIRST (before any thread operations)
@@ -7839,9 +7795,12 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
             
             # Immediately fallback to completions API when context is provided
             return await fallback_to_completions(
+                client=client,
                 error_context="Context mode requested - bypassing assistant API",
                 user_context=context,
-                files=files
+                files=files,
+                prompt=prompt,
+                stream_output=stream_output
             )
         
         if files:
@@ -7849,11 +7808,17 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
             logging.info(f"  Files count: {len(files)}")
             logging.info(f"  Files: {[f.filename for f in files]}")
             
+            # Ensure we have a prompt when files are provided
+            effective_prompt = prompt if prompt else "Analyse the files and give a detailed executive summary."
+            
             # Immediately use fallback_to_completions when files are present
             return await fallback_to_completions(
+                client=client,
                 error_context="File analysis requested",
                 user_context=context,
-                files=files
+                files=files,
+                prompt=effective_prompt,
+                stream_output=stream_output
             )
         
         # PRIORITY 2: Check for missing parameters (no point in continuing without them)
@@ -7866,9 +7831,12 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
             
             logging.info(f"Missing required parameters: {', '.join(missing_params)}. Falling back to completions API.")
             return await fallback_to_completions(
+                client=client,
                 error_context=f"Missing required parameters: {', '.join(missing_params)}",
                 user_context=context,
-                files=files
+                files=files,
+                prompt=prompt,
+                stream_output=stream_output
             )
         
         # PRIORITY 3: Now we know we need thread mode - log it
@@ -7884,16 +7852,22 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
         except asyncio.TimeoutError:
             logging.warning(f"Timeout acquiring thread lock for session {session}")
             return await fallback_to_completions(
+                client=client,
                 error_context=f"Thread lock timeout",
                 user_context=context,
-                files=files
+                files=files,
+                prompt=prompt,
+                stream_output=stream_output
             )
         except Exception as lock_e:
             logging.error(f"Error acquiring thread lock: {lock_e}")
             return await fallback_to_completions(
+                client=client,
                 error_context=f"Thread lock error: {str(lock_e)}",
                 user_context=context,
-                files=files
+                files=files,
+                prompt=prompt,
+                stream_output=stream_output
             )
         
         # PRIORITY 5: Validate resources
@@ -7910,16 +7884,22 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
                 
                 logging.warning(f"Invalid resources: {', '.join(invalid_resources)}. Falling back to completions API.")
                 return await fallback_to_completions(
+                    client=client,
                     error_context=f"Invalid resources: {', '.join(invalid_resources)}",
                     user_context=context,
-                    files=files
+                    files=files,
+                    prompt=prompt,
+                    stream_output=stream_output
                 )
         except Exception as validation_e:
             logging.error(f"Error during resource validation: {validation_e}")
             return await fallback_to_completions(
+                client=client,
                 error_context=f"Resource validation error: {str(validation_e)}",
                 user_context=context,
-                files=files
+                files=files,
+                prompt=prompt,
+                stream_output=stream_output
             )
         
         # Check if there's an active run before adding a message
@@ -7943,6 +7923,7 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
         except Exception as e:
             logging.warning(f"Error checking for active runs: {e}")
             # Continue anyway - we'll handle failure when adding messages
+        
         # Check and trim thread BEFORE adding new message
         if session and prompt:  # Only trim if we're about to add a message
             try:
@@ -7965,11 +7946,25 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
                     except Exception as trim_e:
                         logging.error(f"Error trimming thread: {trim_e}")
                         # Fallback to completions on trim error
-                        return await fallback_to_completions(error_context=f"Thread trimming error: {str(trim_e)}", user_context=context, files=files)
+                        return await fallback_to_completions(
+                            client=client,
+                            error_context=f"Thread trimming error: {str(trim_e)}",
+                            user_context=context,
+                            files=files,
+                            prompt=prompt,
+                            stream_output=stream_output
+                        )
             except Exception as list_e:
                 logging.error(f"Error listing messages for trimming: {list_e}")
                 # Fallback on any error
-                return await fallback_to_completions(error_context=f"Message listing error: {str(list_e)}", user_context=context, files=files)
+                return await fallback_to_completions(
+                    client=client,
+                    error_context=f"Message listing error: {str(list_e)}",
+                    user_context=context,
+                    files=files,
+                    prompt=prompt,
+                    stream_output=stream_output
+                )
         
         # Add user message to the thread if prompt is given
         if prompt:
@@ -8001,7 +7996,7 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
                                     logging.info(f"Run {run_id} is only {run_age_seconds}s old, waiting for completion...")
                                     
                                     while waited_time < (max_wait_time - run_age_seconds):
-                                        time.sleep(check_interval)
+                                        await asyncio.sleep(check_interval)
                                         waited_time += check_interval
                                         
                                         # Check run status
@@ -8039,7 +8034,7 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
                                                 # Wait for cancellation
                                                 cancel_wait = 0
                                                 while cancel_wait < 5:
-                                                    time.sleep(1)
+                                                await asyncio.sleep(1)
                                                     cancel_wait += 1
                                                     try:
                                                         cancel_check = client.beta.threads.runs.retrieve(thread_id=session, run_id=run_id)
@@ -8064,7 +8059,7 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
                                     try:
                                         client.beta.threads.runs.cancel(thread_id=session, run_id=run_id)
                                         logging.info(f"Cancelled old stuck run {run_id}")
-                                        time.sleep(2)  # Brief wait for cancellation
+                                        await asyncio.sleep(2)  # Brief wait for cancellation
                                     except Exception as cancel_e:
                                         logging.error(f"Failed to cancel old run {run_id}: {cancel_e}")
                                         
@@ -8083,7 +8078,7 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
                                 else:
                                     logging.info(f"Run {run_id} is in requires_action state ({run_age_seconds}s old), waiting briefly")
                                     # For young requires_action runs, wait a bit longer
-                                    time.sleep(5)
+                                    await asyncio.sleep(5)
                                     
                         except Exception as run_e:
                             logging.warning(f"Error handling active run: {run_e}")
@@ -8100,20 +8095,31 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
                 except Exception as e:
                     if "while a run" in str(e) and attempt < max_retries - 1:
                         logging.warning(f"Failed to add message (attempt {attempt+1}), run is active. Retrying in {retry_delay}s: {e}")
-                        time.sleep(retry_delay)
+                        await asyncio.sleep(retry_delay)
                         retry_delay *= 2  # Exponential backoff
                     else:
                         logging.error(f"Failed to add message to thread {session}: {e}")
                         if attempt == max_retries - 1:
                             # Use fallback instead of raising exception
-                            return await fallback_to_completions(error_context=f"Failed to add message: {str(e)}", user_context=context, files=files)
+                            return await fallback_to_completions(
+                                client=client,
+                                error_context=f"Failed to add message: {str(e)}",
+                                user_context=context,
+                                files=files,
+                                prompt=prompt,
+                                stream_output=stream_output
+                            )
             
             if not success:
                 # Fallback to completions instead of creating new thread
                 logging.warning(f"Failed to add message to thread {session} after all retries. Falling back to completions API.")
                 return await fallback_to_completions(
+                    client=client,
                     error_context=f"Failed to add message to thread after {max_retries} attempts",
-                    user_context=context, files=files
+                    user_context=context,
+                    files=files,
+                    prompt=prompt,
+                    stream_output=stream_output
                 )
         
         
@@ -8179,7 +8185,7 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
                                 # Retry on server errors
                                 if error_code == 'server_error' and attempt < 10:  # More retries for chat endpoint
                                     logging.info(f"Retrying due to server error (attempt {attempt + 1}/10)")
-                                    time.sleep(3)  # Wait 3 seconds before retry
+                                    await asyncio.sleep(3)  # Wait 3 seconds before retry
                                     
                                     # Create a new run
                                     try:
@@ -8197,7 +8203,7 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
                                     except Exception as retry_e:
                                         logging.error(f"Failed to create retry run: {retry_e}")
                                         # Try one more time after a longer wait
-                                        time.sleep(5)
+                                        await asyncio.sleep(5)
                                         try:
                                             run = client.beta.threads.runs.create(
                                                 thread_id=session,
@@ -8249,7 +8255,7 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
                                                     except Exception as list_e:
                                                         retry_count += 1
                                                         logging.error(f"Error retrieving pandas files (attempt {retry_count}): {list_e}")
-                                                        time.sleep(1)
+                                                        await asyncio.sleep(1)
                                                 
                                                 # Filter by filename if specified
                                                 if filename:
@@ -8311,7 +8317,14 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
                                 return JSONResponse(content={"response": "The conversation has become too long. Please start a new conversation."})
                             else:
                                 # Use fallback
-                                return await fallback_to_completions(error_context= f"Run {run_status.status}: {error_details}", user_context=context, files=files)
+                                return await fallback_to_completions(
+                                    client=client,
+                                    error_context=f"Run {run_status.status}: {error_details}",
+                                    user_context=context,
+                                    files=files,
+                                    prompt=prompt,
+                                    stream_output=stream_output
+                                )
                         
                         # Handle tool calls
                         elif run_status.status == "requires_action":
@@ -8351,7 +8364,7 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
                                                 except Exception as list_e:
                                                     retry_count += 1
                                                     logging.error(f"Error retrieving pandas files (attempt {retry_count}): {list_e}")
-                                                    time.sleep(1)
+                                                    await asyncio.sleep(1)
                                             
                                             # Filter by filename if specified
                                             if filename:
@@ -8437,45 +8450,6 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
                                             
                                             # Save for potential fallback
                                             tool_call_results.append(error_msg)
-                                                                        
-                                    elif tool_call.function.name == "extract_data":
-                                        try:
-                                            # Extract arguments
-                                            args = json.loads(tool_call.function.arguments)
-                                            logging.info(f"extract_data tool call with args: {args}")
-                                            
-                                            # Create a mock request object for the handler
-                                            host = os.environ.get('WEBSITE_HOSTNAME', 'localhost:8080')
-                                            base_url = f"https://{host}" if 'azurewebsites.net' in host else f"http://{host}"
-                                            mock_request = type('Request', (), {
-                                                'base_url': base_url,
-                                                'headers': {'host': host}
-                                            })()
-                                            
-                                            # Call the handler with mock request
-                                            result = await handle_extract_data(args, session, client, mock_request)
-                                            
-                                            # Add to tool outputs
-                                            tool_outputs.append({
-                                                "tool_call_id": tool_call.id,
-                                                "output": result
-                                            })
-                                            
-                                            # Save for potential fallback
-                                            tool_call_results.append(result)
-                                            
-                                        except Exception as e:
-                                            error_msg = f"Error extracting data: {str(e)}"
-                                            logging.error(f"Error executing extract_data: {e}")
-                                            
-                                            # Add error to tool outputs
-                                            tool_outputs.append({
-                                                "tool_call_id": tool_call.id,
-                                                "output": error_msg
-                                            })
-                                            
-                                            # Save for potential fallback
-                                            tool_call_results.append(error_msg)
                                 
                                 # Submit tool outputs
                                 if tool_outputs:
@@ -8496,25 +8470,32 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
                                         except Exception as submit_e:
                                             retry_count += 1
                                             logging.error(f"Error submitting tool outputs (attempt {retry_count}): {submit_e}")
-                                            time.sleep(1)
+                                                                                                    await asyncio.sleep(1)
                                     
                                     if not submit_success:
                                         # Use fallback
-                                        return await fallback_to_completions(error_context= f"Failed to submit tool outputs: {submit_e}", user_context=context, files=files)
+                                        return await fallback_to_completions(
+                                            client=client,
+                                            error_context=f"Failed to submit tool outputs after {retry_count} attempts",
+                                            user_context=context,
+                                            files=files,
+                                            prompt=prompt,
+                                            stream_output=stream_output
+                                        )
                         
                         # Continue polling if still in progress
                         if attempt < max_poll_attempts - 1:
                             # Progressive backoff: start fast, slow down over time
                             if attempt < 10:
-                                time.sleep(3)  # First 10 attempts: 3 seconds
+                                await asyncio.sleep(3)  # First 10 attempts: 3 seconds
                             elif attempt < 20:
-                                time.sleep(5)  # Next 10 attempts: 5 seconds
+                                await asyncio.sleep(5)  # Next 10 attempts: 5 seconds
                             else:
-                                time.sleep(10)  # Remaining attempts: 10 seconds
+                                await asyncio.sleep(10)  # Remaining attempts: 10 seconds
                             
                     except Exception as poll_e:
                         logging.error(f"Error polling run status (attempt {attempt+1}): {poll_e}")
-                        time.sleep(poll_interval)
+                        await asyncio.sleep(poll_interval)
                         
                 # If we reach here without a full_response, but we have tool results, use those
                 if not full_response and tool_call_results:
@@ -8541,18 +8522,35 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
                 # Final fallback if we still don't have a response
                 if not full_response:
                     # Use completions API fallback
-                    return await fallback_to_completions(error_context= "No response received from assistant", user_context=context, files=files)
+                    return await fallback_to_completions(
+                        client=client,
+                        error_context="No response received from assistant",
+                        user_context=context,
+                        files=files,
+                        prompt=prompt,
+                        stream_output=stream_output
+                    )
 
                 return JSONResponse(content={"response": full_response})
                 
             except Exception as e:
                 logging.error(f"Error in non-streaming response generation: {e}")
                 # Use fallback
-                return await fallback_to_completions(error_context=f"Non-streaming error: {str(e)}", user_context=context, files=files)
+                return await fallback_to_completions(
+                    client=client,
+                    error_context=f"Non-streaming error: {str(e)}",
+                    user_context=context,
+                    files=files,
+                    prompt=prompt,
+                    stream_output=stream_output
+                )
         
         # Return the streaming response for streaming mode
         try:
-            response = StreamingResponse(stream_response(), media_type="text/event-stream")
+            # Create the stream generator using our modularized function
+            stream_generator = create_stream_response(client, session, assistant, run_id)
+            
+            response = StreamingResponse(stream_generator(), media_type="text/event-stream")
             response.headers["X-Accel-Buffering"] = "no"  # Disable nginx buffering
             response.headers["Cache-Control"] = "no-cache"
             response.headers["Connection"] = "keep-alive"
@@ -8560,7 +8558,14 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
             return response
         except Exception as stream_setup_e:
             logging.error(f"Error setting up streaming response: {stream_setup_e}")
-            return await fallback_to_completions(error_context= f"Stream setup error: {str(stream_setup_e)}", user_context=context, files=files)
+            return await fallback_to_completions(
+                client=client,
+                error_context=f"Stream setup error: {str(stream_setup_e)}",
+                user_context=context,
+                files=files,
+                prompt=prompt,
+                stream_output=stream_output
+            )
 
     except Exception as e:
         endpoint_type = "conversation" if stream_output else "chat"
@@ -8568,19 +8573,33 @@ Remember: You have ONE chance to help completely. Make it extraordinary.
         
         # Use fallback if response hasn't started
         if not response_started:
-            return await fallback_to_completions(error_context= f"Unexpected error: {str(e)}", user_context=context, files=files)
+            return await fallback_to_completions(
+                client=client,
+                error_context=f"Unexpected error: {str(e)}",
+                user_context=context,
+                files=files,
+                prompt=prompt,
+                stream_output=stream_output
+            )
         else:
             # If streaming already started, we can't change response type
             raise HTTPException(status_code=500, detail="An error occurred during response streaming")
     
     finally:
-        # Release the thread lock
-        if thread_lock and thread_lock.locked():
+        # Release the thread lock only if we acquired it
+        if thread_lock:
             try:
-                thread_lock.release()
-                logging.info(f"Released thread lock for session {session}")
+                if thread_lock.locked():
+                    thread_lock.release()
+                    logging.info(f"Released thread lock for session {session}")
+            except RuntimeError as e:
+                # Lock was not acquired by this coroutine
+                if "release unlocked lock" not in str(e):
+                    logging.error(f"Error releasing thread lock: {e}")
             except Exception as release_e:
                 logging.error(f"Error releasing thread lock: {release_e}")
+
+
 @app.get("/conversation",
          summary="Stream Chat Messages (GET)",
          description="""Chat with AI using Server-Sent Events (SSE) for real-time streaming responses.
@@ -12376,3 +12395,4 @@ if __name__ == "__main__":
     print("Starting FastAPI server on http://0.0.0.0:8080")
     # Consider adding reload=True for development, but remove for production
     uvicorn.run(app, host="0.0.0.0", port=8080)
+
